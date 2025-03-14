@@ -2,3 +2,8 @@
 	path = tests/third_party/googletest
 	url = https://github.com/google/googletest.git
 	shallow = true
+
+[submodule "src/third_party/miniaudio"]
+	path = src/third_party/miniaudio
+	url = https://github.com/mackron/miniaudio.git
+

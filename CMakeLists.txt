@@ -21,8 +21,11 @@ set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE}" CACHE STRING "" FORCE)
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG}" CACHE STRING "" FORCE)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}" CACHE STRING "" FORCE)
 
+
 project(${PyProject_NAME} LANGUAGES CXX VERSION ${PyProject_VERSION})
 message(STATUS "Project: ${PROJECT_NAME}@v${PROJECT_VERSION}")
+
+
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
@@ -59,25 +62,6 @@ endif()
 
 
 
-# Download the public suffix list file from the internet
-# set(PUBLIC_SUFFIX_LIST_URL "https://publicsuffix.org/list/public_suffix_list.dat")
-# set(PUBLIC_SUFFIX_LIST_DAT "public_suffix_list.dat")
-# if(NOT DEFINED SKBUILD)
-#     set(PUBLIC_SUFFIX_LIST_DAT "${CMAKE_CURRENT_BINARY_DIR}/${PUBLIC_SUFFIX_LIST_DAT}")
-# endif()
-
-# Download the public suffix list file from the internet if not already exists
-# if(EXISTS "${PUBLIC_SUFFIX_LIST_DAT}")
-#     message(STATUS "[DATA] ${PUBLIC_SUFFIX_LIST_DAT} is found.")
-# else()
-#     message(WARNING "[DATA] ${PUBLIC_SUFFIX_LIST_DAT} is not found. Trying to download it.")
-#     file(DOWNLOAD "${PUBLIC_SUFFIX_LIST_URL}" ${PUBLIC_SUFFIX_LIST_DAT})
-#     if(EXISTS "${PUBLIC_SUFFIX_LIST_DAT}")
-#         message(STATUS "[DATA] ${PUBLIC_SUFFIX_LIST_DAT} is downloaded.")
-#     else()
-#         message(FATAL_ERROR "[DATA] Failed to download ${PUBLIC_SUFFIX_LIST_DAT}.")
-#     endif()
-# endif()
 
 file(GLOB SOURCES ${PROJECT_SOURCE_DIR}/src/*.cpp)
 
@@ -162,13 +146,26 @@ if(DEFINED SKBUILD)
     RETURN()
 endif()
 
+find_package(CURL REQUIRED)
 
+add_subdirectory(src/third_party/miniaudio)
+#add_subdirectory(src/third_party/onnx_runtime_cpp)
 
 add_library(speech SHARED ${SOURCES})
-add_library(url::base ALIAS speech)
+# add_library(url::base ALIAS speech)
 target_compile_definitions(speech PRIVATE
         PUBLIC_SUFFIX_LIST_DAT="${PUBLIC_SUFFIX_LIST_DAT}"
 )
+
+target_include_directories(speech PUBLIC ${PROJECT_SOURCE_DIR}/src/third_party/miniaudio)
+target_include_directories(speech PRIVATE ${PROJECT_SOURCE_DIR}/third_party/onnx_runtime_cpp/include)
+
+
+target_link_libraries(speech PUBLIC miniaudio
+        PRIVATE CURL::libcurl )
+# target_include_directories(speech PUBLIC ${PROJECT_SOURCE_DIR}/src/third_party/miniaudio)
+
+
 
 target_include_directories(speech
         PUBLIC
@@ -178,7 +175,10 @@ target_include_directories(speech
 
 
 add_executable(example examples/main.cpp)
-target_link_libraries(example PRIVATE url::base)
+target_link_libraries(example PRIVATE speech)
+
+# find_package(Vorbis REQUIRED)
+# target_link_libraries(example PRIVATE Vorbis::Vorbis)
 
 install(TARGETS speech
     LIBRARY DESTINATION lib
@@ -188,42 +188,42 @@ install(TARGETS speech
 
 
 
-enable_testing()
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/googletest)
-file(GLOB TEST_SOURCES ${PROJECT_SOURCE_DIR}/tests/cpp/*.cpp)
+# enable_testing()
+# add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/tests/third_party/googletest)
+# file(GLOB TEST_SOURCES ${PROJECT_SOURCE_DIR}/tests/cpp/*.cpp)
 
-add_executable(test_libspeech ${TEST_SOURCES})
-target_link_libraries(test_libspeech PRIVATE url::base gtest gtest_main pthread)
-target_include_directories(test_libspeech PRIVATE ${PROJECT_SOURCE_DIR}/tests/cpp)
-add_test(NAME unitTests COMMAND test_libspeech)
-add_custom_target(check COMMAND ${CMAKE_CTEST_COMMAND} -V DEPENDS test_libspeech)
-
-
-if(BUILD_PYTHON)
-    add_test(NAME pythonTests
-            COMMAND ${Python3_EXECUTABLE} -m pytest -n auto ${PROJECT_SOURCE_DIR}/tests/python
-            WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    )
-endif()
+# add_executable(test_libspeech ${TEST_SOURCES})
+# target_link_libraries(test_libspeech PRIVATE url::base gtest gtest_main pthread)
+# target_include_directories(test_libspeech PRIVATE ${PROJECT_SOURCE_DIR}/tests/cpp)
+# add_test(NAME unitTests COMMAND test_libspeech)
+# add_custom_target(check COMMAND ${CMAKE_CTEST_COMMAND} -V DEPENDS test_libspeech)
 
 
+# if(BUILD_PYTHON)
+#     add_test(NAME pythonTests
+#             COMMAND ${Python3_EXECUTABLE} -m pytest -n auto ${PROJECT_SOURCE_DIR}/tests/python
+#             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+#     )
+# endif()
 
-# Find Doxygen package
-find_package(Doxygen)
-message(STATUS "Doxygen_FOUND : ${Doxygen_FOUND}")
-# Find Doxygen package
-if (Doxygen_FOUND)
-    # Configure Doxyfile.in template
-    configure_file(${CMAKE_CURRENT_SOURCE_DIR}/docs/Doxyfile.in ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile @ONLY)
 
-    # Add target to generate documentation
-    add_custom_target(docs
-        COMMAND ${DOXYGEN_EXECUTABLE} ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile
-        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-        COMMENT "Generating Doxygen documentation"
-        VERBATIM
-    )
-endif ()
+
+# # Find Doxygen package
+# find_package(Doxygen)
+# message(STATUS "Doxygen_FOUND : ${Doxygen_FOUND}")
+# # Find Doxygen package
+# if (Doxygen_FOUND)
+#     # Configure Doxyfile.in template
+#     configure_file(${CMAKE_CURRENT_SOURCE_DIR}/docs/Doxyfile.in ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile @ONLY)
+
+#     # Add target to generate documentation
+#     add_custom_target(docs
+#         COMMAND ${DOXYGEN_EXECUTABLE} ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile
+#         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+#         COMMENT "Generating Doxygen documentation"
+#         VERBATIM
+#     )
+# endif ()
 
 
 
