@@ -20,7 +20,7 @@ int main() {
         std::cout << "Failed to download the file." << std::endl;
     }
 
-    Audio audio;
+    speech::Audio audio;
 
         // Load an audio file
     if (!audio.load((tempDir/fileName).string())) {
@@ -36,7 +36,7 @@ int main() {
     std::cout << std::endl;
 
     audio.play();
-    
+
     // Save the audio to a new file
     //    if (!audio.save("D:\\Desk\\Work\\Academy-hamrah\\courses\\assets\\output.wav")) {
     //        return -1;

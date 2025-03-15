@@ -7,6 +7,7 @@
 #include <cstring>   // For memcpy
 #include <algorithm> // For std::transform
 
+
 // Include `dr_wav`, `dr_mp3`, and `dr_flac`
 #define DR_WAV_IMPLEMENTATION
 #include "dr_wav.h"
@@ -19,6 +20,8 @@
 
 #define MINIAUDIO_IMPLEMENTATION
 #include "miniaudio.h"
+
+namespace speech {
 
 class AudioImpl {
    public:
@@ -35,9 +38,10 @@ class AudioImpl {
     bool saveWAV(const std::filesystem::path& outputPath);
     void play();
 };
+}
 
 // **Load WAV**
-bool AudioImpl::loadWAV(const std::filesystem::path& filePath) {
+bool speech::AudioImpl::loadWAV(const std::filesystem::path& filePath) {
     drwav wav;
     if (!drwav_init_file(&wav, filePath.string().c_str(), NULL)) {
         std::cerr << "Failed to open WAV file: " << filePath << std::endl;
@@ -58,7 +62,7 @@ bool AudioImpl::loadWAV(const std::filesystem::path& filePath) {
 }
 
 // **Load MP3**
-bool AudioImpl::loadMP3(const std::filesystem::path& filePath) {
+bool speech::AudioImpl::loadMP3(const std::filesystem::path& filePath) {
     drmp3 mp3;
     if (!drmp3_init_file(&mp3, filePath.string().c_str(), NULL)) {
         std::cerr << "Failed to open MP3 file: " << filePath << std::endl;
@@ -79,7 +83,7 @@ bool AudioImpl::loadMP3(const std::filesystem::path& filePath) {
 }
 
 // **Load FLAC**
-bool AudioImpl::loadFLAC(const std::filesystem::path& filePath) {
+bool speech::AudioImpl::loadFLAC(const std::filesystem::path& filePath) {
     drflac* flac = drflac_open_file(filePath.string().c_str(), NULL);
     if (!flac) {
         std::cerr << "Failed to open FLAC file: " << filePath << std::endl;
@@ -100,7 +104,7 @@ bool AudioImpl::loadFLAC(const std::filesystem::path& filePath) {
 }
 
 // **Load PCM from Binary File**
-bool AudioImpl::loadBin(const std::filesystem::path& filePath) {
+bool speech::AudioImpl::loadBin(const std::filesystem::path& filePath) {
     std::ifstream file(filePath, std::ios::binary | std::ios::ate);
     if (!file) {
         std::cerr << "Failed to open BIN file: " << filePath << std::endl;
@@ -125,7 +129,7 @@ bool AudioImpl::loadBin(const std::filesystem::path& filePath) {
 }
 
 // **Load Audio from Vector**
-bool AudioImpl::loadVector(const std::vector<float>& inputData, int inputSampleRate, int inputChannels) {
+bool speech::AudioImpl::loadVector(const std::vector<float>& inputData, int inputSampleRate, int inputChannels) {
     if (inputData.empty() || inputSampleRate <= 0 || inputChannels <= 0) {
         std::cerr << "Invalid audio data provided to loadVector!" << std::endl;
         return false;
@@ -142,7 +146,7 @@ bool AudioImpl::loadVector(const std::vector<float>& inputData, int inputSampleR
 
 // **Play (Simulation)**
 void audioCallback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount) {
-    AudioImpl* audio = reinterpret_cast<AudioImpl*>(pDevice->pUserData);
+    speech::AudioImpl* audio = reinterpret_cast<speech::AudioImpl*>(pDevice->pUserData);
     if (!audio || audio->audioData.empty()) return;
 
     static size_t currentFrame = 0;
@@ -156,7 +160,7 @@ void audioCallback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uin
     }
 }
 
-void AudioImpl::play() {
+void speech::AudioImpl::play() {
     if (!loaded || audioData.empty()) {
         std::cerr << "No audio loaded to play!" << std::endl;
         return;
@@ -189,7 +193,7 @@ void AudioImpl::play() {
 }
 
 // **Save as WAV**
-bool AudioImpl::saveWAV(const std::filesystem::path& outputPath) {
+bool speech::AudioImpl::saveWAV(const std::filesystem::path& outputPath) {
     if (!loaded) {
         std::cerr << "No audio loaded to save!" << std::endl;
         return false;
@@ -216,11 +220,11 @@ bool AudioImpl::saveWAV(const std::filesystem::path& outputPath) {
 }
 
 // **Audio Class Implementation**
-Audio::Audio() : pImpl(std::make_unique<AudioImpl>()) {}
-Audio::~Audio() = default;
+speech::Audio::Audio() : pImpl(std::make_unique<AudioImpl>()) {}
+speech::Audio::~Audio() = default;
 
 // **Load Audio File**
-bool Audio::load(const std::filesystem::path& filePath) {
+bool speech::Audio::load(const std::filesystem::path& filePath) {
     if (!std::filesystem::exists(filePath)) {
         std::cerr << "File not found: " << filePath << std::endl;
         return false;
@@ -246,26 +250,26 @@ bool Audio::load(const std::filesystem::path& filePath) {
 }
 
 // **Load from Vector**
-bool Audio::load(const std::vector<float>& inputData, int sampleRate, int channels) {
+bool speech::Audio::load(const std::vector<float>& inputData, int sampleRate, int channels) {
     return pImpl->loadVector(inputData, sampleRate, channels);
 }
 
 // **Play Audio**
-void Audio::play() {
+void speech::Audio::play() {
     pImpl->play();
 }
 
 // **Save Audio as WAV**
-bool Audio::save(const std::filesystem::path& outputPath) {
+bool speech::Audio::save(const std::filesystem::path& outputPath) {
     return pImpl->saveWAV(outputPath);
 }
 
 // **Get Audio Data**
-std::vector<float> Audio::data() const {
+std::vector<float> speech::Audio::data() const {
     return pImpl->audioData;
 }
 
 // **Get Sample Rate**
-int Audio::sampleRate() const {
+int speech::Audio::sampleRate() const {
     return pImpl->sampleRate;
 }

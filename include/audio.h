@@ -7,6 +7,8 @@
 #include <filesystem>
 
 // Forward declaration for the implementation class
+namespace speech{
+
 class AudioImpl;
 
 class Audio {
@@ -26,5 +28,6 @@ class Audio {
    private:
     std::unique_ptr<AudioImpl> pImpl;
 };
+}
 
 #endif // LIBSPEECH_AUDIO_H
