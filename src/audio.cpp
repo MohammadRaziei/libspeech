@@ -1,154 +1,229 @@
-#include "audio.h"
+#include "Audio.h"
 #include <iostream>
-#include <miniaudio.h> // Include miniaudio in the source file, not the header
+#include <fstream>
+#include <vector>
+#include <unordered_map>
+#include <cctype>    // For std::tolower
+#include <cstring>   // For memcpy
+#include <algorithm> // For std::transform
 
-// Implementation class
+// Include `dr_wav`, `dr_mp3`, and `dr_flac`
+#define DR_WAV_IMPLEMENTATION
+#include "dr_wav.h"
+
+#define DR_MP3_IMPLEMENTATION
+#include "dr_mp3.h"
+
+#define DR_FLAC_IMPLEMENTATION
+#include "dr_flac.h"
+
 class AudioImpl {
    public:
-    ma_decoder decoder;           // Decoder for loading and decoding audio files
-    ma_device device;             // Audio device for playback
-    ma_device_config deviceConfig; // Configuration for the audio device
-    bool isLoaded;                // Indicates if an audio file is successfully loaded
-    std::vector<float> audioData; // Buffer to store PCM data
+    std::vector<float> audioData;
+    int sampleRate = 0;
+    int channels = 0;
+    bool loaded = false;
 
-    AudioImpl() : isLoaded(false) {}
-    ~AudioImpl() {
-        if (isLoaded) {
-            ma_decoder_uninit(&decoder); // Uninitialize the decoder if it was initialized
-        }
-        ma_device_uninit(&device); // Uninitialize the audio device
-    }
-
-    // Load an audio file
-    bool load(const std::string& filePath) {
-        ma_result result = ma_decoder_init_file(filePath.c_str(), NULL, &decoder);
-        if (result != MA_SUCCESS) {
-            std::cerr << "Failed to load audio file: " << filePath << std::endl;
-            return false;
-        }
-
-        // Read all PCM data into the buffer
-        ma_uint64 totalFrames = 0;
-        ma_uint64 framesToRead = 1024;
-        float buffer[1024 * decoder.outputChannels];
-
-        while ((totalFrames = ma_decoder_read_pcm_frames(&decoder, buffer, framesToRead, NULL)) > 0) {
-            audioData.insert(audioData.end(), buffer, buffer + totalFrames * decoder.outputChannels);
-        }
-
-        isLoaded = true;
-        std::cout << "Audio file loaded successfully: " << filePath << std::endl;
-        return true;
-    }
-
-    // Get the sample rate of the audio
-    int getSampleRate() const {
-        return decoder.outputSampleRate;
-    }
-
-    // Get the audio data as a vector of floats
-    std::vector<float> getData() const {
-        return audioData;
-    }
-
-
-        // Play the loaded audio
-        void play() {
-            if (!isLoaded) {
-                std::cerr << "No audio file is loaded. Please load an audio file first." << std::endl;
-                return;
-            }
-
-            // Initialize the audio device
-            deviceConfig = ma_device_config_init(ma_device_type_playback);
-            deviceConfig.playback.format = decoder.outputFormat;
-            deviceConfig.playback.channels = decoder.outputChannels;
-            deviceConfig.sampleRate = decoder.outputSampleRate;
-
-            // Set the callback function for audio playback
-            deviceConfig.dataCallback = [](ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount) {
-                ma_decoder* pDecoder = (ma_decoder*)pDevice->pUserData;
-                ma_decoder_read_pcm_frames(pDecoder, pOutput, frameCount, NULL);
-            };
-
-            deviceConfig.pUserData = &decoder;
-
-            ma_result result = ma_device_init(NULL, &deviceConfig, &device);
-            if (result != MA_SUCCESS) {
-                std::cerr << "Failed to initialize audio device." << std::endl;
-                return;
-            }
-
-            // Start the audio playback
-            result = ma_device_start(&device);
-            if (result != MA_SUCCESS) {
-                std::cerr << "Failed to start audio playback." << std::endl;
-                ma_device_uninit(&device);
-                return;
-            }
-
-            std::cout << "Playing audio... Press Enter to stop." << std::endl;
-            std::cin.get(); // Wait for user input to stop playback
-
-            // Stop and uninitialize the audio device
-            ma_device_stop(&device);
-            ma_device_uninit(&device);
-        }
-
-        // Save the audio data to a new file
-        bool save(const std::string& outputPath) {
-            if (!isLoaded) {
-                std::cerr << "No audio file is loaded. Please load an audio file first." << std::endl;
-                return false;
-            }
-
-            // Initialize the encoder for saving audio
-            ma_encoder encoder;
-            ma_encoder_config encoderConfig = ma_encoder_config_init(ma_encoding_format_wav, decoder.outputFormat, decoder.outputChannels, decoder.outputSampleRate);
-
-            ma_result result = ma_encoder_init_file(outputPath.c_str(), &encoderConfig, &encoder);
-            if (result != MA_SUCCESS) {
-                std::cerr << "Failed to initialize encoder for saving audio." << std::endl;
-                return false;
-            }
-
-            // Write audio frames from the buffer
-            ma_encoder_write_pcm_frames(&encoder, audioData.data(), audioData.size() / decoder.outputChannels, NULL);
-
-            ma_encoder_uninit(&encoder);
-            std::cout << "Audio saved successfully: " << outputPath << std::endl;
-            return true;
-        }
-
+    bool loadWAV(const std::filesystem::path& filePath);
+    bool loadMP3(const std::filesystem::path& filePath);
+    bool loadFLAC(const std::filesystem::path& filePath);
+    bool loadBin(const std::filesystem::path& filePath);
+    bool loadVector(const std::vector<float>& inputData, int sampleRate, int channels);
+    bool saveWAV(const std::filesystem::path& outputPath);
+    void play();
 };
 
-// Constructor: Initialize the implementation
-Audio::Audio() : pImpl(std::make_unique<AudioImpl>()) {}
+// **Load WAV**
+bool AudioImpl::loadWAV(const std::filesystem::path& filePath) {
+    drwav wav;
+    if (!drwav_init_file(&wav, filePath.string().c_str(), NULL)) {
+        std::cerr << "Failed to open WAV file: " << filePath << std::endl;
+        return false;
+    }
 
-// Destructor: Clean up the implementation
-Audio::~Audio() = default;
+    sampleRate = wav.sampleRate;
+    channels = wav.channels;
+    size_t numFrames = wav.totalPCMFrameCount * channels;
 
-// Load an audio file
-bool Audio::load(const std::string& filePath) {
-    return pImpl->load(filePath);
+    audioData.resize(numFrames);
+    drwav_read_pcm_frames_f32(&wav, wav.totalPCMFrameCount, audioData.data());
+    drwav_uninit(&wav);
+
+    loaded = true;
+    std::cout << "Loaded WAV: " << filePath << ", Sample Rate: " << sampleRate << ", Channels: " << channels << std::endl;
+    return true;
 }
 
-// Play the loaded audio
+// **Load MP3**
+bool AudioImpl::loadMP3(const std::filesystem::path& filePath) {
+    drmp3 mp3;
+    if (!drmp3_init_file(&mp3, filePath.string().c_str(), NULL)) {
+        std::cerr << "Failed to open MP3 file: " << filePath << std::endl;
+        return false;
+    }
+
+    sampleRate = mp3.sampleRate;
+    channels = mp3.channels;
+    size_t numFrames = drmp3_get_pcm_frame_count(&mp3) * channels;
+
+    audioData.resize(numFrames);
+    drmp3_read_pcm_frames_f32(&mp3, numFrames / channels, audioData.data());
+    drmp3_uninit(&mp3);
+
+    loaded = true;
+    std::cout << "Loaded MP3: " << filePath << ", Sample Rate: " << sampleRate << ", Channels: " << channels << std::endl;
+    return true;
+}
+
+// **Load FLAC**
+bool AudioImpl::loadFLAC(const std::filesystem::path& filePath) {
+    drflac* flac = drflac_open_file(filePath.string().c_str(), NULL);
+    if (!flac) {
+        std::cerr << "Failed to open FLAC file: " << filePath << std::endl;
+        return false;
+    }
+
+    sampleRate = flac->sampleRate;
+    channels = flac->channels;
+    size_t numFrames = flac->totalPCMFrameCount * channels;
+
+    audioData.resize(numFrames);
+    drflac_read_pcm_frames_f32(flac, flac->totalPCMFrameCount, audioData.data());
+    drflac_close(flac);
+
+    loaded = true;
+    std::cout << "Loaded FLAC: " << filePath << ", Sample Rate: " << sampleRate << ", Channels: " << channels << std::endl;
+    return true;
+}
+
+// **Load PCM from Binary File**
+bool AudioImpl::loadBin(const std::filesystem::path& filePath) {
+    std::ifstream file(filePath, std::ios::binary | std::ios::ate);
+    if (!file) {
+        std::cerr << "Failed to open BIN file: " << filePath << std::endl;
+        return false;
+    }
+
+    std::streamsize size = file.tellg();
+    file.seekg(0, std::ios::beg);
+
+    if (size % sizeof(float) != 0) {
+        std::cerr << "Invalid BIN file format: " << filePath << std::endl;
+        return false;
+    }
+
+    audioData.resize(size / sizeof(float));
+    file.read(reinterpret_cast<char*>(audioData.data()), size);
+    file.close();
+
+    loaded = true;
+    std::cout << "Loaded BIN: " << filePath << ", Total Samples: " << audioData.size() << std::endl;
+    return true;
+}
+
+// **Load Audio from Vector**
+bool AudioImpl::loadVector(const std::vector<float>& inputData, int inputSampleRate, int inputChannels) {
+    if (inputData.empty() || inputSampleRate <= 0 || inputChannels <= 0) {
+        std::cerr << "Invalid audio data provided to loadVector!" << std::endl;
+        return false;
+    }
+
+    audioData = inputData;
+    sampleRate = inputSampleRate;
+    channels = inputChannels;
+    loaded = true;
+
+    std::cout << "Loaded audio from vector, Sample Rate: " << sampleRate << ", Channels: " << channels << std::endl;
+    return true;
+}
+
+// **Play (Simulation)**
+void AudioImpl::play() {
+    if (!loaded) {
+        std::cerr << "No audio loaded to play!" << std::endl;
+        return;
+    }
+    std::cout << "Playing audio... (simulation, actual playback not implemented)" << std::endl;
+}
+
+// **Save as WAV**
+bool AudioImpl::saveWAV(const std::filesystem::path& outputPath) {
+    if (!loaded) {
+        std::cerr << "No audio loaded to save!" << std::endl;
+        return false;
+    }
+
+    drwav_data_format format = {};
+    format.container = drwav_container_riff;
+    format.format = DR_WAVE_FORMAT_IEEE_FLOAT;
+    format.channels = channels;
+    format.sampleRate = sampleRate;
+    format.bitsPerSample = 32;
+
+    drwav wav;
+    if (!drwav_init_file_write(&wav, outputPath.string().c_str(), &format, NULL)) {
+        std::cerr << "Failed to save WAV file: " << outputPath << std::endl;
+        return false;
+    }
+
+    drwav_write_pcm_frames(&wav, audioData.size() / channels, audioData.data());
+    drwav_uninit(&wav);
+
+    std::cout << "Saved WAV file: " << outputPath << std::endl;
+    return true;
+}
+
+// **Audio Class Implementation**
+Audio::Audio() : pImpl(std::make_unique<AudioImpl>()) {}
+Audio::~Audio() = default;
+
+// **Load Audio File**
+bool Audio::load(const std::filesystem::path& filePath) {
+    if (!std::filesystem::exists(filePath)) {
+        std::cerr << "File not found: " << filePath << std::endl;
+        return false;
+    }
+
+    std::string extension = filePath.extension().string();
+    std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c) { return std::tolower(c); });
+
+    static const std::unordered_map<std::string, bool (AudioImpl::*)(const std::filesystem::path&)> loaders = {
+        {".wav", &AudioImpl::loadWAV},
+        {".mp3", &AudioImpl::loadMP3},
+        {".flac", &AudioImpl::loadFLAC},
+        {".bin", &AudioImpl::loadBin}
+    };
+
+    auto it = loaders.find(extension);
+    if (it != loaders.end()) {
+        return (pImpl.get()->*(it->second))(filePath);
+    }
+
+    std::cerr << "Unsupported file format: " << filePath << std::endl;
+    return false;
+}
+
+// **Load from Vector**
+bool Audio::load(const std::vector<float>& inputData, int sampleRate, int channels) {
+    return pImpl->loadVector(inputData, sampleRate, channels);
+}
+
+// **Play Audio**
 void Audio::play() {
     pImpl->play();
 }
 
-// Save the audio data to a new file
-bool Audio::save(const std::string& outputPath) {
-    return pImpl->save(outputPath);
+// **Save Audio as WAV**
+bool Audio::save(const std::filesystem::path& outputPath) {
+    return pImpl->saveWAV(outputPath);
 }
 
-// Get the audio data as a vector of floats
+// **Get Audio Data**
 std::vector<float> Audio::data() const {
-    return pImpl->getData();
+    return pImpl->audioData;
 }
 
-// Get the sample rate of the audio
+// **Get Sample Rate**
 int Audio::sampleRate() const {
-    return pImpl->getSampleRate();
+    return pImpl->sampleRate;
 }

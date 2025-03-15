@@ -146,6 +146,11 @@ if(DEFINED SKBUILD)
     RETURN()
 endif()
 
+# Add ONNX Runtime subdirectory
+
+# Include ONNX Runtime headers
+
+
 find_package(CURL REQUIRED)
 
 add_subdirectory(src/third_party/miniaudio)
@@ -153,17 +158,31 @@ add_subdirectory(src/third_party/miniaudio)
 
 add_library(speech SHARED ${SOURCES})
 # add_library(url::base ALIAS speech)
-target_compile_definitions(speech PRIVATE
-        PUBLIC_SUFFIX_LIST_DAT="${PUBLIC_SUFFIX_LIST_DAT}"
+#target_compile_definitions(speech PRIVATE
+#        PUBLIC_SUFFIX_LIST_DAT="${PUBLIC_SUFFIX_LIST_DAT}"
+#)
+#add_subdirectory(src/third_party/onnxruntime/cmake EXCLUDE_FROM_ALL)
+#
+#target_include_directories(speech PUBLIC ${PROJECT_SOURCE_DIR}/src/third_party/miniaudio)
+#target_include_directories(speech PRIVATE ${PROJECT_SOURCE_DIR}/third_party/onnx_runtime_cpp/include)
+#target_include_directories(speech PRIVATE
+#        ${PROJECT_SOURCE_DIR}/src/third_party/onnxruntime/include
+#        ${PROJECT_SOURCE_DIR}/src/third_party/onnxruntime/onnxruntime/core/session
+#)
+
+add_subdirectory(src/third_party/dr_libs)
+include_directories(src/third_party/dr_libs)
+#include_directories(external/)
+
+target_link_libraries(speech
+        PRIVATE miniaudio
+        PUBLIC CURL::libcurl
 )
-
-target_include_directories(speech PUBLIC ${PROJECT_SOURCE_DIR}/src/third_party/miniaudio)
-target_include_directories(speech PRIVATE ${PROJECT_SOURCE_DIR}/third_party/onnx_runtime_cpp/include)
-
-
-target_link_libraries(speech PUBLIC miniaudio
-        PRIVATE CURL::libcurl )
 # target_include_directories(speech PUBLIC ${PROJECT_SOURCE_DIR}/src/third_party/miniaudio)
+
+
+# Link ONNX Runtime library
+#target_link_libraries(speech PRIVATE onnxruntime)
 
 
 
@@ -185,6 +204,8 @@ install(TARGETS speech
     ARCHIVE DESTINATION lib
     INCLUDES DESTINATION include
 )
+
+
 
 
 

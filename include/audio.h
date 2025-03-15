@@ -2,10 +2,11 @@
 #define LIBSPEECH_AUDIO_H
 
 #include <string>
-#include <memory> // For std::unique_ptr
-#include <vector> // For std::vector
+#include <memory>
+#include <vector>
+#include <filesystem>
 
-// Forward declaration of the implementation class
+// Forward declaration for the implementation class
 class AudioImpl;
 
 class Audio {
@@ -13,23 +14,17 @@ class Audio {
     Audio();
     ~Audio();
 
-    // Load an audio file
-    bool load(const std::string& filePath);
+    bool load(const std::filesystem::path& filePath);
+    bool load(const std::vector<float>& inputData, int sampleRate, int channels);
 
-    // Play the loaded audio
     void play();
+    bool save(const std::filesystem::path& outputPath);
 
-    // Save the audio data to a new file
-    bool save(const std::string& outputPath);
-
-    // Get the audio data as a vector of floats
-    std::vector<float> data() const;
-
-    // Get the sample rate of the audio
-    int sampleRate() const;
+    [[nodiscard]] std::vector<float> data() const;
+    [[nodiscard]] int sampleRate() const;
 
    private:
-    std::unique_ptr<AudioImpl> pImpl; // Pointer to the implementation
+    std::unique_ptr<AudioImpl> pImpl;
 };
 
 #endif // LIBSPEECH_AUDIO_H
