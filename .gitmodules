@@ -10,3 +10,6 @@
 [submodule "src/third_party/dr_libs"]
 	path = src/third_party/dr_libs
 	url = https://github.com/mackron/dr_libs.git
+[submodule "src/third_party/indicators"]
+	path = src/third_party/indicators
+	url = https://github.com/p-ranav/indicators

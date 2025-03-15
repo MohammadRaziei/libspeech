@@ -6,15 +6,20 @@
 #include "utils.h"
 #include "common.h"
 
+#include <iostream>
+#include <thread>
+#include <indicators/progress_bar.hpp>
+
 int main() {
     // Example usage
-    std::string url = "https://models.silero.ai/vad_models/en.wav"; // Replace with your desired URL
-    fs::path tempDir = speech::utils::getTempDirectory();           // Get the system's temp directory
-    fs::path fileName = "en.wav";       // Name of the downloaded file
+//    std::string url = "https://github.com/MohammadRaziei/libspeech/releases/download/resources/example-en-long.wav"; // Replace with your desired URL
+    std::string url = "https://github.com/MohammadRaziei/libspeech/releases/download/resources/example-en-short.mp3";
+    std::filesystem::path tempDir = std::filesystem::temp_directory_path();           // Get the system's temp directory
+    std::string fileName = std::filesystem::path(url).filename().string();
 
     std::cout << "Temporary directory: " << tempDir << std::endl;
 
-    if (speech::utils::downloadFile(url, tempDir / fileName)) {
+    if (speech::utils::downloadFile(url, tempDir / fileName, true)) {
         std::cout << "File downloaded successfully to: " << (tempDir / fileName) << std::endl;
     } else {
         std::cout << "Failed to download the file." << std::endl;
@@ -37,12 +42,9 @@ int main() {
 
     audio.play();
 
-    // Save the audio to a new file
-    //    if (!audio.save("D:\\Desk\\Work\\Academy-hamrah\\courses\\assets\\output.wav")) {
-    //        return -1;
-    //    }
-
 
     return 0;
+
+
 }
 

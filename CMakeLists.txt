@@ -171,12 +171,18 @@ add_library(speech SHARED ${SOURCES})
 #)
 
 add_subdirectory(src/third_party/dr_libs)
-include_directories(src/third_party/dr_libs)
+target_include_directories(speech PRIVATE src/third_party/dr_libs)
+
+
+add_subdirectory(src/third_party/indicators)
+target_include_directories(speech PUBLIC src/third_party/indicators/include)
+
 #include_directories(external/)
 
 target_link_libraries(speech
         PRIVATE miniaudio
         PRIVATE CURL::libcurl
+        PUBLIC indicators
 )
 # target_include_directories(speech PUBLIC ${PROJECT_SOURCE_DIR}/src/third_party/miniaudio)
 

@@ -24,6 +24,7 @@ class Audio {
 
     [[nodiscard]] std::vector<float> data() const;
     [[nodiscard]] int sampleRate() const;
+    [[nodiscard]] double duration() const;
 
    private:
     std::unique_ptr<AudioImpl> pImpl;

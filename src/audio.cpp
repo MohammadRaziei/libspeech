@@ -1,4 +1,4 @@
-#include "Audio.h"
+#include "audio.h"
 #include <iostream>
 #include <fstream>
 #include <vector>
@@ -6,6 +6,8 @@
 #include <cctype>    // For std::tolower
 #include <cstring>   // For memcpy
 #include <algorithm> // For std::transform
+#include <thread>
+#include <chrono>
 
 
 // Include `dr_wav`, `dr_mp3`, and `dr_flac`
@@ -37,6 +39,7 @@ class AudioImpl {
     bool loadVector(const std::vector<float>& inputData, int sampleRate, int channels);
     bool saveWAV(const std::filesystem::path& outputPath);
     void play();
+    double duration() const;
 };
 }
 
@@ -185,8 +188,14 @@ void speech::AudioImpl::play() {
         return;
     }
 
-    std::cout << "Playing audio... Press Enter to stop." << std::endl;
-    std::cin.get();  // Wait for user input to stop playback
+//    std::cout << "Playing audio... Press Enter to stop." << std::endl;
+//    std::cin.get();  // Wait for user input to stop playback
+
+    std::cout << "Playing audio..." << std::endl;
+    std::this_thread::sleep_for(
+            std::chrono::duration<double>(duration())
+    );
+
 
     ma_device_stop(&device);
     ma_device_uninit(&device);
@@ -217,6 +226,10 @@ bool speech::AudioImpl::saveWAV(const std::filesystem::path& outputPath) {
 
     std::cout << "Saved WAV file: " << outputPath << std::endl;
     return true;
+}
+
+double speech::AudioImpl::duration() const {
+    return static_cast<double>(audioData.size()) / sampleRate;
 }
 
 // **Audio Class Implementation**
@@ -272,4 +285,8 @@ std::vector<float> speech::Audio::data() const {
 // **Get Sample Rate**
 int speech::Audio::sampleRate() const {
     return pImpl->sampleRate;
+}
+
+double speech::Audio::duration() const {
+    return pImpl->duration();
 }

@@ -9,17 +9,15 @@
 #include <filesystem>
 
 
-namespace fs = std::filesystem;
-
-namespace speech{ namespace utils{
-// Callback function to write data received from the server into a file
-size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* userp);
-
+namespace speech {
+namespace utils {
 // Function to download a file from a given URL and save it in a specified folder
-bool downloadFile(const std::string& url, const fs::path& outputPath, bool force = false);
+bool downloadFile(const std::string& url,
+                  const std::filesystem::path& outputPath,
+                  bool force = false,
+                  bool quiet = false);
 
 // Function to get the system's temporary directory as a filesystem::path
-fs::path getTempDirectory();
+std::filesystem::path getTempDirectory();
 }}
-
 #endif  // LIBSPEECH_UTILS_H
