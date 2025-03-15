@@ -3,10 +3,12 @@
     <img src="https://github.com/MohammadRaziei/libspeech/raw/master/docs/images/logo/libspeech-logo-1.svg" alt="Logo">
   </a>
   <h3 align="center">
-    Fastest domain extractor library written in C++ with python binding.
+
+[//]: # (    Fastest domain extractor library written in C++ with python binding.)
   </h3>
   <h4 align="center">
-    First and complete library for parsing url in C++ and Python and Command Line
+
+[//]: # (    First and complete library for parsing url in C++ and Python and Command Line)
   </h4>
 </p>
 
