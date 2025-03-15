@@ -176,7 +176,7 @@ include_directories(src/third_party/dr_libs)
 
 target_link_libraries(speech
         PRIVATE miniaudio
-        PUBLIC CURL::libcurl
+        PRIVATE CURL::libcurl
 )
 # target_include_directories(speech PUBLIC ${PROJECT_SOURCE_DIR}/src/third_party/miniaudio)
 

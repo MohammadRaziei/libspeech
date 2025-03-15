@@ -17,6 +17,9 @@
 #define DR_FLAC_IMPLEMENTATION
 #include "dr_flac.h"
 
+#define MINIAUDIO_IMPLEMENTATION
+#include "miniaudio.h"
+
 class AudioImpl {
    public:
     std::vector<float> audioData;
@@ -138,12 +141,51 @@ bool AudioImpl::loadVector(const std::vector<float>& inputData, int inputSampleR
 }
 
 // **Play (Simulation)**
+void audioCallback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount) {
+    AudioImpl* audio = reinterpret_cast<AudioImpl*>(pDevice->pUserData);
+    if (!audio || audio->audioData.empty()) return;
+
+    static size_t currentFrame = 0;
+    size_t framesToCopy = std::min(static_cast<size_t>(frameCount * audio->channels), audio->audioData.size() - currentFrame);
+
+    if (framesToCopy > 0) {
+        std::memcpy(pOutput, audio->audioData.data() + currentFrame, framesToCopy * sizeof(float));
+        currentFrame += framesToCopy;
+    } else {
+        std::memset(pOutput, 0, frameCount * audio->channels * sizeof(float));  // Silence if no data left
+    }
+}
+
 void AudioImpl::play() {
-    if (!loaded) {
+    if (!loaded || audioData.empty()) {
         std::cerr << "No audio loaded to play!" << std::endl;
         return;
     }
-    std::cout << "Playing audio... (simulation, actual playback not implemented)" << std::endl;
+
+    ma_device_config deviceConfig = ma_device_config_init(ma_device_type_playback);
+    deviceConfig.playback.format = ma_format_f32;
+    deviceConfig.playback.channels = channels;
+    deviceConfig.sampleRate = sampleRate;
+    deviceConfig.dataCallback = audioCallback;
+    deviceConfig.pUserData = this;
+
+    ma_device device;
+    if (ma_device_init(NULL, &deviceConfig, &device) != MA_SUCCESS) {
+        std::cerr << "Failed to initialize audio device!" << std::endl;
+        return;
+    }
+
+    if (ma_device_start(&device) != MA_SUCCESS) {
+        std::cerr << "Failed to start audio playback!" << std::endl;
+        ma_device_uninit(&device);
+        return;
+    }
+
+    std::cout << "Playing audio... Press Enter to stop." << std::endl;
+    std::cin.get();  // Wait for user input to stop playback
+
+    ma_device_stop(&device);
+    ma_device_uninit(&device);
 }
 
 // **Save as WAV**
