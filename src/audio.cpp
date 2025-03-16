@@ -9,6 +9,8 @@
 #include <thread>
 #include <chrono>
 
+#include "progressbar.h"
+
 
 // Include `dr_wav`, `dr_mp3`, and `dr_flac`
 #define DR_WAV_IMPLEMENTATION
@@ -163,6 +165,23 @@ void audioCallback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uin
     }
 }
 
+void simulateWorkWithProgressBar(double durationInSeconds) {
+    // Create a progress bar
+    auto progressBar = speech::bar::createProgressBar("Playing audio ", indicators::Color::yellow);
+
+    // Divide the total duration into n small intervals
+    const size_t n = 20;
+    const double intervalDuration = durationInSeconds / n;
+    const double intervalStep = 100.0 / n;
+
+    for (int i = 0; i < n; ++i ) {
+        // Update the progress bar
+        progressBar->set_progress(int(i * intervalStep));
+        std::this_thread::sleep_for(std::chrono::duration<double>(intervalDuration));
+    }
+    progressBar->set_progress(100);
+}
+
 void speech::AudioImpl::play() {
     if (!loaded || audioData.empty()) {
         std::cerr << "No audio loaded to play!" << std::endl;
@@ -191,13 +210,8 @@ void speech::AudioImpl::play() {
 //    std::cout << "Playing audio... Press Enter to stop." << std::endl;
 //    std::cin.get();  // Wait for user input to stop playback
 
-    std::cout << "Playing audio..." << std::endl;
-    std::this_thread::sleep_for(
-//        std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::duration<double>(duration())
-//                )
-    );
 
+    simulateWorkWithProgressBar(duration());
 
     ma_device_stop(&device);
     ma_device_uninit(&device);

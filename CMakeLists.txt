@@ -153,29 +153,18 @@ endif()
 
 find_package(CURL REQUIRED)
 
-add_subdirectory(src/third_party/miniaudio)
-#add_subdirectory(src/third_party/onnx_runtime_cpp)
-
 add_library(speech SHARED ${SOURCES})
-# add_library(url::base ALIAS speech)
-#target_compile_definitions(speech PRIVATE
-#        PUBLIC_SUFFIX_LIST_DAT="${PUBLIC_SUFFIX_LIST_DAT}"
-#)
-#add_subdirectory(src/third_party/onnxruntime/cmake EXCLUDE_FROM_ALL)
-#
-#target_include_directories(speech PUBLIC ${PROJECT_SOURCE_DIR}/src/third_party/miniaudio)
-#target_include_directories(speech PRIVATE ${PROJECT_SOURCE_DIR}/third_party/onnx_runtime_cpp/include)
-#target_include_directories(speech PRIVATE
-#        ${PROJECT_SOURCE_DIR}/src/third_party/onnxruntime/include
-#        ${PROJECT_SOURCE_DIR}/src/third_party/onnxruntime/onnxruntime/core/session
-#)
 
 add_subdirectory(src/third_party/dr_libs)
+add_subdirectory(src/third_party/miniaudio)
+
+add_subdirectory(src/third_party/indicators)
+
 target_include_directories(speech PRIVATE src/third_party/dr_libs)
 
 
-add_subdirectory(src/third_party/indicators)
-target_include_directories(speech PUBLIC src/third_party/indicators/include)
+
+#target_include_directories(speech PUBLIC src/third_party/indicators/include)
 
 #include_directories(external/)
 

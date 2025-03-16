@@ -9,8 +9,7 @@
 #include <filesystem>
 
 
-namespace speech {
-namespace utils {
+namespace speech::utils {
 // Function to download a file from a given URL and save it in a specified folder
 std::filesystem::path downloadFile(const std::string& url,
                                    const std::filesystem::path& outputPath,
@@ -19,5 +18,5 @@ std::filesystem::path downloadFile(const std::string& url,
 
 // Function to get the system's temporary directory as a filesystem::path
 std::filesystem::path getTempDirectory();
-}}
+}
 #endif  // LIBSPEECH_UTILS_H

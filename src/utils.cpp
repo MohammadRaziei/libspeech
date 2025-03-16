@@ -5,35 +5,12 @@
 #include <iostream>
 
 #include <curl/curl.h>
-#include <indicators/progress_bar.hpp>
-#include <memory>
 
 #include "utils.h"
 
+#include "progressbar.h"
 
 
-std::shared_ptr<indicators::ProgressBar> createProgressBar(
-    const std::string& text = "Processing ",
-    indicators::Color color = indicators::Color::green) {
-
-    // Create a shared_ptr to manage the ProgressBar object
-    auto progressBar = std::make_shared<indicators::ProgressBar>(
-        indicators::option::BarWidth{50},
-        indicators::option::Start{"["},
-        indicators::option::Fill{"="},
-        indicators::option::Lead{">"},
-        indicators::option::Remainder{" "},
-        indicators::option::End{"]"},
-        indicators::option::ForegroundColor{color},
-        indicators::option::ShowPercentage{true},
-        indicators::option::ShowElapsedTime{true},
-        indicators::option::ShowRemainingTime{true},
-        indicators::option::PrefixText{text},
-        indicators::option::FontStyles{std::vector<indicators::FontStyle>{indicators::FontStyle::bold}}
-    );
-
-    return progressBar; // Return the shared_ptr
-}
 
 std::filesystem::path speech::utils::getTempDirectory() {
     // Use filesystem to get the temp directory
@@ -114,7 +91,7 @@ std::filesystem::path speech::utils::downloadFile(const std::string& url, const 
     std::string filename = finalOutputPath.filename().string();
 
     // Custom Styled Progress Bar
-    auto progressBar = createProgressBar("Downloading " + filename + " ");
+    auto progressBar = speech::bar::createProgressBar("Downloading " + filename + " ");
 
     progressBar->set_progress(0);
 

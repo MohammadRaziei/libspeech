@@ -12,8 +12,8 @@
 
 int main() {
     // Example usage
-//    std::string url = "https://github.com/MohammadRaziei/libspeech/releases/download/resources/example-en-long.wav"; // Replace with your desired URL
-    std::string url = "https://github.com/MohammadRaziei/libspeech/releases/download/resources/example-en-short.mp3";
+    std::string url = "https://github.com/MohammadRaziei/libspeech/releases/download/resources/example-en-long.wav"; // Replace with your desired URL
+//    std::string url = "https://github.com/MohammadRaziei/libspeech/releases/download/resources/example-en-short.mp3";
     std::filesystem::path tempDir = std::filesystem::temp_directory_path();           // Get the system's temp directory
 
     std::cout << "Temporary directory: " << tempDir << std::endl;
