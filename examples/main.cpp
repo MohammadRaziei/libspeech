@@ -6,11 +6,12 @@
 #include "utils.h"
 #include "common.h"
 
-#include <iostream>
-#include <thread>
-#include <indicators/progress_bar.hpp>
+#include <vector>
 
 int main() {
+
+
+        // Initialize the ONNX Runtime environment
     // Example usage
     std::string url = "https://github.com/MohammadRaziei/libspeech/releases/download/resources/example-en-long.wav"; // Replace with your desired URL
 //    std::string url = "https://github.com/MohammadRaziei/libspeech/releases/download/resources/example-en-short.mp3";

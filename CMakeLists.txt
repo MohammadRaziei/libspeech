@@ -146,10 +146,9 @@ if(DEFINED SKBUILD)
     RETURN()
 endif()
 
-# Add ONNX Runtime subdirectory
 
-# Include ONNX Runtime headers
 
+include(ONNXRuntime)
 
 find_package(CURL REQUIRED)
 
@@ -164,14 +163,11 @@ target_include_directories(speech PRIVATE src/third_party/dr_libs)
 
 
 
-#target_include_directories(speech PUBLIC src/third_party/indicators/include)
-
-#include_directories(external/)
-
 target_link_libraries(speech
         PRIVATE miniaudio
         PRIVATE CURL::libcurl
         PUBLIC indicators
+        PUBLIC onnxruntime_interface
 )
 # target_include_directories(speech PUBLIC ${PROJECT_SOURCE_DIR}/src/third_party/miniaudio)
 
@@ -199,48 +195,6 @@ install(TARGETS speech
     ARCHIVE DESTINATION lib
     INCLUDES DESTINATION include
 )
-
-
-
-
-
-# enable_testing()
-# add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/tests/third_party/googletest)
-# file(GLOB TEST_SOURCES ${PROJECT_SOURCE_DIR}/tests/cpp/*.cpp)
-
-# add_executable(test_libspeech ${TEST_SOURCES})
-# target_link_libraries(test_libspeech PRIVATE url::base gtest gtest_main pthread)
-# target_include_directories(test_libspeech PRIVATE ${PROJECT_SOURCE_DIR}/tests/cpp)
-# add_test(NAME unitTests COMMAND test_libspeech)
-# add_custom_target(check COMMAND ${CMAKE_CTEST_COMMAND} -V DEPENDS test_libspeech)
-
-
-# if(BUILD_PYTHON)
-#     add_test(NAME pythonTests
-#             COMMAND ${Python3_EXECUTABLE} -m pytest -n auto ${PROJECT_SOURCE_DIR}/tests/python
-#             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-#     )
-# endif()
-
-
-
-# # Find Doxygen package
-# find_package(Doxygen)
-# message(STATUS "Doxygen_FOUND : ${Doxygen_FOUND}")
-# # Find Doxygen package
-# if (Doxygen_FOUND)
-#     # Configure Doxyfile.in template
-#     configure_file(${CMAKE_CURRENT_SOURCE_DIR}/docs/Doxyfile.in ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile @ONLY)
-
-#     # Add target to generate documentation
-#     add_custom_target(docs
-#         COMMAND ${DOXYGEN_EXECUTABLE} ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile
-#         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-#         COMMENT "Generating Doxygen documentation"
-#         VERBATIM
-#     )
-# endif ()
-
 
 
 

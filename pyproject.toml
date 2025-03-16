@@ -6,7 +6,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "libspeech"
-version = "1.5.0"
+version = "0.0.1"
 description = "Best library for speech"
 readme = "README.md"
 authors = [
