@@ -15,20 +15,19 @@ int main() {
 //    std::string url = "https://github.com/MohammadRaziei/libspeech/releases/download/resources/example-en-long.wav"; // Replace with your desired URL
     std::string url = "https://github.com/MohammadRaziei/libspeech/releases/download/resources/example-en-short.mp3";
     std::filesystem::path tempDir = std::filesystem::temp_directory_path();           // Get the system's temp directory
-    std::string fileName = std::filesystem::path(url).filename().string();
 
     std::cout << "Temporary directory: " << tempDir << std::endl;
-
-    if (speech::utils::downloadFile(url, tempDir / fileName, true)) {
-        std::cout << "File downloaded successfully to: " << (tempDir / fileName) << std::endl;
+    std::filesystem::path fileName = speech::utils::downloadFile(url, tempDir, false, false);
+    if (fileName.empty()) {
+        std::cerr << "Download failed or file does not exist." << std::endl;
     } else {
-        std::cout << "Failed to download the file." << std::endl;
+        std::cout << "File downloaded to: " << fileName << std::endl;
     }
 
     speech::Audio audio;
 
         // Load an audio file
-    if (!audio.load((tempDir/fileName).string())) {
+    if (!audio.load(fileName.string())) {
         return -1;
     }
 

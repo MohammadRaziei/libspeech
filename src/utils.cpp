@@ -56,39 +56,64 @@ int ProgressCallback(void* progressPtr, curl_off_t total, curl_off_t now, curl_o
     return 0;
 }
 // Function to download a file
-bool speech::utils::downloadFile(const std::string& url, const std::filesystem::path& outputPath, bool force, bool quiet) {
-    if (!force && std::filesystem::exists(outputPath)) {
-        if (!quiet) std::cout << "File already exists: " << outputPath << ". Skipping download." << std::endl;
-        return true;
+
+// Function to download a file
+std::filesystem::path speech::utils::downloadFile(const std::string& url, const std::filesystem::path& outputPath, bool force, bool quiet) {
+    // Check if the output path is a directory
+    std::filesystem::path finalOutputPath = outputPath;
+    if (std::filesystem::is_directory(outputPath)) {
+        // Extract filename from the URL
+        std::string fileName = std::filesystem::path(url).filename().string();
+        finalOutputPath /= fileName;  // Append filename to the directory path
     }
 
-    std::filesystem::path parentDir = outputPath.parent_path();
+    // Check if the file already exists and force is false
+    if (!force && std::filesystem::exists(finalOutputPath)) {
+        if (!quiet)
+            std::cout << "File already exists: " << finalOutputPath
+                      << ". Skipping download." << std::endl;
+        return finalOutputPath;
+    }
+
+    // Create the parent directory if it doesn't exist
+    std::filesystem::path parentDir = finalOutputPath.parent_path();
     if (!parentDir.empty() && !std::filesystem::exists(parentDir)) {
-        std::filesystem::create_directories(parentDir);
+        if (!std::filesystem::create_directories(parentDir)) {
+            if (!quiet)
+                std::cerr << "Error: Could not create directory: " << parentDir
+                          << std::endl;
+            return {};  // Return an empty path on failure
+        }
     }
 
-    std::ofstream outFile(outputPath, std::ios::binary);
+    // Open the output file
+    std::ofstream outFile(finalOutputPath, std::ios::binary);
     if (!outFile.is_open()) {
-        if (!quiet) std::cerr << "Error: Could not open file for writing: " << outputPath << std::endl;
-        return false;
+        if (!quiet)
+            std::cerr << "Error: Could not open file for writing: "
+                      << finalOutputPath << std::endl;
+        return {};  // Return an empty path on failure
     }
 
+    // Initialize libcurl
     CURL* curl = curl_easy_init();
     if (!curl) {
-        if (!quiet) std::cerr << "Error: Could not initialize libcurl." << std::endl;
-        return false;
+        if (!quiet)
+            std::cerr << "Error: Could not initialize libcurl." << std::endl;
+        return {};  // Return an empty path on failure
     }
 
+    // Set libcurl options
     curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &outFile);
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 10L);
 
-    // **Extract Filename from `outputPath`**
-    std::string filename = outputPath.filename().string();
+    // Extract Filename from `finalOutputPath`
+    std::string filename = finalOutputPath.filename().string();
 
-    // **Custom Styled Progress Bar**
+    // Custom Styled Progress Bar
     auto progressBar = createProgressBar("Downloading " + filename + " ");
 
     progressBar->set_progress(0);
@@ -101,16 +126,25 @@ bool speech::utils::downloadFile(const std::string& url, const std::filesystem::
         curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 1L);
     }
 
+    // Perform the request
     CURLcode res = curl_easy_perform(curl);
 
+    // Cleanup
     curl_easy_cleanup(curl);
     outFile.close();
 
     if (!quiet) {
         progressBar->set_progress(100);
-        std::cout << "\nDownload completed: " << outputPath << std::endl;
+        std::cout << "\nDownload completed: " << finalOutputPath << std::endl;
     }
 
-    return res == CURLE_OK;
-}
+    // Check if the download was successful
+    if (res != CURLE_OK) {
+        if (!quiet)
+            std::cerr << "Error: Failed to download file. CURL error: "
+                      << curl_easy_strerror(res) << std::endl;
+        return {};  // Return an empty path on failure
+    }
 
+    return finalOutputPath;
+}

@@ -193,7 +193,9 @@ void speech::AudioImpl::play() {
 
     std::cout << "Playing audio..." << std::endl;
     std::this_thread::sleep_for(
+//        std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::duration<double>(duration())
+//                )
     );
 
 

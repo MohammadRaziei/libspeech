@@ -12,10 +12,10 @@
 namespace speech {
 namespace utils {
 // Function to download a file from a given URL and save it in a specified folder
-bool downloadFile(const std::string& url,
-                  const std::filesystem::path& outputPath,
-                  bool force = false,
-                  bool quiet = false);
+std::filesystem::path downloadFile(const std::string& url,
+                                   const std::filesystem::path& outputPath,
+                                   bool force, bool quiet);
+
 
 // Function to get the system's temporary directory as a filesystem::path
 std::filesystem::path getTempDirectory();
