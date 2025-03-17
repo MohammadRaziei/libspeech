@@ -9,7 +9,8 @@
 
 #include <vector>
 #include <cmath>
-#include <stdarg.h>
+
+#include "utils.h"
 
 // Forward declaration of timestamp_t class
 class timestamp_t {
@@ -32,7 +33,7 @@ class timestamp_t {
     }
 
     std::string c_str() const {
-        return format("{start:%08d(%0.2fs), end:%08d(%0.2fs)}", start, start_s(), end, end_s());
+        return speech::utils::format("{start:%08d(%0.2fs), end:%08d(%0.2fs)}", start, start_s(), end, end_s());
     }
 
     float start_s() const {
@@ -41,33 +42,6 @@ class timestamp_t {
 
     float end_s() const {
         return end / sample_rate;
-    }
-
-   private:
-    std::string format(const char* fmt, ...) const {
-        char buf[256];
-        va_list args;
-        va_start(args, fmt);
-        const auto r = std::vsnprintf(buf, sizeof(buf), fmt, args);
-        va_end(args);
-        if (r < 0)
-            return {};
-        const size_t len = r;
-        if (len < sizeof(buf))
-            return std::string(buf, len);
-#if __cplusplus >= 201703L
-        std::string s(len, '\0');
-        va_start(args, fmt);
-        std::vsnprintf(s.data(), len + 1, fmt, args);
-        va_end(args);
-        return s;
-#else
-        auto vbuf = std::unique_ptr<char[]>(new char[len + 1]);
-        va_start(args, fmt);
-        std::vsnprintf(vbuf.get(), len + 1, fmt, args);
-        va_end(args);
-        return std::string(vbuf.get(), len);
-#endif
     }
 };
 
