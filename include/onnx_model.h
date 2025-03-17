@@ -9,7 +9,12 @@
 #include "onnxruntime_cxx_api.h"
 
 #include "base_model.h"
+#include "onnxruntime_cxx_api.h"
 
+/**
+ * ONNXModel serves as a base class for models that use ONNX Runtime.
+ * It provides functionality for initializing and managing ONNX sessions.
+ */
 class ONNXModel : public BaseModel {
    protected:
     Ort::Env env;
@@ -17,11 +22,24 @@ class ONNXModel : public BaseModel {
     std::shared_ptr<Ort::Session> session;
 
    public:
+    /**
+     * Constructor for ONNXModel.
+     * @param url The URL of the ONNX model file to download.
+     * @param base_dir The base directory where the model will be stored. Defaults to ~/.libspeech.
+     */
     ONNXModel(const std::string& url, const std::filesystem::path& base_dir = std::filesystem::path(getenv("HOME")) / ".libspeech");
-    virtual ~ONNXModel() = default;
 
-   protected:
-    void load_model();
+    /**
+     * Initializes the ONNX Runtime session with the downloaded model.
+     */
+    void init_onnx_model();
+
+    /**
+     * Configures threading options for the ONNX Runtime session.
+     * @param inter_threads Number of inter-op threads.
+     * @param intra_threads Number of intra-op threads.
+     */
+    void init_engine_threads(int inter_threads, int intra_threads);
 };
 
 #endif  // LIBSPEECH_ONNX_MODEL_H

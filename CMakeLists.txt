@@ -156,12 +156,13 @@ add_library(speech SHARED ${SOURCES})
 
 add_subdirectory(src/third_party/dr_libs)
 add_subdirectory(src/third_party/miniaudio)
-
 add_subdirectory(src/third_party/indicators)
 
-target_include_directories(speech PRIVATE src/third_party/dr_libs)
-
-
+target_include_directories(speech
+        PUBLIC ${PROJECT_SOURCE_DIR}/include
+        PRIVATE ${PROJECT_SOURCE_DIR}/src
+        PRIVATE src/third_party/dr_libs
+)
 
 target_link_libraries(speech
         PRIVATE miniaudio
@@ -175,17 +176,16 @@ target_link_libraries(speech
 # Link ONNX Runtime library
 #target_link_libraries(speech PRIVATE onnxruntime)
 
+add_executable(silero examples/silero/silero-vad-onnx.cpp)
+target_link_libraries(silero PRIVATE speech)
 
-
-target_include_directories(speech
-        PUBLIC
-            ${PROJECT_SOURCE_DIR}/include
-        PRIVATE
-            ${PROJECT_SOURCE_DIR}/src)
 
 
 add_executable(example examples/main.cpp)
 target_link_libraries(example PRIVATE speech)
+
+
+
 
 # find_package(Vorbis REQUIRED)
 # target_link_libraries(example PRIVATE Vorbis::Vorbis)

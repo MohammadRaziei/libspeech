@@ -10,11 +10,6 @@
 #include <filesystem>
 #include <iostream>
 
-namespace speech {
-namespace utils {
-std::filesystem::path downloadFile(const std::string& url, const std::filesystem::path& destination, bool overwrite, bool verbose);
-}
-}
 
 class BaseModel {
    protected:

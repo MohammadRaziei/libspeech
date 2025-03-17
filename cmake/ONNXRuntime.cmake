@@ -43,8 +43,24 @@ set(ONNXRUNTIME_URL "https://github.com/microsoft/onnxruntime/releases/download/
 # Define the target directory for ONNX Runtime
 set(ONNXRUNTIME_DIR "${CMAKE_SOURCE_DIR}/src/third_party/onnxruntime")
 
-# Check if ONNX Runtime is already downloaded
-if(NOT EXISTS "${ONNXRUNTIME_DIR}/lib/libonnxruntime.so" AND NOT EXISTS "${ONNXRUNTIME_DIR}/lib/onnxruntime.dll")
+# Check if ONNX Runtime is already downloaded and valid
+if(EXISTS "${ONNXRUNTIME_DIR}")
+    # Check if the required library file exists based on the current OS
+    if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+        set(REQUIRED_LIB_FILE "${ONNXRUNTIME_DIR}/lib/onnxruntime.dll")
+    else()
+        set(REQUIRED_LIB_FILE "${ONNXRUNTIME_DIR}/lib/libonnxruntime.so")
+    endif()
+
+    # If the required library file does not exist, remove the directory
+    if(NOT EXISTS "${REQUIRED_LIB_FILE}")
+        message(STATUS "ONNX Runtime directory exists but the required library file is missing. Removing '${ONNXRUNTIME_DIR}'...")
+        file(REMOVE_RECURSE "${ONNXRUNTIME_DIR}")
+    endif()
+endif()
+
+# If ONNX Runtime directory does not exist or was removed, download it
+if(NOT EXISTS "${ONNXRUNTIME_DIR}")
     message(STATUS "ONNX Runtime not found in '${ONNXRUNTIME_DIR}'. Downloading from '${ONNXRUNTIME_URL}'...")
 
     # Download the file directly into the parent directory
@@ -88,15 +104,16 @@ endif()
 # Create a .gitignore file in the ONNX Runtime directory
 file(WRITE "${ONNXRUNTIME_DIR}/.gitignore" "*\n")
 
-
 # Define an interface library for ONNX Runtime
 add_library(onnxruntime_interface INTERFACE)
 
 # Add include directories to the interface
 target_include_directories(onnxruntime_interface INTERFACE "${ONNXRUNTIME_DIR}/include")
-
 # Add link directories to the interface
 target_link_directories(onnxruntime_interface INTERFACE "${ONNXRUNTIME_DIR}/lib")
-
 # Link the ONNX Runtime library to the interface
 target_link_libraries(onnxruntime_interface INTERFACE onnxruntime)
+# Add _CRT_SECURE_NO_WARNINGS as a compile definition
+target_compile_definitions(onnxruntime_interface INTERFACE _CRT_SECURE_NO_WARNINGS)
+
+set(CMAKE_SUPPRESS_REGENERATION ON)

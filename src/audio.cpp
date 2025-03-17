@@ -170,7 +170,7 @@ void simulateWorkWithProgressBar(double durationInSeconds) {
     auto progressBar = speech::bar::createProgressBar("Playing audio ", indicators::Color::yellow);
 
     // Divide the total duration into n small intervals
-    const size_t n = 20;
+    const size_t n = 50;
     const double intervalDuration = durationInSeconds / n;
     const double intervalStep = 100.0 / n;
 
@@ -206,10 +206,6 @@ void speech::AudioImpl::play() {
         ma_device_uninit(&device);
         return;
     }
-
-//    std::cout << "Playing audio... Press Enter to stop." << std::endl;
-//    std::cin.get();  // Wait for user input to stop playback
-
 
     simulateWorkWithProgressBar(duration());
 

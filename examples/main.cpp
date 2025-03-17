@@ -47,16 +47,16 @@
 //
 //
 //}
-//
 
-#include "silero_vad.h"
-#include "audio.h" // For speech::Audio
+#include "silero_vad.h" // Include the SileroVAD model header
+#include "audio.h"           // For speech::Audio
 #include <iostream>
+#include "utils.h"           // For downloadFile utility
 
 int main() {
     try {
         // Initialize the SileroVAD model
-        SileroVadModel vad("silero_vad.onnx");
+        SileroVadModel vad;
 
         // Download and load the audio file
         std::string url = "https://github.com/MohammadRaziei/libspeech/releases/download/resources/example-en-long.wav";
@@ -68,6 +68,7 @@ int main() {
             return -1;
         }
 
+        // Load the audio file
         speech::Audio audio;
         if (!audio.load(fileName)) {
             std::cerr << "Failed to load audio file." << std::endl;
@@ -85,6 +86,9 @@ int main() {
         for (const auto& stamp : stamps) {
             std::cout << "Speech detected from " << stamp.start << " to " << stamp.end << " samples." << std::endl;
         }
+
+        // Optionally, reset the internal state
+        vad.reset();
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << std::endl;
     }
