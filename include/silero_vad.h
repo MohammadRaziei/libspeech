@@ -16,9 +16,10 @@ class timestamp_t {
    public:
     int start;
     int end;
+    int sample_rate;
 
     timestamp_t(int start = -1, int end = -1)
-        : start(start), end(end) {}
+        : start(start), end(end), sample_rate(16000) {}
 
     timestamp_t& operator=(const timestamp_t& a) {
         start = a.start;
@@ -31,7 +32,15 @@ class timestamp_t {
     }
 
     std::string c_str() const {
-        return format("{start:%08d, end:%08d}", start, end);
+        return format("{start:%08d(%0.2fs), end:%08d(%0.2fs)}", start, start_s(), end, end_s());
+    }
+
+    float start_s() const {
+        return start / sample_rate;
+    }
+
+    float end_s() const {
+        return end / sample_rate;
     }
 
    private:

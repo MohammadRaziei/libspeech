@@ -84,7 +84,7 @@ int main() {
         // Retrieve and print speech timestamps
         std::vector<timestamp_t> stamps = vad.get_speech_timestamps();
         for (const auto& stamp : stamps) {
-            std::cout << "Speech detected from " << stamp.start << " to " << stamp.end << " samples." << std::endl;
+            std::cout << "Speech detected from " << stamp.start_s() << " to " << stamp.end_s() << " seconds." << std::endl;
         }
 
         // Optionally, reset the internal state
