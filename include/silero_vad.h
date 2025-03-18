@@ -15,12 +15,8 @@
 // Forward declaration of timestamp_t class
 class timestamp_t {
    public:
-    int start;
-    int end;
-    int sample_rate;
-
-    timestamp_t(int start = -1, int end = -1)
-        : start(start), end(end), sample_rate(16000) {}
+    timestamp_t(int start = -1, int end = -1, const int sample_rate = 16000)
+        : start(start), end(end), sample_rate(sample_rate) {}
 
     timestamp_t& operator=(const timestamp_t& a) {
         start = a.start;
@@ -43,12 +39,38 @@ class timestamp_t {
     float end_s() const {
         return end / sample_rate;
     }
+
+   public:
+    int start;
+    int end;
+    int sample_rate;
+
 };
 
 
 
 
 class SileroVadModel : public ONNXModel {
+
+   public:
+    // Constructor: sets model path, sample rate, window size (ms), and other parameters.
+    SileroVadModel(const std::string& model_path = "silero_vad.onnx",
+                   int sample_rate = 16000, int window_frame_size = 32,
+                   float threshold = 0.5, int min_silence_duration_ms = 100,
+                   int speech_pad_ms = 30, int min_speech_duration_ms = 250,
+                   float max_speech_duration_s = std::numeric_limits<float>::infinity());
+
+    // Process the entire audio input.
+    void processOnVector(const std::vector<float>& input_wav);
+
+    // Returns the detected speech timestamps.
+    const std::vector<timestamp_t> get_speech_timestamps() const;
+
+    // Public method to reset the internal state.
+    void reset();
+
+
+
    private:
     // Context-related additions
     const int context_samples = 64;  // For 16kHz, 64 samples are added as context.
@@ -103,23 +125,6 @@ class SileroVadModel : public ONNXModel {
 
     // Inference: runs inference on one chunk of input data.
     void predict(const std::vector<float>& data_chunk);
-
-   public:
-    // Constructor: sets model path, sample rate, window size (ms), and other parameters.
-    SileroVadModel(const std::string& model_path = "silero_vad.onnx",
-                   int sample_rate = 16000, int window_frame_size = 32,
-                   float threshold = 0.5, int min_silence_duration_ms = 100,
-                   int speech_pad_ms = 30, int min_speech_duration_ms = 250,
-                   float max_speech_duration_s = std::numeric_limits<float>::infinity());
-
-    // Process the entire audio input.
-    void process(const std::vector<float>& input_wav);
-
-    // Returns the detected speech timestamps.
-    const std::vector<timestamp_t> get_speech_timestamps() const;
-
-    // Public method to reset the internal state.
-    void reset();
 };
 
 

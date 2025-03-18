@@ -67,7 +67,7 @@ void SileroVadModel::predict(const std::vector<float>& data_chunk) {
         if (prev_end > 0) {
             current_speech.end = prev_end;
             speeches.push_back(current_speech);
-            current_speech = timestamp_t();
+            current_speech = timestamp_t(-1, -1, sample_rate);
             if (next_start < prev_end)
                 triggered = false;
             else
@@ -78,7 +78,7 @@ void SileroVadModel::predict(const std::vector<float>& data_chunk) {
         } else {
             current_speech.end = current_sample;
             speeches.push_back(current_speech);
-            current_speech = timestamp_t();
+            current_speech = timestamp_t(-1, -1, sample_rate);
             prev_end = 0;
             next_start = 0;
             temp_end = 0;
@@ -141,7 +141,7 @@ SileroVadModel::SileroVadModel(const std::string& model_path,
 }
 
 // Process the entire audio input.
-void SileroVadModel::process(const std::vector<float>& input_wav) {
+void SileroVadModel::processOnVector(const std::vector<float>& input_wav) {
     reset_states();
     audio_length_samples = static_cast<int>(input_wav.size());
 

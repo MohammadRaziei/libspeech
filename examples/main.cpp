@@ -59,7 +59,7 @@ int main() {
         SileroVadModel vad;
 
         // Download and load the audio file
-        std::string url = "https://github.com/MohammadRaziei/libspeech/releases/download/resources/example-en-long.wav";
+        std::string url = "https://github.com/MohammadRaziei/libspeech/releases/download/resources/example-en-biden-medium.wav";
         std::filesystem::path tempDir = std::filesystem::temp_directory_path();
         std::filesystem::path fileName = speech::utils::downloadFile(url, tempDir, false, false);
 
@@ -79,12 +79,12 @@ int main() {
         const std::vector<float> input_wav = audio.data();
 
         // Process the audio
-        vad.process(input_wav);
+        vad.processOnVector(input_wav);
 
         // Retrieve and print speech timestamps
         std::vector<timestamp_t> stamps = vad.get_speech_timestamps();
         for (const auto& stamp : stamps) {
-            std::cout << "Speech detected from " << stamp.start_s() << " to " << stamp.end_s() << " seconds." << std::endl;
+            std::cout << "Speech detected from " << std::setprecision(5) << stamp.start_s() << " to " << stamp.end_s() << " seconds." << std::endl;
         }
 
         // Optionally, reset the internal state

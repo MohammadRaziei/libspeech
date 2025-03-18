@@ -157,6 +157,7 @@ add_library(speech SHARED ${SOURCES})
 add_subdirectory(src/third_party/dr_libs)
 add_subdirectory(src/third_party/miniaudio)
 add_subdirectory(src/third_party/indicators)
+add_subdirectory(src/third_party/glog)
 
 target_include_directories(speech
         PUBLIC ${PROJECT_SOURCE_DIR}/include
@@ -169,6 +170,7 @@ target_link_libraries(speech
         PRIVATE CURL::libcurl
         PUBLIC indicators
         PUBLIC onnxruntime_interface
+        PRIVATE glog::glog
 )
 # target_include_directories(speech PUBLIC ${PROJECT_SOURCE_DIR}/src/third_party/miniaudio)
 

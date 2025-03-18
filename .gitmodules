@@ -13,3 +13,6 @@
 [submodule "src/third_party/indicators"]
 	path = src/third_party/indicators
 	url = https://github.com/p-ranav/indicators
+[submodule "src/third_party/glog"]
+	path = src/third_party/glog
+	url = https://github.com/google/glog.git
