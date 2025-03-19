@@ -1,57 +1,36 @@
-//#include <iostream>
-//#include <algorithm> // for std::copy
-//#include <iterator>  // for std::ostream_iterator
-//
-//#include "audio.h"
-//#include "utils.h"
-//#include "common.h"
-//
-//#include <vector>
-//
-//int main() {
-//
-//
-//        // Initialize the ONNX Runtime environment
-//    // Example usage
-//    std::string url = "https://github.com/MohammadRaziei/libspeech/releases/download/resources/example-en-long.wav"; // Replace with your desired URL
-////    std::string url = "https://github.com/MohammadRaziei/libspeech/releases/download/resources/example-en-short.mp3";
-//    std::filesystem::path tempDir = std::filesystem::temp_directory_path();           // Get the system's temp directory
-//
-//    std::cout << "Temporary directory: " << tempDir << std::endl;
-//    std::filesystem::path fileName = speech::utils::downloadFile(url, tempDir, false, false);
-//    if (fileName.empty()) {
-//        std::cerr << "Download failed or file does not exist." << std::endl;
-//    } else {
-//        std::cout << "File downloaded to: " << fileName << std::endl;
-//    }
-//
-//    speech::Audio audio;
-//
-//        // Load an audio file
-//    if (!audio.load(fileName)) {
-//        return -1;
-//    }
-//
-//    // Play the audio
-//
-//    const std::vector<float> data = audio.data();
-//
-//    std::cout << "Audio data: ";
-//    std::copy(data.begin(), data.begin() + 5, std::ostream_iterator<float>(std::cout, " "));
-//    std::cout << std::endl;
-//
-//    audio.play();
-//
-//
-//    return 0;
-//
-//
-//}
-
 #include "silero_vad.h" // Include the SileroVAD model header
 #include "audio.h"           // For speech::Audio
 #include <iostream>
 #include "utils.h"           // For downloadFile utility
+
+
+#include "resample.h"
+
+int main2() {
+    try {
+        // Create a Resample object with default settings
+        Resample resampler(44100, 16000); // Resample from 44.1kHz to 16kHz
+
+        // Input audio data (example)
+        std::vector<float> inputData = {0.0, 0.5, 1.0, 0.5, 0.0, -0.5, -1.0, -0.5};
+
+        // Perform resampling
+        std::cout << "Resampled Data:" << std::endl;
+
+        std::vector<float> outputData = resampler.resample(inputData);
+
+        // Print the resampled data
+        for (float value : outputData) {
+            std::cout << value << " ";
+        }
+        std::cout << std::endl;
+
+    } catch (const std::exception& e) {
+        std::cerr << "Error: " << e.what() << std::endl;
+    }
+
+    return 0;
+}
 
 int main() {
     try {
@@ -59,7 +38,7 @@ int main() {
         SileroVadModel vad;
 
         // Download and load the audio file
-        std::string url = "https://github.com/MohammadRaziei/libspeech/releases/download/resources/example-en-biden-medium.wav";
+        std::string url = "https://github.com/MohammadRaziei/libspeech/releases/download/resources/example-en-biden-large.mp3";
         std::filesystem::path tempDir = std::filesystem::temp_directory_path();
         std::filesystem::path fileName = speech::utils::downloadFile(url, tempDir, false, false);
 
@@ -74,9 +53,12 @@ int main() {
             std::cerr << "Failed to load audio file." << std::endl;
             return -1;
         }
+        const auto audio16k = audio.to_mono().resample(16000);
+
+//        audio16k.play();
 
         // Get audio data
-        const std::vector<float> input_wav = audio.data();
+        const std::vector<float> input_wav = audio.data(0);
 
         // Process the audio
         vad.processOnVector(input_wav);

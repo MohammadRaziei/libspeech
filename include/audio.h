@@ -6,6 +6,8 @@
 #include <vector>
 #include <filesystem>
 
+#include "resample.h"
+
 // Forward declaration for the implementation class
 namespace speech{
 
@@ -14,15 +16,22 @@ class AudioImpl;
 class Audio {
    public:
     Audio();
+    Audio(const Audio& other);
     ~Audio();
 
     bool load(const std::filesystem::path& filePath);
-    bool load(const std::vector<float>& inputData, int sampleRate, int channels);
+    bool load(const std::vector<std::vector<float>>& inputData, int sampleRate);
 
-    void play();
+    Audio& to_mono();
+
+    void play() const;
     bool save(const std::filesystem::path& outputPath);
 
-    [[nodiscard]] std::vector<float> data() const;
+    // Resample function
+    Audio resample(int targetSampleRate) const;
+
+    [[nodiscard]] std::vector<std::vector<float>> data() const;
+    [[nodiscard]] std::vector<float> data(int index) const;
     [[nodiscard]] int sampleRate() const;
     [[nodiscard]] double duration() const;
 

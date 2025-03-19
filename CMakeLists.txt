@@ -2,6 +2,9 @@ cmake_minimum_required(VERSION 3.19)
 
 option(BUILD_PYTHON "export python module" off)
 
+set(CMAKE_C_STANDARD 99 CACHE STRING "C version selection")
+set(CMAKE_C_STANDARD_REQUIRED ON)
+
 set(CMAKE_CXX_STANDARD 17 CACHE STRING "C++ version selection")
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -22,7 +25,8 @@ set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG}" CACHE STRING "" FORCE)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}" CACHE STRING "" FORCE)
 
 
-project(${PyProject_NAME} LANGUAGES CXX VERSION ${PyProject_VERSION})
+project(${PyProject_NAME} LANGUAGES C CXX VERSION ${PyProject_VERSION})
+
 message(STATUS "Project: ${PROJECT_NAME}@v${PROJECT_VERSION}")
 
 
@@ -149,15 +153,16 @@ endif()
 
 
 include(ONNXRuntime)
-
 find_package(CURL REQUIRED)
+include(AudioFlux)
 
-add_library(speech SHARED ${SOURCES})
 
 add_subdirectory(src/third_party/dr_libs)
 add_subdirectory(src/third_party/miniaudio)
 add_subdirectory(src/third_party/indicators)
 add_subdirectory(src/third_party/glog)
+
+add_library(speech SHARED ${SOURCES})
 
 target_include_directories(speech
         PUBLIC ${PROJECT_SOURCE_DIR}/include
@@ -171,6 +176,7 @@ target_link_libraries(speech
         PUBLIC indicators
         PUBLIC onnxruntime_interface
         PRIVATE glog::glog
+        PUBLIC audioflux
 )
 # target_include_directories(speech PUBLIC ${PROJECT_SOURCE_DIR}/src/third_party/miniaudio)
 
