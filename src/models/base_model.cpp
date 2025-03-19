@@ -1,6 +1,6 @@
-#include "base_model.h"
+#include "models/base_model.h"
 #include <stdexcept>
-#include "utils.h"
+#include "utils/utils.h"
 
 
 BaseModel::BaseModel(const std::string& url, const std::filesystem::path& base_dir)

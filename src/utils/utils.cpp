@@ -6,9 +6,9 @@
 
 #include <curl/curl.h>
 
-#include "utils.h"
+#include "utils/utils.h"
 
-#include "progressbar.h"
+#include "utils/progressbar.h"
 
 
 

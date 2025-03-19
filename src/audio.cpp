@@ -8,7 +8,9 @@
 #include <algorithm> // For std::transform
 #include <thread>
 #include <chrono>
-#include "progressbar.h"
+
+
+#include "utils/progressbar.h"
 // Include `dr_wav`, `dr_mp3`, and `dr_flac`
 #define DR_WAV_IMPLEMENTATION
 #include "dr_wav.h"
@@ -18,6 +20,9 @@
 #include "dr_flac.h"
 #define MINIAUDIO_IMPLEMENTATION
 #include "miniaudio.h"
+
+#include "dsp/resample.h"
+
 
 namespace speech {
 
@@ -404,9 +409,10 @@ speech::Audio speech::Audio::resample(int targetSampleRate) const {
     return resampledAudio;
 }
 
-speech::Audio& speech::Audio::to_mono() {
-    pImpl->to_mono();
-    return *this;
+speech::Audio speech::Audio::to_mono() {
+    Audio audio(*this);
+    audio.pImpl->to_mono();
+    return audio;
 }
 
 std::vector<float> speech::Audio::data(int index) const {

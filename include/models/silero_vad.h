@@ -5,12 +5,12 @@
 #ifndef LIBSPEECH_SILERO_VAD_H
 #define LIBSPEECH_SILERO_VAD_H
 
-#include "onnx_model.h"
+#include "models/onnx_model.h"
 
 #include <vector>
 #include <cmath>
 
-#include "utils.h"
+#include "utils/utils.h"
 
 // Forward declaration of timestamp_t class
 class timestamp_t {
@@ -70,6 +70,9 @@ class SileroVadModel : public ONNXModel {
     void reset();
 
 
+   public:
+    const int sample_rate;
+
 
    private:
     // Context-related additions
@@ -102,7 +105,6 @@ class SileroVadModel : public ONNXModel {
     Ort::MemoryInfo memory_info;  // Add this line
 
     // Model configuration parameters
-    int sample_rate;
     float threshold;
     int min_silence_samples;
     int min_silence_samples_at_max_speech;

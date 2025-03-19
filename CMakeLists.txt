@@ -29,6 +29,40 @@ project(${PyProject_NAME} LANGUAGES C CXX VERSION ${PyProject_VERSION})
 
 message(STATUS "Project: ${PROJECT_NAME}@v${PROJECT_VERSION}")
 
+file(GLOB SPEECH_ROOT_SOURCES "${PROJECT_SOURCE_DIR}/src/*.cpp")
+file(GLOB SPEECH_SUBDIR_SOURCES "${PROJECT_SOURCE_DIR}/src/*/*.cpp")
+
+set(SPEECH_SOURCES ${SPEECH_ROOT_SOURCES} ${SPEECH_SUBDIR_SOURCES})
+
+
+
+include(ONNXRuntime)
+find_package(CURL REQUIRED)
+include(AudioFlux)
+
+
+add_subdirectory(src/third_party/dr_libs)
+add_subdirectory(src/third_party/miniaudio)
+add_subdirectory(src/third_party/indicators)
+add_subdirectory(src/third_party/glog)
+
+add_library(speech SHARED ${SPEECH_SOURCES})
+
+
+target_include_directories(speech
+        PUBLIC ${PROJECT_SOURCE_DIR}/include
+        PRIVATE ${PROJECT_SOURCE_DIR}/src
+        PRIVATE src/third_party/dr_libs
+)
+
+target_link_libraries(speech
+        PRIVATE miniaudio
+        PRIVATE CURL::libcurl
+        PUBLIC indicators
+        PUBLIC onnxruntime_interface
+        PRIVATE glog::glog
+        PUBLIC audioflux
+)
 
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
@@ -67,7 +101,6 @@ endif()
 
 
 
-file(GLOB SOURCES ${PROJECT_SOURCE_DIR}/src/*.cpp)
 
 
 if(DEFINED PYTHON_PROJECT_NAME)
@@ -152,37 +185,6 @@ endif()
 
 
 
-include(ONNXRuntime)
-find_package(CURL REQUIRED)
-include(AudioFlux)
-
-
-add_subdirectory(src/third_party/dr_libs)
-add_subdirectory(src/third_party/miniaudio)
-add_subdirectory(src/third_party/indicators)
-add_subdirectory(src/third_party/glog)
-
-add_library(speech SHARED ${SOURCES})
-
-target_include_directories(speech
-        PUBLIC ${PROJECT_SOURCE_DIR}/include
-        PRIVATE ${PROJECT_SOURCE_DIR}/src
-        PRIVATE src/third_party/dr_libs
-)
-
-target_link_libraries(speech
-        PRIVATE miniaudio
-        PRIVATE CURL::libcurl
-        PUBLIC indicators
-        PUBLIC onnxruntime_interface
-        PRIVATE glog::glog
-        PUBLIC audioflux
-)
-# target_include_directories(speech PUBLIC ${PROJECT_SOURCE_DIR}/src/third_party/miniaudio)
-
-
-# Link ONNX Runtime library
-#target_link_libraries(speech PRIVATE onnxruntime)
 
 add_executable(silero examples/silero/silero-vad-onnx.cpp)
 target_link_libraries(silero PRIVATE speech)

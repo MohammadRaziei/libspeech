@@ -2,7 +2,7 @@
 // Created by mohammad on 3/16/25.
 //
 
-#include "silero_vad.h"
+#include "models/silero_vad.h"
 
 // Resets internal state (_state, _context, etc.)
 void SileroVadModel::reset_states() {

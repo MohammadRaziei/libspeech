@@ -1,4 +1,4 @@
-#include "resample.h"
+#include "dsp/resample.h"
 #include <stdexcept>
 #include <vector>
 

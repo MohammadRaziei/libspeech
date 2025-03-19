@@ -1,7 +1,7 @@
 //
 // Created by Mohammad on 3/16/2025.
 //
-#include "progressbar.h"
+#include "utils/progressbar.h"
 
 
 std::shared_ptr<indicators::ProgressBar> speech::bar::createProgressBar(

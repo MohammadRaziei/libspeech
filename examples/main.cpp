@@ -1,10 +1,10 @@
-#include "silero_vad.h" // Include the SileroVAD model header
+#include "models/silero_vad.h" // Include the SileroVAD model header
 #include "audio.h"           // For speech::Audio
 #include <iostream>
-#include "utils.h"           // For downloadFile utility
+#include "utils/utils.h"           // For downloadFile utility
 
 
-#include "resample.h"
+#include "dsp/resample.h"
 
 int main2() {
     try {
@@ -53,15 +53,13 @@ int main() {
             std::cerr << "Failed to load audio file." << std::endl;
             return -1;
         }
-        const auto audio16k = audio.to_mono().resample(16000);
+        const auto audio16k = audio.to_mono().resample(vad.sample_rate);
 
 //        audio16k.play();
 
-        // Get audio data
-        const std::vector<float> input_wav = audio.data(0);
 
         // Process the audio
-        vad.processOnVector(input_wav);
+        vad.processOnVector(audio16k.data(0));
 
         // Retrieve and print speech timestamps
         std::vector<timestamp_t> stamps = vad.get_speech_timestamps();
