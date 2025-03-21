@@ -20,9 +20,9 @@ endif()
 
 
 
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE}" CACHE STRING "" FORCE)
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG}" CACHE STRING "" FORCE)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}" CACHE STRING "" FORCE)
+#set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE}" CACHE STRING "" FORCE)
+#set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG}" CACHE STRING "" FORCE)
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}" CACHE STRING "" FORCE)
 
 
 project(${PyProject_NAME} LANGUAGES C CXX VERSION ${PyProject_VERSION})
@@ -194,6 +194,27 @@ target_link_libraries(silero PRIVATE speech)
 add_executable(example examples/main.cpp)
 target_link_libraries(example PRIVATE speech)
 
+
+
+# add_subdirectory(src/third_party/crow)
+
+set(CMAKE_TOOLCHAIN_FILE "${CMAKE_BINARY_DIR}/conan_toolchain.cmake" CACHE PATH "Path to Conan-generated toolchain file")
+
+# Include the toolchain file if it exists
+if(EXISTS "${CMAKE_TOOLCHAIN_FILE}")
+    message(STATUS "Using Conan-generated toolchain file: ${CMAKE_TOOLCHAIN_FILE}")
+else()
+    message(WARNING "Conan-generated toolchain file not found: ${CMAKE_TOOLCHAIN_FILE}")
+endif()
+
+include(Conan)
+
+find_package(oatpp REQUIRED)
+find_package(oatpp-swagger REQUIRED)
+
+
+add_executable(denoiser_app examples/denoiser_app/main.cpp)
+target_link_libraries(denoiser_app PRIVATE oatpp::oatpp oatpp::oatpp-swagger)
 
 
 

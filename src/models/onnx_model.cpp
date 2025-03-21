@@ -12,7 +12,8 @@
  */
 
 ONNXModel::ONNXModel(const std::string& url, const std::filesystem::path& base_dir)
-    : BaseModel(url, base_dir) {}
+    : BaseModel(url, base_dir),
+      memory_info(Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeCPU)) {}
 
 /**
  * Initializes the ONNX Runtime session with the downloaded model.
@@ -33,4 +34,8 @@ void ONNXModel::init_engine_threads(int inter_threads, int intra_threads) {
     session_options.SetIntraOpNumThreads(intra_threads);
     session_options.SetInterOpNumThreads(inter_threads);
     session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
+}
+
+ONNXModel::~ONNXModel() {
+
 }

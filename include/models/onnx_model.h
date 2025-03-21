@@ -6,8 +6,6 @@
 #define LIBSPEECH_ONNX_MODEL_H
 
 #include <memory>
-#include "onnxruntime_cxx_api.h"
-
 #include "base_model.h"
 #include "onnxruntime_cxx_api.h"
 
@@ -20,6 +18,8 @@ class ONNXModel : public BaseModel {
     Ort::Env env;
     Ort::SessionOptions session_options;
     std::shared_ptr<Ort::Session> session;
+    Ort::MemoryInfo memory_info;
+    Ort::AllocatorWithDefaultOptions allocator;
 
    public:
     /**
@@ -30,9 +30,14 @@ class ONNXModel : public BaseModel {
     ONNXModel(const std::string& url, const std::filesystem::path& base_dir = std::filesystem::path(getenv("HOME")) / ".libspeech");
 
     /**
+     * Destructor for ONNXModel.
+     */
+    virtual ~ONNXModel();
+
+    /**
      * Initializes the ONNX Runtime session with the downloaded model.
      */
-    void init_onnx_model();
+    virtual void init_onnx_model();
 
     /**
      * Configures threading options for the ONNX Runtime session.

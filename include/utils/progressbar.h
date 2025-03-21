@@ -8,7 +8,7 @@
 #include <indicators/progress_bar.hpp>
 #include <memory>
 
-namespace speech::bar {
+namespace speech::utils {
 std::shared_ptr<indicators::ProgressBar> createProgressBar(
     const std::string& text = "Processing ",
     indicators::Color color = indicators::Color::green);

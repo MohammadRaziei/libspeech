@@ -84,7 +84,6 @@ private:
     Ort::SessionOptions session_options;
     std::shared_ptr<Ort::Session> session = nullptr;
     Ort::AllocatorWithDefaultOptions allocator;
-    Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeCPU);
 
     // ----- Context-related additions -----
     const int context_samples = 64;  // For 16kHz, 64 samples are added as context.

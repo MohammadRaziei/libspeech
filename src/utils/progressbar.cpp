@@ -4,7 +4,7 @@
 #include "utils/progressbar.h"
 
 
-std::shared_ptr<indicators::ProgressBar> speech::bar::createProgressBar(
+std::shared_ptr<indicators::ProgressBar> speech::utils::createProgressBar(
     const std::string& text, indicators::Color color) {
 
     // Create a shared_ptr to manage the ProgressBar object

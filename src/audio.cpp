@@ -201,7 +201,7 @@ void audioCallback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uin
 
 void simulateWorkWithProgressBar(double durationInSeconds) {
     // Create a progress bar
-    auto progressBar = speech::bar::createProgressBar("Playing audio ", indicators::Color::yellow);
+    auto progressBar = speech::utils::createProgressBar("Playing audio ", indicators::Color::blue);
     // Divide the total duration into n small intervals
     const size_t n = 50;
     const double intervalDuration = durationInSeconds / n;
@@ -420,4 +420,7 @@ std::vector<float> speech::Audio::data(int index) const {
         throw std::out_of_range("Invalid channel index: " + std::to_string(index));
     }
     return pImpl->audioData[index];
+}
+size_t speech::Audio::size() const {
+    return pImpl->channels > 0 ? this->data(0).size() : 0;
 }

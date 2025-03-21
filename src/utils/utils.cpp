@@ -91,7 +91,7 @@ std::filesystem::path speech::utils::downloadFile(const std::string& url, const 
     std::string filename = finalOutputPath.filename().string();
 
     // Custom Styled Progress Bar
-    auto progressBar = speech::bar::createProgressBar("Downloading " + filename + " ");
+    auto progressBar = speech::utils::createProgressBar("Downloading " + filename + " ");
 
     progressBar->set_progress(0);
 
