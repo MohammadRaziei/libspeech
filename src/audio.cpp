@@ -23,6 +23,8 @@
 
 #include "dsp/resample.h"
 
+#include "aixlog.hpp"
+
 
 namespace speech {
 
@@ -51,7 +53,7 @@ class AudioImpl {
 bool speech::AudioImpl::loadWAV(const std::filesystem::path& filePath) {
     drwav wav;
     if (!drwav_init_file(&wav, filePath.string().c_str(), NULL)) {
-        std::cerr << "Failed to open WAV file: " << filePath << std::endl;
+        LOG(ERROR) << TAG("speech::Audio") << "Failed to open WAV file: " << filePath << std::endl;
         return false;
     }
     sampleRate = wav.sampleRate;
@@ -71,7 +73,7 @@ bool speech::AudioImpl::loadWAV(const std::filesystem::path& filePath) {
 
     drwav_uninit(&wav);
     loaded = true;
-    std::cout << "Loaded WAV: " << filePath << ", Sample Rate: " << sampleRate << ", Channels: " << channels << std::endl;
+    LOG(DEBUG) << TAG("speech::Audio") << "Loaded WAV: " << filePath << ", Sample Rate: " << sampleRate << ", Channels: " << channels << std::endl;
     return true;
 }
 
@@ -79,7 +81,7 @@ bool speech::AudioImpl::loadWAV(const std::filesystem::path& filePath) {
 bool speech::AudioImpl::loadMP3(const std::filesystem::path& filePath) {
     drmp3 mp3;
     if (!drmp3_init_file(&mp3, filePath.string().c_str(), NULL)) {
-        std::cerr << "Failed to open MP3 file: " << filePath << std::endl;
+        LOG(ERROR) << TAG("speech::Audio") << "Failed to open MP3 file: " << filePath << std::endl;
         return false;
     }
     sampleRate = mp3.sampleRate;
@@ -99,7 +101,7 @@ bool speech::AudioImpl::loadMP3(const std::filesystem::path& filePath) {
 
     drmp3_uninit(&mp3);
     loaded = true;
-    std::cout << "Loaded MP3: " << filePath << ", Sample Rate: " << sampleRate << ", Channels: " << channels << std::endl;
+    LOG(DEBUG) << TAG("speech::Audio") << "Loaded MP3: " << filePath << ", Sample Rate: " << sampleRate << ", Channels: " << channels << std::endl;
     return true;
 }
 
@@ -107,7 +109,7 @@ bool speech::AudioImpl::loadMP3(const std::filesystem::path& filePath) {
 bool speech::AudioImpl::loadFLAC(const std::filesystem::path& filePath) {
     drflac* flac = drflac_open_file(filePath.string().c_str(), NULL);
     if (!flac) {
-        std::cerr << "Failed to open FLAC file: " << filePath << std::endl;
+        LOG(ERROR) << TAG("speech::Audio") << "Failed to open FLAC file: " << filePath << std::endl;
         return false;
     }
     sampleRate = flac->sampleRate;
@@ -127,7 +129,7 @@ bool speech::AudioImpl::loadFLAC(const std::filesystem::path& filePath) {
 
     drflac_close(flac);
     loaded = true;
-    std::cout << "Loaded FLAC: " << filePath << ", Sample Rate: " << sampleRate << ", Channels: " << channels << std::endl;
+    LOG(DEBUG) << TAG("speech::Audio") << "Loaded FLAC: " << filePath << ", Sample Rate: " << sampleRate << ", Channels: " << channels << std::endl;
     return true;
 }
 
@@ -135,13 +137,13 @@ bool speech::AudioImpl::loadFLAC(const std::filesystem::path& filePath) {
 bool speech::AudioImpl::loadBin(const std::filesystem::path& filePath) {
     std::ifstream file(filePath, std::ios::binary | std::ios::ate);
     if (!file) {
-        std::cerr << "Failed to open BIN file: " << filePath << std::endl;
+        LOG(ERROR) << TAG("speech::Audio") << "Failed to open BIN file: " << filePath << std::endl;
         return false;
     }
     std::streamsize size = file.tellg();
     file.seekg(0, std::ios::beg);
     if (size % sizeof(float) != 0) {
-        std::cerr << "Invalid BIN file format: " << filePath << std::endl;
+        LOG(ERROR) << TAG("speech::Audio") << "Invalid BIN file format: " << filePath << std::endl;
         return false;
     }
     size_t totalSamples = size / sizeof(float);
@@ -160,21 +162,21 @@ bool speech::AudioImpl::loadBin(const std::filesystem::path& filePath) {
 
     file.close();
     loaded = true;
-    std::cout << "Loaded BIN: " << filePath << ", Total Samples: " << totalSamples << std::endl;
+    LOG(DEBUG) << TAG("speech::Audio") << "Loaded BIN: " << filePath << ", Total Samples: " << totalSamples << std::endl;
     return true;
 }
 
 // **Load Audio from Vector**
 bool speech::AudioImpl::loadVector(const std::vector<std::vector<float>>& inputData, int inputSampleRate) {
     if (inputData.empty() || inputSampleRate <= 0) {
-        std::cerr << "Invalid audio data provided to loadVector!" << std::endl;
+        LOG(ERROR) << TAG("speech::Audio") << "Invalid audio data provided to loadVector!" << std::endl;
         return false;
     }
     audioData = inputData;
     sampleRate = inputSampleRate;
     channels = inputData.size();
     loaded = true;
-    std::cout << "Loaded audio from vector, Sample Rate: " << sampleRate << ", Channels: " << channels << std::endl;
+    LOG(DEBUG) << TAG("speech::Audio") << "Loaded audio from vector, Sample Rate: " << sampleRate << ", Channels: " << channels << std::endl;
     return true;
 }
 
@@ -216,7 +218,7 @@ void simulateWorkWithProgressBar(double durationInSeconds) {
 
 void speech::AudioImpl::play(){
 //    if (audioData.empty()) {
-//        std::cerr << "No audio loaded to play!" << std::endl;
+//        LOG(ERROR) << TAG("speech::Audio") << "No audio loaded to play!" << std::endl;
 //        return;
 //    }
 
@@ -229,12 +231,12 @@ void speech::AudioImpl::play(){
 
     ma_device device;
     if (ma_device_init(NULL, &deviceConfig, &device) != MA_SUCCESS) {
-        std::cerr << "Failed to initialize audio device!" << std::endl;
+        LOG(ERROR) << TAG("speech::Audio") << "Failed to initialize audio device!" << std::endl;
         return;
     }
 
     if (ma_device_start(&device) != MA_SUCCESS) {
-        std::cerr << "Failed to start audio playback!" << std::endl;
+        LOG(ERROR) << TAG("speech::Audio") << "Failed to start audio playback!" << std::endl;
         ma_device_uninit(&device);
         return;
     }
@@ -247,7 +249,7 @@ void speech::AudioImpl::play(){
 // **Save as WAV**
 bool speech::AudioImpl::saveWAV(const std::filesystem::path& outputPath) {
     if (!loaded) {
-        std::cerr << "No audio loaded to save!" << std::endl;
+        LOG(WARNING) << TAG("speech::Audio") << "No audio loaded to save!" << std::endl;
         return false;
     }
 
@@ -270,13 +272,13 @@ bool speech::AudioImpl::saveWAV(const std::filesystem::path& outputPath) {
 
     drwav wav;
     if (!drwav_init_file_write(&wav, outputPath.string().c_str(), &format, NULL)) {
-        std::cerr << "Failed to save WAV file: " << outputPath << std::endl;
+        LOG(ERROR) << TAG("speech::Audio") << "Failed to save WAV file: " << outputPath << std::endl;
         return false;
     }
 
     drwav_write_pcm_frames(&wav, numFrames, interleavedData.data());
     drwav_uninit(&wav);
-    std::cout << "Saved WAV file: " << outputPath << std::endl;
+    LOG(DEBUG) << TAG("speech::Audio") << "Saved WAV file: " << outputPath << std::endl;
     return true;
 }
 
@@ -313,7 +315,7 @@ void speech::AudioImpl::to_mono() {
     // Update the number of channels.
     channels = 1;
 
-    std::cout << "Converted to mono audio." << std::endl;
+    LOG(DEBUG) << TAG("speech::Audio") << "Converted to mono audio." << std::endl;
 }
 
 
@@ -338,7 +340,7 @@ speech::Audio::~Audio() = default;
 // **Load Audio File**
 bool speech::Audio::load(const std::filesystem::path& filePath) {
     if (!std::filesystem::exists(filePath)) {
-        std::cerr << "File not found: " << filePath << std::endl;
+        LOG(ERROR) << TAG("speech::Audio") << "File not found: " << filePath << std::endl;
         return false;
     }
     std::string extension = filePath.extension().string();
@@ -353,7 +355,7 @@ bool speech::Audio::load(const std::filesystem::path& filePath) {
     if (it != loaders.end()) {
         return (pImpl.get()->*(it->second))(filePath);
     }
-    std::cerr << "Unsupported file format: " << filePath << std::endl;
+    LOG(ERROR) << TAG("speech::Audio") << "Unsupported file format: " << filePath << std::endl;
     return false;
 }
 
@@ -417,6 +419,8 @@ speech::Audio speech::Audio::to_mono() {
 
 std::vector<float> speech::Audio::data(int index) const {
     if (index < 0 || index >= pImpl->channels) {
+        LOG(ERROR) << TAG("speech::Audio") <<
+            "Invalid channel index: " + std::to_string(index) << std::endl;
         throw std::out_of_range("Invalid channel index: " + std::to_string(index));
     }
     return pImpl->audioData[index];

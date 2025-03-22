@@ -21,8 +21,7 @@ target_include_directories(audioflux
         PRIVATE ${AUDIOFLUX_SOURCE_DIR}/src
 )
 
-# Link any required dependencies (if needed)
-# Example: target_link_libraries(AudioFlux PRIVATE SomeDependency)
+target_compile_options(audioflux PRIVATE "-w")
 
 # Export the AudioFlux library for use in other parts of the project
 set(AUDIOFLUX_FOUND TRUE)

@@ -7,7 +7,10 @@
 #include "models/facebook_denoiser.h"
 #include "dsp/resample.h"
 
-int main2() {
+#include <aixlog.hpp>
+
+
+int main1() {
     try {
         // Create a Resample object with default settings
         Resample resampler(44100, 16000); // Resample from 44.1kHz to 16kHz
@@ -33,8 +36,12 @@ int main2() {
     return 0;
 }
 
-int main1() {
+
+
+int main() {
+    AixLog::Log::init<AixLog::SinkCout>(AixLog::Severity::trace);
     try {
+
         // Initialize the SileroVAD model
         SileroVadModel vad;
 
@@ -46,14 +53,14 @@ int main1() {
         std::filesystem::path fileName = speech::utils::downloadFile(url, tempDir, false, false);
 
         if (fileName.empty()) {
-            std::cerr << "Download failed or file does not exist." << std::endl;
+            LOG(FATAL) << "Download failed or file does not exist." << std::endl;
             return -1;
         }
 
         // Load the audio file
         speech::Audio audio;
         if (!audio.load(fileName)) {
-            std::cerr << "Failed to load audio file." << std::endl;
+            LOG(FATAL) << "Failed to load audio file." << std::endl;
             return -1;
         }
         const auto audio16k = audio.to_mono().resample(vad.sample_rate);
@@ -67,19 +74,19 @@ int main1() {
         // Retrieve and print speech timestamps
         std::vector<timestamp_t> stamps = vad.get_speech_timestamps();
         for (const auto& stamp : stamps) {
-            std::cout << "Speech detected from " << std::setprecision(5) << stamp.start_s() << " to " << stamp.end_s() << " seconds." << std::endl;
+            LOG(INFO) << "Speech detected from " << AixLog::Color::cyan << stamp.start_s() << " to " << stamp.end_s() << AixLog::Color::none << " seconds." << std::endl;
         }
 
         // Optionally, reset the internal state
         vad.reset();
     } catch (const std::exception& e) {
-        std::cerr << "Error: " << e.what() << std::endl;
+        LOG(FATAL) << "Error: " << e.what() << std::endl;
     }
     return 0;
 }
 
 
-int main() {
+int main3() {
     try {
         // Define the model URL and base directory.
         std::string model_url = "facebook_denoiser_dns64.onnx";

@@ -10,6 +10,8 @@
 
 #include "utils/progressbar.h"
 
+#include "aixlog.hpp"
+
 
 
 std::filesystem::path speech::utils::getTempDirectory() {
@@ -46,9 +48,8 @@ std::filesystem::path speech::utils::downloadFile(const std::string& url, const 
 
     // Check if the file already exists and force is false
     if (!force && std::filesystem::exists(finalOutputPath)) {
-        if (!quiet)
-            std::cout << "File already exists: " << finalOutputPath
-                      << ". Skipping download." << std::endl;
+        LOG(INFO) << TAG("speech::utils::downloadFile")  << COND(!quiet)
+                  << "File already exists: " << finalOutputPath << ". Skipping download." << std::endl;
         return finalOutputPath;
     }
 
@@ -56,9 +57,8 @@ std::filesystem::path speech::utils::downloadFile(const std::string& url, const 
     std::filesystem::path parentDir = finalOutputPath.parent_path();
     if (!parentDir.empty() && !std::filesystem::exists(parentDir)) {
         if (!std::filesystem::create_directories(parentDir)) {
-            if (!quiet)
-                std::cerr << "Error: Could not create directory: " << parentDir
-                          << std::endl;
+            LOG(INFO) << TAG("speech::utils::downloadFile")  << COND(!quiet)
+                      << "Error: Could not create directory: " << parentDir << std::endl;
             return {};  // Return an empty path on failure
         }
     }
@@ -66,17 +66,15 @@ std::filesystem::path speech::utils::downloadFile(const std::string& url, const 
     // Open the output file
     std::ofstream outFile(finalOutputPath, std::ios::binary);
     if (!outFile.is_open()) {
-        if (!quiet)
-            std::cerr << "Error: Could not open file for writing: "
-                      << finalOutputPath << std::endl;
+        LOG(ERROR) << TAG("speech::utils::downloadFile")  << COND(!quiet)
+                  << "Error: Could not open file for writing: " << finalOutputPath << std::endl;
         return {};  // Return an empty path on failure
     }
 
     // Initialize libcurl
     CURL* curl = curl_easy_init();
     if (!curl) {
-        if (!quiet)
-            std::cerr << "Error: Could not initialize libcurl." << std::endl;
+        LOG(ERROR) << TAG("speech::utils::downloadFile")  << COND(!quiet) << "Error: Could not initialize libcurl." << std::endl;
         return {};  // Return an empty path on failure
     }
 
@@ -112,14 +110,14 @@ std::filesystem::path speech::utils::downloadFile(const std::string& url, const 
 
     if (!quiet) {
         progressBar->set_progress(100);
-        std::cout << "\nDownload completed: " << finalOutputPath << std::endl;
+        LOG(INFO) << TAG("speech::utils::downloadFile")
+                 << "\nDownload completed: " << finalOutputPath << std::endl;
     }
 
     // Check if the download was successful
     if (res != CURLE_OK) {
-        if (!quiet)
-            std::cerr << "Error: Failed to download file. CURL error: "
-                      << curl_easy_strerror(res) << std::endl;
+        LOG(ERROR) << TAG("speech::utils::downloadFile")  << COND(!quiet)
+                  << "Error: Failed to download file. CURL error: " << curl_easy_strerror(res) << std::endl;
         return {};  // Return an empty path on failure
     }
 

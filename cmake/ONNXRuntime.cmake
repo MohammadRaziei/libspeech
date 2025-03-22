@@ -47,13 +47,13 @@ set(ONNXRUNTIME_DIR "${CMAKE_SOURCE_DIR}/src/third_party/onnxruntime")
 if(EXISTS "${ONNXRUNTIME_DIR}")
     # Check if the required library file exists based on the current OS
     if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
-        set(REQUIRED_LIB_FILE "${ONNXRUNTIME_DIR}/lib/onnxruntime.dll")
+        set(ONNXRUNTIME_LIB_FILE "${ONNXRUNTIME_DIR}/lib/onnxruntime.dll")
     else()
-        set(REQUIRED_LIB_FILE "${ONNXRUNTIME_DIR}/lib/libonnxruntime.so")
+        set(ONNXRUNTIME_LIB_FILE "${ONNXRUNTIME_DIR}/lib/libonnxruntime.so.${onnx_version}")
     endif()
 
     # If the required library file does not exist, remove the directory
-    if(NOT EXISTS "${REQUIRED_LIB_FILE}")
+    if(NOT EXISTS "${ONNXRUNTIME_LIB_FILE}")
         message(STATUS "ONNX Runtime directory exists but the required library file is missing. Removing '${ONNXRUNTIME_DIR}'...")
         file(REMOVE_RECURSE "${ONNXRUNTIME_DIR}")
     endif()
