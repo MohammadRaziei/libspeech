@@ -1,0 +1,40 @@
+name: CPP_BUILD_TEST_DOC
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+     - master
+  release:
+    types:
+      - published
+
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-project:
+    name: Build Project
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Configure the project
+        uses: threeal/cmake-action@v1.3.0
+        with:
+          options: BUILD_PYTHON=on
+
+      - name: Build the project
+        run: cmake --build build
+
+      - name: Test the project
+        run: ctest --test-dir build -V
+
+#      - uses: actions/upload-artifact@v4
+#        with:
+#          path: build/*speech*
