@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://github.com/mohammadraziei/libspeech">
-    <img src="https://github.com/MohammadRaziei/libspeech/raw/master/docs/images/logo/libspeech-logo-1.svg" alt="Logo">
+    <img src="https://github.com/MohammadRaziei/libspeech/raw/master/docs/logo/libspeech-logo.svg" alt="Logo">
   </a>
   <h3 align="center">
 
