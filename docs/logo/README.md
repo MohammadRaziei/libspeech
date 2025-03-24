@@ -14,8 +14,7 @@ The logo is a thoughtfully composed visual identity that uses both an icon and d
 
 ## Icon: The “Lib” Element
 
-<img src="./libspeech-logo-pods.svg" style="clip-path:  polygon(0 0, 36% 0, 36% 100%,0 100%);
-" alt="Logo">
+<!-- <img src="./libspeech-logo-pods.svg" style="clip-path:  polygon(0 0, 36% 0, 36% 100%,0 100%);" alt="Logo"> -->
 
 
 - **Visual Representation:**  
@@ -30,8 +29,7 @@ The logo is a thoughtfully composed visual identity that uses both an icon and d
 
 ## Typography: The “Speech” Element
 
-<img src="./libspeech-logo-pods.svg" style="clip-path:  polygon(37% 0, 100% 0, 100% 100%,37% 100%);
-" alt="Logo">
+<!-- <img src="./libspeech-logo-pods.svg" style="clip-path:  polygon(37% 0, 100% 0, 100% 100%,37% 100%);" alt="Logo"> -->
 
 - **Visual Representation:**  
   The word “speech” is rendered in a flowing, handwritten script that mimics the undulating movement of sound waves. The typography is designed with soft curves and a dynamic flow, giving it a sense of natural motion.
