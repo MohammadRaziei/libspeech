@@ -38,7 +38,7 @@ int main1() {
 
 
 
-int main() {
+int main2() {
     AixLog::Log::init<AixLog::SinkCout>(AixLog::Severity::trace);
     try {
 
@@ -86,8 +86,10 @@ int main() {
 }
 
 
-int main3() {
+int main() {
     try {
+        AixLog::Log::init<AixLog::SinkCout>(AixLog::Severity::trace);
+
         // Define the model URL and base directory.
         std::string model_url = "facebook_denoiser_dns64.onnx";
 
@@ -95,23 +97,23 @@ int main3() {
         FacebookDenoiser denoiser(model_url);
 
         // Prepare input audio data (example: 1 second of silence at 16000 Hz).
-        std::string url = "https://github.com/MohammadRaziei/libspeech/releases/download/resources/alex-noisy.mp3";
+//        std::string url = "https://github.com/MohammadRaziei/libspeech/releases/download/resources/alex-noisy.mp3";
 //        std::string url = "https://github.com/MohammadRaziei/libspeech/releases/download/resources/example-en-biden-xlarge.mp3";
-//        std::string url = "https://github.com/MohammadRaziei/libspeech/releases/download/resources/audio-fa-noisy.mp3";
+        std::string url = "https://github.com/MohammadRaziei/libspeech/releases/download/resources/audio-fa-noisy.mp3";
 
 
         std::filesystem::path fileName = speech::utils::downloadFile(url,
                                      std::filesystem::temp_directory_path(), false, false);
 
         if (fileName.empty()) {
-            std::cerr << "Download failed or file does not exist." << std::endl;
+            LOG(FATAL) << "Download failed or file does not exist." << std::endl;
             return -1;
         }
 
         // Load the audio file
         speech::Audio audio;
         if (!audio.load(fileName)) {
-            std::cerr << "Failed to load audio file." << std::endl;
+            LOG(FATAL) << "Failed to load audio file." << std::endl;
             return -1;
         }
 //        audio.play();
@@ -126,9 +128,9 @@ int main3() {
         denoised_audio.play();
 
         // Print the size of the denoised audio.
-        std::cout << "Denoised audio size: " << denoised_audio.size() << std::endl;
+        LOG(INFO) << "Denoised audio size: " << denoised_audio.size() << std::endl;
     } catch (const std::exception& e) {
-        std::cerr << "Error: " << e.what() << std::endl;
+        LOG(FATAL) << "Error: " << e.what() << std::endl;
     }
 
     return 0;
