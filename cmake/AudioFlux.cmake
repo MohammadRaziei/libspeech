@@ -12,7 +12,7 @@ file(GLOB_RECURSE AUDIOFLUX_SOURCES
 )
 
 # Add a static or shared library for AudioFlux
-add_library(audioflux SHARED ${AUDIOFLUX_SOURCES})
+add_library(audioflux STATIC ${AUDIOFLUX_SOURCES})
 
 # Set include directories for the AudioFlux library
 #target_include_directories(audioflux PUBLIC ${AUDIOFLUX_INCLUDE_DIRS})
@@ -21,7 +21,7 @@ target_include_directories(audioflux
         PRIVATE ${AUDIOFLUX_SOURCE_DIR}/src
 )
 
-target_compile_options(audioflux PRIVATE "-w")
+target_compile_options(audioflux PRIVATE "-w" "-fPIC")
 
 # Export the AudioFlux library for use in other parts of the project
 set(AUDIOFLUX_FOUND TRUE)
