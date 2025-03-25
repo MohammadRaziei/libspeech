@@ -1,0 +1,40 @@
+#ke-build-debug  Ignore compiled files
+*.class
+*.jar
+*.war
+*.ear
+
+# Ignore IDE files
+.idea/
+.vscode/
+*env/
+venv*/
+
+# Ignore build output
+build_*/
+build/
+dist/
+target/
+cmake-build-debug/
+wheelhouse/
+
+# Ignore logs
+logs/
+*.log
+
+# Ignore temporary files
+*.tmp
+*.bak
+
+# Ignore database files
+*.db
+*.sqlite
+
+# Ignore node_modules directory
+node_modules/
+
+tests-old
+__pycache__
+Testing
+.qodo
+.ipynb_checkpoints/
