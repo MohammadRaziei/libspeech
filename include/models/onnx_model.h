@@ -21,13 +21,15 @@ class ONNXModel : public BaseModel {
     Ort::MemoryInfo memory_info;
     Ort::AllocatorWithDefaultOptions allocator;
 
+    std::string input_name, output_name;
+
    public:
     /**
      * Constructor for ONNXModel.
      * @param url The URL of the ONNX model file to download.
      * @param base_dir The base directory where the model will be stored. Defaults to ~/.libspeech.
      */
-    ONNXModel(const std::string& url, const std::filesystem::path& base_dir = std::filesystem::path(getenv("HOME")) / ".libspeech");
+    ONNXModel(const std::string& url, const int sample_rate, const std::filesystem::path& base_dir = std::filesystem::path(getenv("HOME")) / ".libspeech");
 
     /**
      * Destructor for ONNXModel.
@@ -45,6 +47,9 @@ class ONNXModel : public BaseModel {
      * @param intra_threads Number of intra-op threads.
      */
     void init_engine_threads(int inter_threads, int intra_threads);
+
+public:
+    const int sample_rate;
 };
 
 #endif  // LIBSPEECH_ONNX_MODEL_H

@@ -1,30 +1,30 @@
 //
-// Created by mohammad on 3/19/25.
+// Created by mohammad on 3/26/25.
 //
 
-#ifndef LIBSPEECH_FACEBOOK_DENOISER_H
-#define LIBSPEECH_FACEBOOK_DENOISER_H
+#ifndef LIBSPEECH_SPEECHBRAIN_DENOISER_H
+#define LIBSPEECH_SPEECHBRAIN_DENOISER_H
 
 
 #include "models/onnx_model.h"
 #include <vector>
 
 /**
- * FacebookDenoiser class: Inherits from ONNXModel and provides functionality for denoising audio.
+ * SpeechBrainDenoiser class: Inherits from ONNXModel and provides functionality for denoising audio.
  */
-class FacebookDenoiser : public ONNXModel {
-   public:
+class SpeechBrainDenoiser : public ONNXModel {
+public:
     /**
-     * Constructor for FacebookDenoiser.
+     * Constructor for SpeechBrainDenoiser.
      * @param url The URL of the ONNX model file to download.
      * @param base_dir The base directory where the model will be stored.
      */
-    FacebookDenoiser(const std::string& url, const int sample_rate=16000);
+    SpeechBrainDenoiser(const std::string& url, const int sample_rate=8000);
 
     /**
      * Destructor for FacebookDenoiser.
      */
-    virtual ~FacebookDenoiser();
+    virtual ~SpeechBrainDenoiser();
 
     /**
      * Processes an input audio tensor using the denoiser model.
@@ -37,4 +37,5 @@ class FacebookDenoiser : public ONNXModel {
 };
 
 
-#endif  // LIBSPEECH_FACEBOOK_DENOISER_H
+
+#endif //LIBSPEECH_SPEECHBRAIN_DENOISER_H

@@ -55,7 +55,7 @@ class SileroVadModel : public ONNXModel {
    public:
     // Constructor: sets model path, sample rate, window size (ms), and other parameters.
     SileroVadModel(const std::string& model_path = "silero_vad.onnx",
-                   int sample_rate = 16000, int window_frame_size = 32,
+                   const int sample_rate = 16000, int window_frame_size = 32,
                    float threshold = 0.5, int min_silence_duration_ms = 100,
                    int speech_pad_ms = 30, int min_speech_duration_ms = 250,
                    float max_speech_duration_s = std::numeric_limits<float>::infinity());
@@ -69,9 +69,6 @@ class SileroVadModel : public ONNXModel {
     // Public method to reset the internal state.
     void reset();
 
-
-   public:
-    const int sample_rate;
 
 
    private:
@@ -100,9 +97,6 @@ class SileroVadModel : public ONNXModel {
     const int64_t sr_node_dims[1] = { 1 };
     std::vector<Ort::Value> ort_outputs;
     std::vector<const char*> output_node_names = { "output", "stateN" };
-
-    // Memory management for ONNX Runtime
-    Ort::MemoryInfo memory_info;  // Add this line
 
     // Model configuration parameters
     float threshold;
