@@ -17,6 +17,7 @@ class Audio {
     Audio();
     Audio(const Audio& other);
     ~Audio();
+    Audio& operator=(const Audio&);
 
     bool load(const std::filesystem::path& filePath);
     bool load(const std::vector<std::vector<float>>& inputData, int sampleRate);
@@ -31,7 +32,7 @@ class Audio {
 
     [[nodiscard]] std::vector<std::vector<float>> data() const;
     [[nodiscard]] std::vector<float> data(int index) const;
-    [[nodiscard]] int sampleRate() const;
+    [[nodiscard]] int sample_rate() const;
     [[nodiscard]] double duration() const;
     [[nodiscard]] size_t size() const;
 

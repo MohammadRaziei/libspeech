@@ -380,7 +380,7 @@ std::vector<std::vector<float>> speech::Audio::data() const {
 }
 
 // **Get Sample Rate**
-int speech::Audio::sampleRate() const {
+int speech::Audio::sample_rate() const {
     return pImpl->sampleRate;
 }
 
@@ -427,4 +427,13 @@ std::vector<float> speech::Audio::data(int index) const {
 }
 size_t speech::Audio::size() const {
     return pImpl->channels > 0 ? this->data(0).size() : 0;
+}
+
+speech::Audio &speech::Audio::operator=(const speech::Audio &other) {
+    pImpl.reset();
+    pImpl = std::make_unique<AudioImpl>();
+    pImpl->audioData = other.pImpl->audioData;
+    pImpl->sampleRate = other.pImpl->sampleRate;
+    pImpl->channels = other.pImpl->channels;
+    return *this;
 }
