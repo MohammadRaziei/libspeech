@@ -19,7 +19,7 @@ public:
      * @param url The URL of the ONNX model file to download.
      * @param base_dir The base directory where the model will be stored.
      */
-    SpeechBrainDenoiser(const std::string& url, const int sample_rate=8000);
+    SpeechBrainDenoiser(const std::string& url, const int sample_rate=16000);
 
     /**
      * Destructor for FacebookDenoiser.

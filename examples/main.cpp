@@ -95,9 +95,9 @@ int main5() {
 
 
         // Prepare input audio data (example: 1 second of silence at 16000 Hz).
-        std::string url = "https://github.com/MohammadRaziei/libspeech/releases/download/resources/alex-noisy.mp3";
+//        std::string url = "https://github.com/MohammadRaziei/libspeech/releases/download/resources/alex-noisy.mp3";
 //        std::string url = "https://github.com/MohammadRaziei/libspeech/releases/download/resources/example-en-biden-xlarge.mp3";
-//        std::string url = "https://github.com/MohammadRaziei/libspeech/releases/download/resources/audio-fa-noisy.mp3";
+        std::string url = "https://github.com/MohammadRaziei/libspeech/releases/download/resources/audio-fa-noisy.mp3";
 
 
         std::filesystem::path fileName = speech::utils::downloadFile(url,
@@ -116,16 +116,21 @@ int main5() {
         }
 //        audio.play();
 
-        std::string model_url = "speechbrain-sepformer-wham-enhancement.onnx";
 
-        SpeechBrainDenoiser denoiser(model_url);
+
+        SpeechBrainDenoiser denoiser("speechbrain-sepformer-wham16k-enhancement.onnx", 16000);
 
         auto audio_process = audio.to_mono().resample(denoiser.sample_rate);
+        auto process_data = audio_process.data(0);
+        process_data.resize(denoiser.sample_rate * 32);
+
+//        audio_process.play();
 
         // Process the audio.
-        std::vector<float> denoised_audio_data = denoiser.process(audio_process.data(0));
+        std::vector<float> denoised_audio_data = denoiser.process(process_data);
 
         audio_process.load({denoised_audio_data}, denoiser.sample_rate);
+        audio_process = audio_process.resample(audio.sample_rate());
         // Print the size of the denoised audio.
         LOG(INFO) << "Denoised audio size: " << audio_process.size() << std::endl;
         audio_process.play();
@@ -244,7 +249,7 @@ int main() {
         }
 //        audio.play();
 
-        std::string model_url = "facebook_denoiser_dns64.onnx";
+        std::string model_url = "facebook-denoiser-dns64.onnx";
 
         FacebookDenoiser denoiser(model_url);
 
