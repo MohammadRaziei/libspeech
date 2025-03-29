@@ -1,5 +1,5 @@
 module.exports = {
-  output: 'export',
+  // output: 'export',
   publicRuntimeConfig: {
     site: {
       name: 'Next.js + Tailwind CSS template',
