@@ -1,67 +1,38 @@
 {
-  "name": "ts-nextjs-tailwind-starter",
-  "version": "0.1.0",
-  "private": true,
+  "name": "nextjs-tailwindcss-template",
+  "description": "Next.js starter template with Tailwind CSS.",
+  "version": "0.0.0",
+  "author": {
+    "name": "Noel Earvin Piamonte",
+    "email": "earvin.piamonte@gmail.com",
+    "url": "https://earvinpiamonte.com"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/earvinpiamonte/nextjs-tailwindcss-template.git"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
-    "lint:fix": "eslint src --fix && pnpm format",
-    "lint:strict": "eslint --max-warnings=0 src",
-    "typecheck": "tsc --noEmit --incremental false",
-    "test:watch": "jest --watch",
-    "test": "jest",
-    "format": "prettier -w .",
-    "format:check": "prettier -c .",
-    "postbuild": "next-sitemap --config next-sitemap.config.js",
-    "prepare": "husky install"
+    "lint": "next lint"
   },
   "dependencies": {
-    "clsx": "^2.0.0",
-    "lucide-react": "^0.438.0",
-    "next": "^14.2.23",
+    "@tailwindcss/forms": "^0.5.0",
+    "@tailwindcss/typography": "^0.5.2",
+    "eslint-config-next": "^13.1.1",
+    "next": "^13.1.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-icons": "^5.4.0",
-    "tailwind-merge": "^2.6.0",
-    "zod": "^3.24.1"
+    "react-icons": "^5.5.0"
   },
   "devDependencies": {
-    "@commitlint/cli": "^16.3.0",
-    "@commitlint/config-conventional": "^16.2.4",
-    "@svgr/webpack": "^8.1.0",
-    "@tailwindcss/forms": "^0.5.10",
-    "@testing-library/jest-dom": "^5.17.0",
-    "@testing-library/react": "^15.0.7",
-    "@types/react": "^18.3.18",
-    "@types/testing-library__jest-dom": "^5.14.9",
-    "@typescript-eslint/eslint-plugin": "^5.62.0",
-    "@typescript-eslint/parser": "^5.62.0",
-    "autoprefixer": "^10.4.20",
-    "eslint": "^8.57.1",
-    "eslint-config-next": "^14.2.23",
-    "eslint-config-prettier": "^8.10.0",
-    "eslint-plugin-simple-import-sort": "^7.0.0",
-    "eslint-plugin-unused-imports": "^2.0.0",
-    "husky": "^7.0.4",
-    "jest": "^27.5.1",
-    "lint-staged": "^12.5.0",
-    "next-router-mock": "^0.9.0",
-    "next-sitemap": "^2.5.28",
-    "prettier": "^2.8.8",
-    "prettier-plugin-tailwindcss": "^0.5.0",
-    "typescript": "^4.9.5",
-    "tailwindcss": "^3.3.0",
-    "postcss": "^8.4.0"
-  },
-  "lint-staged": {
-    "**/*.{js,jsx,ts,tsx}": [
-      "eslint --max-warnings=0",
-      "prettier -w"
-    ],
-    "**/*.{json,css,scss,md,webmanifest}": [
-      "prettier -w"
-    ]
+    "@types/node": "^14.17.4",
+    "@types/react": "^17.0.2",
+    "autoprefixer": "^10.4.4",
+    "postcss": "^8.4.12",
+    "tailwindcss": "^3.0.24",
+    "typescript": "^4.3.4"
   }
 }

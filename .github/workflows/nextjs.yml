@@ -7,7 +7,7 @@ name: Deploy Next.js site to Pages
 on:
   # Runs on pushes targeting the default branch
   push:
-    branches: ["doc"]
+    branches: ["docs"]
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
@@ -54,12 +54,12 @@ jobs:
           cache: ${{ steps.detect-package-manager.outputs.manager }}
       - name: Setup Pages
         uses: actions/configure-pages@v3
-        # with:
+        with:
           # Automatically inject basePath in your Next.js configuration file and disable
           # server side image optimization (https://nextjs.org/docs/api-reference/next/image#unoptimized).
           #
           # You may remove this line if you want to manage the configuration yourself.
-          # static_site_generator: next
+          static_site_generator: next
       - name: Restore cache
         uses: actions/cache@v3
         with:
@@ -78,10 +78,10 @@ jobs:
         run: ${{ steps.detect-package-manager.outputs.manager }} ${{ steps.detect-package-manager.outputs.command }} -f
       - name: Build with Next.js
         run: ${{ steps.detect-package-manager.outputs.runner }} build
-      # - name: Static HTML export with Next.js
-        # run: ${{ steps.detect-package-manager.outputs.runner }} export
+      - name: Static HTML export with Next.js
+        run: ${{ steps.detect-package-manager.outputs.runner }} export
       - name: Beautifier - tidy format output html
-        run: |
+        run: |master
           sudo apt-get install tidy -qq -y 1> /dev/null
           find ./out -name "*.html" -exec sh -c 'echo "Processing {} ..."; tidy -config .tidy.conf -o {} {}; cat _header.html {} > {}.tmp && mv {}.tmp {}' \;
       - name: Preview deploy files

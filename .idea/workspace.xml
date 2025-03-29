@@ -1,0 +1,169 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="ae5e9290-f3bf-4746-b110-3589ad952111" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/.eslintrc.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.github/FUNDING.yml" beforeDir="false" afterPath="$PROJECT_DIR$/.github/FUNDING.yml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.github/issue-branch.yml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.github/pull_request_template.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.github/workflows/create-branch.yml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.github/workflows/issue-autolink.yml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.github/workflows/nextjs.yml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.github/workflows/release-please.yml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.husky/commit-msg" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.husky/post-merge" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.husky/pre-commit" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/.gitignore" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/inspectionProfiles/Project_Default.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/libspeech-doc.iml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/material_theme_project_new.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/modules.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/prettier.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/vcs.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.npmrc" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.nvmrc" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.prettierignore" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.prettierrc.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.vscode/css.code-snippets" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.vscode/extensions.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.vscode/settings.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.vscode/typescriptreact.code-snippets" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/CHANGELOG.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/__mocks__/svg.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/__tests__/pages/HomePage.test.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/api/hello/route.ts" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/components/layout.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/components/page.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/error.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/layout.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/not-found.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/page.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/commitlint.config.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/NextImage.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/Skeleton.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/buttons/Button.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/buttons/IconButton.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/buttons/TextButton.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/links/ArrowLink.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/links/ButtonLink.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/links/IconLink.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/links/PrimaryLink.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/links/UnderlineLink.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/links/UnstyledLink.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/constant/config.ts" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/jest.config.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/jest.setup.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/__tests__/og.test.ts" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/helper.ts" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/logger.ts" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/og.ts" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/utils.ts" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/next-sitemap.config.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/next.config.js" beforeDir="false" afterPath="$PROJECT_DIR$/next.config.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/pnpm-lock.yaml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/postcss.config.js" beforeDir="false" afterPath="$PROJECT_DIR$/postcss.config.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/favicon.ico" beforeDir="false" afterPath="$PROJECT_DIR$/public/favicon.ico" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/favicon/favicon-16x16.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/favicon/favicon-32x32.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/favicon/favicon.ico" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/favicon/site.webmanifest" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/fonts/inter-var-latin.woff2" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/images/new-tab.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/images/og.jpg" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/svg/Logo.svg" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/svg/Vercel.svg" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/__mocks__/svg.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/__tests__/pages/HomePage.test.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/app/api/hello/route.ts" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/app/components/layout.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/app/components/page.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/app/error.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/app/layout.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/app/not-found.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/app/page.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/components/NextImage.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/components/Skeleton.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/components/buttons/Button.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/components/buttons/IconButton.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/components/buttons/TextButton.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/components/links/ArrowLink.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/components/links/ButtonLink.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/components/links/IconLink.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/components/links/PrimaryLink.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/components/links/UnderlineLink.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/components/links/UnstyledLink.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/constant/config.ts" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/lib/__tests__/og.test.ts" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/lib/helper.ts" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/lib/logger.ts" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/lib/og.ts" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/lib/utils.ts" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/styles/colors.css" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/styles/globals.css" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/styles/colors.css" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/styles/globals.css" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/tailwind.config.ts" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/tsconfig.json" beforeDir="false" afterPath="$PROJECT_DIR$/tsconfig.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/vercel.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/yarn.lock" beforeDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="ProjectColorInfo">{
+  &quot;customColor&quot;: &quot;&quot;,
+  &quot;associatedIndex&quot;: 1
+}</component>
+  <component name="ProjectId" id="2uzNkD0g9uuBafjKJQTMjb2Kz7b" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "dart.analysis.tool.window.visible": "false",
+    "git-widget-placeholder": "doc",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "nodejs_package_manager_path": "yarn",
+    "ts.external.directory.path": "/mnt/windowsD/Projects/libspeech-doc/node_modules/typescript/lib",
+    "vue.rearranger.settings.migration": "true"
+  }
+}]]></component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-js-predefined-d6986cc7102b-76f8388c3a79-JavaScript-WS-243.24978.60" />
+      </set>
+    </attachedChunks>
+  </component>
+  <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="ae5e9290-f3bf-4746-b110-3589ad952111" name="Changes" comment="" />
+      <created>1743247584727</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1743247584727</updated>
+      <workItem from="1743247587641" duration="2191000" />
+    </task>
+    <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
+  </component>
+</project>
