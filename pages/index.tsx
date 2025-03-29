@@ -10,8 +10,8 @@ import {
   faUser,
   faLayerGroup,
   faCode,
-  faGithub
 } from '@fortawesome/free-solid-svg-icons';
+import { faGithub } from '@fortawesome/free-brands-svg-icons';
 
 // Features Section with proper typing
 const FeatureCard = ({ icon, title, description }: {
