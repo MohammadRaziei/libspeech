@@ -1,31 +1,17 @@
-// import getConfig from 'next/config';
-
-import Layout from '@/components/Layout';
 import Head from 'next/head';
 import * as React from 'react';
 import Link from 'next/link';
-import { FiCpu, FiMic, FiActivity, FiVolume2, FiUser, FiLayers, FiCode, FiGithub } from 'react-icons/fi';
-
-
-
-// const { publicRuntimeConfig } = getConfig();
-// const { name } = publicRuntimeConfig.site;
-
-
-
-
-
-/**
- * SVGR Support
- * Caveat: No React Props Type.
- *
- * You can override the next-env if the type is important to you
- * @see https://stackoverflow.com/questions/68103844/how-to-override-next-js-svg-module-declaration
- */
-
-// !STARTERCONF -> Select !STARTERCONF and CMD + SHIFT + F
-// Before you begin editing, follow all comments with `STARTERCONF`,
-// to customize the default configuration.
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import {
+  faMicrochip,
+  faMicrophone,
+  faWaveSquare,
+  faVolumeUp,
+  faUser,
+  faLayerGroup,
+  faCode,
+  faGithub
+} from '@fortawesome/free-solid-svg-icons';
 
 // Features Section with proper typing
 const FeatureCard = ({ icon, title, description }: {
@@ -51,32 +37,32 @@ const FeatureCard = ({ icon, title, description }: {
 const FeaturesSection = () => {
   const features = [
     {
-      icon: <FiCpu className="text-indigo-600 text-3xl" />,
+      icon: <FontAwesomeIcon icon={faMicrochip} className="text-indigo-600 text-3xl" />,
       title: "ONNX Runtime Powered",
       description: "Lightweight AI inference without heavy LibTorch dependency"
     },
     {
-      icon: <FiMic className="text-indigo-600 text-3xl" />,
+      icon: <FontAwesomeIcon icon={faMicrophone} className="text-indigo-600 text-3xl" />,
       title: "Advanced Audio I/O",
       description: "Multi-format support with ultra-low latency processing"
     },
     {
-      icon: <FiActivity className="text-indigo-600 text-3xl" />,
+      icon: <FontAwesomeIcon icon={faWaveSquare} className="text-indigo-600 text-3xl" />,
       title: "Feature Extraction",
       description: "MFCC, Spectrogram, and 20+ audio features extracted in real-time"
     },
     {
-      icon: <FiVolume2 className="text-indigo-600 text-3xl" />,
+      icon: <FontAwesomeIcon icon={faVolumeUp} className="text-indigo-600 text-3xl" />,
       title: "Intelligent Noise Reduction",
       description: "AI-powered background noise suppression"
     },
     {
-      icon: <FiUser className="text-indigo-600 text-3xl" />,
+      icon: <FontAwesomeIcon icon={faUser} className="text-indigo-600 text-3xl" />,
       title: "Voice Activity Detection",
       description: "Precision speech segmentation with 95%+ accuracy"
     },
     {
-      icon: <FiLayers className="text-indigo-600 text-3xl" />,
+      icon: <FontAwesomeIcon icon={faLayerGroup} className="text-indigo-600 text-3xl" />,
       title: "Cross-Platform",
       description: "Seamless performance across Windows, Linux & macOS"
     }
@@ -128,26 +114,24 @@ export default function LibSpeechDocumentation() {
               No heavy dependencies like LibTorch required.
             </p>
 
-
-
             <div className="mt-8 flex flex-wrap justify-center gap-4">
               {[
                 {
                   href: "cpp",
                   label: "C++ Documentation",
-                  icon: <FiCode />,
+                  icon: <FontAwesomeIcon icon={faCode} />,
                   className: "bg-blue-600 hover:bg-blue-700"
                 },
                 {
                   href: "python",
                   label: "Python Bindings",
-                  icon: <FiCode />,
+                  icon: <FontAwesomeIcon icon={faCode} />,
                   className: "bg-green-600 hover:bg-green-700"
                 },
                 {
                   href: "https://github.com/MohammadRaziei/libspeech",
                   label: "GitHub Repository",
-                  icon: <FiGithub />,
+                  icon: <FontAwesomeIcon icon={faGithub} />,
                   className: "bg-gray-800 hover:bg-gray-900",
                   external: true
                 }
@@ -177,22 +161,7 @@ export default function LibSpeechDocumentation() {
             </div>
           </div>
 
-
-
-
-
-
           <FeaturesSection />
-
-
-
-
-
-
-
-
-
-
 
           {/* Quick Start Section */}
           <div className="mt-16 w-full max-w-4xl  p-8 rounded-xl shadow-sm">
