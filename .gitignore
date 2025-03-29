@@ -42,6 +42,6 @@ robots.txt
 sitemap.xml
 sitemap-*.xml
 # *lock*
-*.lock
+# *.lock
 #*-lock.*
 .qodo
