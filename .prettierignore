@@ -9,6 +9,7 @@
 /coverage
 
 # next.js
+.next
 /.next/
 /out/
 
@@ -26,21 +27,15 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # local env files
-.env
-.env*.local
-*env.*
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 
 # vercel
 .vercel
 
-# typescript
-*.tsbuildinfo
-next-env.d.ts
+# changelog
+CHANGELOG.md
 
-# next-sitemap
-robots.txt
-sitemap.xml
-sitemap-*.xml
-# *lock*
-*.lock
-*-lock.*
+pnpm-lock.yaml
