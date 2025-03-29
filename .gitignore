@@ -44,3 +44,4 @@ sitemap-*.xml
 # *lock*
 *.lock
 #*-lock.*
+.qodo
