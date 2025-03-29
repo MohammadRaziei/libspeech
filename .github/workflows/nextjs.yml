@@ -81,7 +81,7 @@ jobs:
       - name: Static HTML export with Next.js
         run: ${{ steps.detect-package-manager.outputs.runner }} export
       - name: Beautifier - tidy format output html
-        run: |master
+        run: |
           sudo apt-get install tidy -qq -y 1> /dev/null
           find ./out -name "*.html" -exec sh -c 'echo "Processing {} ..."; tidy -config .tidy.conf -o {} {}; cat _header.html {} > {}.tmp && mv {}.tmp {}' \;
       - name: Preview deploy files
