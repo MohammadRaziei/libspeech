@@ -25,7 +25,7 @@ export default function LibSpeechDocumentation() {
                 className="flex items-center gap-2 hover:underline"
             >
               <img
-                  src="/images/arman-logo.svg"
+                  src="images/arman-logo.svg"
                   alt="Arman Tech Hub"
                   className="h-8"
               />
