@@ -2,91 +2,9 @@ import Head from 'next/head';
 import * as React from 'react';
 import Link from 'next/link';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import {
-  faMicrochip,
-  faMicrophone,
-  faWaveSquare,
-  faVolumeUp,
-  faUser,
-  faLayerGroup,
-  faCode,
-} from '@fortawesome/free-solid-svg-icons';
+import { faCode, faTrophy, faLightbulb } from '@fortawesome/free-solid-svg-icons';
 import { faGithub } from '@fortawesome/free-brands-svg-icons';
-
-// Features Section with proper typing
-const FeatureCard = ({ icon, title, description }: {
-  icon: React.ReactNode;
-  title: string;
-  description: string;
-}) => (
-    <div className="group bg-white p-8 rounded-2xl border border-gray-100 hover:border-indigo-100 transition-all duration-300 hover:shadow-lg">
-      <div className="flex items-start gap-4 mb-4">
-        <div className="p-3 bg-indigo-50 rounded-lg group-hover:bg-indigo-100 transition-colors">
-          {icon}
-        </div>
-        <h3 className="text-xl font-semibold text-gray-900 mt-1">
-          {title}
-        </h3>
-      </div>
-      <p className="text-gray-600 pl-[60px]">
-        {description}
-      </p>
-    </div>
-);
-
-const FeaturesSection = () => {
-  const features = [
-    {
-      icon: <FontAwesomeIcon icon={faMicrochip} className="text-indigo-600 text-3xl" />,
-      title: "ONNX Runtime Powered",
-      description: "Lightweight AI inference without heavy LibTorch dependency"
-    },
-    {
-      icon: <FontAwesomeIcon icon={faMicrophone} className="text-indigo-600 text-3xl" />,
-      title: "Advanced Audio I/O",
-      description: "Multi-format support with ultra-low latency processing"
-    },
-    {
-      icon: <FontAwesomeIcon icon={faWaveSquare} className="text-indigo-600 text-3xl" />,
-      title: "Feature Extraction",
-      description: "MFCC, Spectrogram, and 20+ audio features extracted in real-time"
-    },
-    {
-      icon: <FontAwesomeIcon icon={faVolumeUp} className="text-indigo-600 text-3xl" />,
-      title: "Intelligent Noise Reduction",
-      description: "AI-powered background noise suppression"
-    },
-    {
-      icon: <FontAwesomeIcon icon={faUser} className="text-indigo-600 text-3xl" />,
-      title: "Voice Activity Detection",
-      description: "Precision speech segmentation with 95%+ accuracy"
-    },
-    {
-      icon: <FontAwesomeIcon icon={faLayerGroup} className="text-indigo-600 text-3xl" />,
-      title: "Cross-Platform",
-      description: "Seamless performance across Windows, Linux & macOS"
-    }
-  ];
-
-  return (
-      <div style={{"marginTop":70}} className="w-full max-w-5xl">
-        <div className="text-center mb-12">
-          <h2 className="text-3xl font-bold text-gray-900 mb-3">
-            Powerful Features
-          </h2>
-          <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-            Engineered for high-performance speech processing with minimal dependencies
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {features.map((feature, index) => (
-              <FeatureCard key={index} {...feature} />
-          ))}
-        </div>
-      </div>
-  );
-};
+import FeaturesSection from '../components/FeaturesSection';
 
 export default function LibSpeechDocumentation() {
   return (
@@ -96,8 +14,28 @@ export default function LibSpeechDocumentation() {
           <meta name="description" content="Lightweight C++ library for speech processing powered by ONNX Runtime" />
         </Head>
 
+        {/* Sponsor Section - Added at the top */}
+        <div className="bg-indigo-50 py-4">
+          <div className="layout mx-auto px-4 flex flex-col md:flex-row items-center justify-center gap-4">
+            <p className="text-sm text-gray-600">Proudly developed by talented engineers at</p>
+            <a
+                href="http://armantechhub.ir/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 hover:underline"
+            >
+              <img
+                  src="/images/arman-logo.svg"
+                  alt="Arman Tech Hub"
+                  className="h-8"
+              />
+              <span className="font-semibold text-indigo-700">Arman Tech Hub</span>
+            </a>
+          </div>
+        </div>
+
         <section className="layout relative flex min-h-screen flex-col items-center py-12">
-          <div className="flex flex-col items-center text-center">
+          <div className="flex flex-col items-center text-center w-full max-w-4xl">
             <img
                 width={200}
                 src="https://raw.githubusercontent.com/MohammadRaziei/libspeech/master/docs/logo/libspeech-logo-pods.svg"
@@ -109,10 +47,32 @@ export default function LibSpeechDocumentation() {
               LibSpeech
             </h1>
 
-            <p className="mt-4 max-w-2xl text-lg text-gray-600">
+            <p className="mt-4 text-lg text-gray-600">
               A lightweight, high-performance C++ library for speech processing powered by ONNX Runtime.
               No heavy dependencies like LibTorch required.
             </p>
+
+            {/* Achievement Highlights */}
+            <div className="mt-8 bg-white p-6 rounded-xl shadow-sm border border-gray-100 w-full max-w-3xl">
+              <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                <FontAwesomeIcon icon={faTrophy} className="text-yellow-500" />
+                Arman Tech Hub Achievements
+              </h3>
+              <ul className="grid grid-cols-1 md:grid-cols-2 gap-4 text-left">
+                {[
+                  "Developed cutting-edge AI solutions for Persian language processing",
+                  "Pioneers in lightweight, efficient speech technology",
+                  "Recipients of multiple national innovation awards",
+                  "Home to Iran's top young engineering talent",
+                  "Specialists in edge computing and optimized AI deployment"
+                ].map((item, index) => (
+                    <li key={index} className="flex items-start gap-2">
+                      <FontAwesomeIcon icon={faLightbulb} className="text-indigo-500 mt-1 flex-shrink-0" />
+                      <span className="text-gray-700">{item}</span>
+                    </li>
+                ))}
+              </ul>
+            </div>
 
             <div className="mt-8 flex flex-wrap justify-center gap-4">
               {[
@@ -124,7 +84,7 @@ export default function LibSpeechDocumentation() {
                 },
                 {
                   href: "python",
-                  label: "Python Bindings",
+                  label: "Python Documentation",
                   icon: <FontAwesomeIcon icon={faCode} />,
                   className: "bg-green-600 hover:bg-green-700"
                 },
@@ -164,11 +124,10 @@ export default function LibSpeechDocumentation() {
           <FeaturesSection />
 
           {/* Quick Start Section */}
-          <div className="mt-16 w-full max-w-4xl  p-8 rounded-xl shadow-sm">
+          <div className="mt-16 w-full max-w-4xl p-8 rounded-xl shadow-sm">
             <h2 className="text-2xl font-semibold text-gray-800 mb-6">
               Quick Start
             </h2>
-
             <div className="space-y-6">
               <div>
                 <h3 className="font-medium text-gray-800 mb-2">C++ Installation</h3>
@@ -185,7 +144,6 @@ make install`}
                 </code>
               </pre>
               </div>
-
               <div>
                 <h3 className="font-medium text-gray-800 mb-2">Python Installation</h3>
                 <pre className="bg-gray-100 p-4 rounded-md overflow-x-auto">
@@ -204,7 +162,7 @@ pip install git+https://github.com/MohammadRaziei/libspeech.git`}
           <footer className="mt-auto pt-12 text-center text-gray-500 text-sm">
             <p>© {new Date().getFullYear()} LibSpeech. All rights reserved.</p>
             <p className="mt-1">
-              Created by <a href="https://github.com/MohammadRaziei" className="text-blue-600 hover:underline">Mohammad Raziei</a>
+              Created by <a href="https://github.com/MohammadRaziei" className="text-blue-600 hover:underline">Mohammad Raziei</a> and the talented team at <a href="http://armantechhub.ir/" className="text-indigo-600 hover:underline">Arman Tech Hub</a>
             </p>
           </footer>
         </section>
