@@ -83,11 +83,6 @@ We welcome contributions! Please see our [Contribution Guidelines](CONTRIBUTING.
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 🌟 Sponsors
-
-Developed with ❤️ by the talented engineers at  
-[<img src="https://mohammadraziei.github.io/libspeech/images/arman-logo.svg" alt="Arman Tech Hub" width="100">](http://armantechhub.ir/)
-
 [![Stars](https://starchart.cc/mohammadraziei/libspeech.svg?variant=adaptive)](https://starchart.cc/mohammadraziei/libspeech)
 
 
