@@ -10,8 +10,10 @@ of Python-binding-focused code we don't need. Only the specific C files
 required by `speech::dsp::*` wrappers are copied here, one DSP operator at a
 time, as each is ported and test-covered.
 
-**What's here right now:** just what `speech::dsp::Resample` needs —
-resampling, FIR filter design, windowing, vector/complex ops, wave utils.
+**What's here right now:** resampling, FIR filter design, windowing,
+vector/complex ops, wave utils (for `speech::dsp::Resample` and
+`speech::dsp::window`), plus the FFT/IFFT/DCT/IDCT engine (for
+`speech::dsp::FFT`).
 
 **Modifications:** any change made to this code vs. the original upstream
 source is recorded in `/audioflux_issues.md` (project root), so it can be

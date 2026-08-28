@@ -172,6 +172,75 @@ warn about the amplitude implication) rather than a bug report.
 
 ---
 
+## Issue 3 — `fftObj_idct()` mutates its input array in place
+
+- **Severity:** API footgun (not a crash or wrong result, but silently
+  modifies data the caller may still expect to read afterward)
+- **File:** `src/dsp/fft_algorithm.c`
+- **Function:** `fftObj_idct`
+- **Status:** ⚠️ Not patched upstream (the in-place scaling is presumably an
+  intentional micro-optimization) — worked around in our C++ wrapper by
+  copying the input before calling into AudioFlux.
+
+### The behavior
+
+```c
+void fftObj_idct(FFTObj fftObj,float *dataArr1,float *dataArr2,int isNorm){
+    ...
+    if(isNorm){
+        dataArr1[0]/=fftObj->s0;
+        for(int i=1;i<length;i++){
+            dataArr1[i]/=fftObj->s1;
+        }
+    }
+
+    dataArr1[0]/=2;
+    for(int i=0;i<length;i++){
+        dataArr1[i]/=fftObj->wLength;
+        _realArr1[i]=dataArr1[i]*wCosArr1[i];
+        _imageArr1[i]=dataArr1[i]*wSinArr1[i];
+    }
+    ...
+}
+```
+
+`dataArr1` (the DCT coefficients being inverted) is divided in place by
+`s0`/`s1`/`wLength` as part of the computation. Every other AudioFlux
+function we vendor so far (`fftObj_fft`, `fftObj_ifft`, `resampleObj_resample`)
+copies its input into an internal buffer first and leaves the caller's array
+untouched — `fftObj_idct` is the one exception, and it's easy to miss because
+nothing in the function name or signature suggests input mutation.
+
+### How it was found
+
+Not a failing test at first — noticed while writing
+`FFT.DctIdctRoundTrip` and reasoning about what `idct()`'s contract should
+be, then added a dedicated regression test (`FFT.IdctDoesNotMutateInput`)
+before implementing the fix, to lock in the correct behavior going forward.
+
+### The fix (in our wrapper, not upstream AudioFlux)
+
+`speech::dsp::FFT::idct()` copies its input into a local `std::vector`
+before calling `fftObj_idct()`, so `speech::dsp::FFT`'s public contract is
+"never mutates arguments," full stop — callers don't need to know which
+AudioFlux functions happen to mutate their C arrays internally.
+
+```cpp
+// src/dsp/fft.cpp
+std::vector<float> inputCopy = data;
+fftObj_idct(fftObj_, inputCopy.data(), output.data(), isNorm ? 1 : 0);
+```
+
+### Why this isn't filed as an upstream bug
+
+The result is correct if you know to discard/not rely on `dataArr1` after
+the call -- this is arguably fine for a low-level C API where the caller
+owns and expects to manage buffer lifetimes explicitly. If filed upstream,
+it would be a documentation request (note the in-place mutation in the
+function's comment/header) rather than a bug report.
+
+---
+
 ## How to add a new entry
 
 When porting another DSP operator (FFT, DCT, filterbank, ...) and you find
