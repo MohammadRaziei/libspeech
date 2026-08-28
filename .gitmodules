@@ -10,7 +10,3 @@
 	path = src/third_party/indicators
 	url = https://github.com/p-ranav/indicators
 
-[submodule "src/third_party/audioflux"]
-	path = src/third_party/audioflux
-	url = https://github.com/libAudioFlux/audioflux.git
-
