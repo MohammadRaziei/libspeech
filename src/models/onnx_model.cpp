@@ -2,7 +2,7 @@
 // Created by mohammad on 3/16/25.
 //
 
-#include "models/onnx_model.h"
+#include "libspeech/models/onnx_model.h"
 #include <stdexcept>
 
 /**

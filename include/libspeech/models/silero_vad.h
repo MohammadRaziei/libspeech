@@ -5,12 +5,12 @@
 #ifndef LIBSPEECH_SILERO_VAD_H
 #define LIBSPEECH_SILERO_VAD_H
 
-#include "models/onnx_model.h"
+#include "libspeech/models/onnx_model.h"
 
 #include <vector>
 #include <cmath>
 
-#include "utils/utils.h"
+#include "libspeech/utils/utils.h"
 
 // Forward declaration of timestamp_t class
 class timestamp_t {

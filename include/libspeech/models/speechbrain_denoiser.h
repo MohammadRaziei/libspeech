@@ -6,13 +6,14 @@
 #define LIBSPEECH_SPEECHBRAIN_DENOISER_H
 
 
-#include "models/onnx_model.h"
+#include "libspeech/models/onnx_model.h"
+#include "libspeech/models/denoiser.h"
 #include <vector>
 
 /**
  * SpeechBrainDenoiser class: Inherits from ONNXModel and provides functionality for denoising audio.
  */
-class SpeechBrainDenoiser : public ONNXModel {
+class SpeechBrainDenoiser : public ONNXModel, public Denoiser {
 public:
     /**
      * Constructor for SpeechBrainDenoiser.
@@ -32,7 +33,7 @@ public:
      * @param sample_rate The sample rate of the input audio (e.g., 16000 Hz).
      * @return A vector of floats representing the denoised audio.
      */
-    std::vector<float> process(const std::vector<float>& input_audio);
+    std::vector<float> process(const std::vector<float>& input_audio) override;
 
 };
 

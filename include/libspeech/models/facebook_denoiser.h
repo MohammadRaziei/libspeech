@@ -6,13 +6,14 @@
 #define LIBSPEECH_FACEBOOK_DENOISER_H
 
 
-#include "models/onnx_model.h"
+#include "libspeech/models/onnx_model.h"
+#include "libspeech/models/denoiser.h"
 #include <vector>
 
 /**
  * FacebookDenoiser class: Inherits from ONNXModel and provides functionality for denoising audio.
  */
-class FacebookDenoiser : public ONNXModel {
+class FacebookDenoiser : public ONNXModel, public Denoiser {
    public:
     /**
      * Constructor for FacebookDenoiser.
@@ -32,7 +33,7 @@ class FacebookDenoiser : public ONNXModel {
      * @param sample_rate The sample rate of the input audio (e.g., 16000 Hz).
      * @return A vector of floats representing the denoised audio.
      */
-    std::vector<float> process(const std::vector<float>& input_audio);
+    std::vector<float> process(const std::vector<float>& input_audio) override;
 
 };
 

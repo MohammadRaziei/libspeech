@@ -1,6 +1,6 @@
-#include "models/base_model.h"
+#include "libspeech/models/base_model.h"
 #include <stdexcept>
-#include "utils/utils.h"
+#include "libspeech/utils/utils.h"
 #include "aixlog.hpp"
 
 BaseModel::BaseModel(const std::string& url, const std::filesystem::path& base_dir)

@@ -1,12 +1,12 @@
-#include "audio.h"           // For speech::Audio
+#include "libspeech/audio.h"           // For speech::Audio
 #include <iostream>
 
-#include "models/silero_vad.h" // Include the SileroVAD model header
-#include "utils/utils.h"           // For downloadFile utility
+#include "libspeech/models/silero_vad.h" // Include the SileroVAD model header
+#include "libspeech/utils/utils.h"           // For downloadFile utility
 
-#include "models/facebook_denoiser.h"
-#include "models/speechbrain_denoiser.h"
-#include "dsp/resample.h"
+#include "libspeech/models/facebook_denoiser.h"
+#include "libspeech/models/speechbrain_denoiser.h"
+#include "libspeech/dsp/resample.h"
 
 #include <aixlog.hpp>
 
@@ -14,7 +14,7 @@
 int main0() {
     try {
         // Create a Resample object with default settings
-        Resample resampler(44100, 16000); // Resample from 44.1kHz to 16kHz
+        speech::dsp::Resample resampler(44100, 16000); // Resample from 44.1kHz to 16kHz
 
         // Input audio data (example)
         std::vector<float> inputData = {0.0, 0.5, 1.0, 0.5, 0.0, -0.5, -1.0, -0.5};
@@ -146,7 +146,7 @@ int main5() {
 int main1() {
     try {
         // Create a Resample object with default settings
-        Resample resampler(44100, 16000); // Resample from 44.1kHz to 16kHz
+        speech::dsp::Resample resampler(44100, 16000); // Resample from 44.1kHz to 16kHz
 
         // Input audio data (example)
         std::vector<float> inputData = {0.0, 0.5, 1.0, 0.5, 0.0, -0.5, -1.0, -0.5};

@@ -2,7 +2,7 @@
 // Created by mohammad on 3/19/25.
 //
 
-#include "models/facebook_denoiser.h"
+#include "libspeech/models/facebook_denoiser.h"
 
 
 /**

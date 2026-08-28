@@ -5,7 +5,7 @@
 #include <filesystem>
 #include <string>
 
-#include "audio.h"
+#include "libspeech/audio.h"
 
 namespace nb = nanobind;
 

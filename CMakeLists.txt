@@ -50,7 +50,7 @@ add_library(speech SHARED ${SPEECH_SOURCES})
 
 
 target_include_directories(speech
-        PUBLIC ${PROJECT_SOURCE_DIR}/include
+        PUBLIC ${PROJECT_SOURCE_DIR}/include          # public headers live under include/libspeech/*
         PRIVATE ${PROJECT_SOURCE_DIR}/src
         PRIVATE src/third_party/dr_libs
         PUBLIC src/third_party/aixlog/include

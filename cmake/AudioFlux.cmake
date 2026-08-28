@@ -1,28 +1,25 @@
 # AudioFlux CMake Module
 #
-# This module finds and configures the AudioFlux library.
-# It assumes that AudioFlux is located in the `src/third_party/audioflux` directory.
+# libspeech no longer depends on the full AudioFlux submodule. Only the
+# specific C files needed by speech::dsp::* wrappers are vendored under
+# src/dsp/vendor/audioflux (copied one DSP operator at a time as each is
+# ported and test-covered -- see src/dsp/vendor/audioflux/README.md and
+# UPSTREAM_PATCHES.md for what's there and why).
 
-# Define the path to the AudioFlux source directory
-set(AUDIOFLUX_SOURCE_DIR "${CMAKE_SOURCE_DIR}/src/third_party/audioflux")
+set(AUDIOFLUX_VENDOR_DIR "${CMAKE_SOURCE_DIR}/src/dsp/vendor/audioflux")
 
-# Source files for AudioFlux
 file(GLOB_RECURSE AUDIOFLUX_SOURCES
-        "${AUDIOFLUX_SOURCE_DIR}/src/*.c"
+        "${AUDIOFLUX_VENDOR_DIR}/src/*.c"
 )
 
-# Add a static or shared library for AudioFlux
 add_library(audioflux STATIC ${AUDIOFLUX_SOURCES})
 
-# Set include directories for the AudioFlux library
-#target_include_directories(audioflux PUBLIC ${AUDIOFLUX_INCLUDE_DIRS})
 target_include_directories(audioflux
-        PUBLIC  ${AUDIOFLUX_SOURCE_DIR}/include
-        PRIVATE ${AUDIOFLUX_SOURCE_DIR}/src
+        PUBLIC  ${AUDIOFLUX_VENDOR_DIR}/include
+        PRIVATE ${AUDIOFLUX_VENDOR_DIR}/src
 )
 
 target_compile_options(audioflux PRIVATE "-w" "-fPIC")
 
-# Export the AudioFlux library for use in other parts of the project
 set(AUDIOFLUX_FOUND TRUE)
 set(AUDIOFLUX_LIBRARIES audioflux)

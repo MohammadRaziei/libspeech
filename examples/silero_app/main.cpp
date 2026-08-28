@@ -8,8 +8,8 @@
 #include <filesystem>
 #include <vector>
 
-#include "models/silero_vad.h"
-#include "audio.h"
+#include "libspeech/models/silero_vad.h"
+#include "libspeech/audio.h"
 
 // Define the DTO for response
 #include OATPP_CODEGEN_BEGIN(DTO)

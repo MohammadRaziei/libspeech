@@ -6,7 +6,7 @@
 
 #include <curl/curl.h>
 
-#include "utils/utils.h"
+#include "libspeech/utils/utils.h"
 
 #include "utils/progressbar.h"
 

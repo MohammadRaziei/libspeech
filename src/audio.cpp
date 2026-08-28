@@ -1,4 +1,4 @@
-#include "audio.h"
+#include "libspeech/audio.h"
 #include <iostream>
 #include <fstream>
 #include <vector>
@@ -21,7 +21,7 @@
 #define MINIAUDIO_IMPLEMENTATION
 #include "miniaudio.h"
 
-#include "dsp/resample.h"
+#include "libspeech/dsp/resample.h"
 
 #include "aixlog.hpp"
 
@@ -398,7 +398,7 @@ speech::Audio speech::Audio::resample(int targetSampleRate) const {
     Audio resampledAudio;
 
     // Initialize the resampler for each channel
-    Resample resampler(pImpl->sampleRate, targetSampleRate);
+    speech::dsp::Resample resampler(pImpl->sampleRate, targetSampleRate);
 
     // Perform resampling for each channel
     std::vector<std::vector<float>> resampledData(pImpl->channels);

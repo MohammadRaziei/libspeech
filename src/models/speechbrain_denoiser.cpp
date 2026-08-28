@@ -2,14 +2,14 @@
 // Created by mohammad on 3/26/25.
 //
 
-#include "models/speechbrain_denoiser.h"
+#include "libspeech/models/speechbrain_denoiser.h"
 
 
 //
 // Created by mohammad on 3/19/25.
 //
 
-#include "models/facebook_denoiser.h"
+#include "libspeech/models/facebook_denoiser.h"
 
 
 /**
