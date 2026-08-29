@@ -11,7 +11,7 @@ namespace {
 std::vector<float> makeSine(int sampleRate, float freqHz, int numSamples) {
     std::vector<float> out(numSamples);
     for (int i = 0; i < numSamples; ++i) {
-        out[i] = std::sin(2.0f * static_cast<float>(M_PI) * freqHz * i / sampleRate);
+        out[i] = std::sin(2.0 * M_PI * freqHz * i / sampleRate);
     }
     return out;
 }

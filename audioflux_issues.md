@@ -249,3 +249,31 @@ above following the same structure: severity, file/function, status, the
 bug/behavior with a minimal code snippet, how it was found (ideally via a
 failing TDD test), a repro, and the fix (and whether it lives in the
 vendored C code or in our C++ wrapper).
+
+---
+
+## Appendix: a test-infrastructure bug that looked like an AudioFlux bug
+
+Worth recording here even though it isn't an AudioFlux issue, because it
+cost real debugging time chasing the wrong culprit (heap corruption,
+uninitialized memory, cross-test static state) before the actual cause
+turned up: several DSP test files' `makeSine()` helper computed the sine's
+phase as `2.0f * static_cast<float>(M_PI) * freqHz * i / sampleRate` --
+entirely in `float`. For large `i` (a few thousand samples in, common in
+STFT/MFCC tests spanning 10+ frames), that product grows into the millions,
+and float32's ~7-significant-digit precision can no longer represent the
+phase angle accurately -- producing a measurably wrong (not just noisy)
+input signal at large sample indices, which a downstream MFCC pipeline
+(sensitive to phase-dependent leakage) turned into a very real-looking,
+reproducible test failure.
+
+Fix: compute the phase in `double`, rounding only the final `sin()` result
+to `float`:
+
+```cpp
+out[i] = std::sin(2.0 * M_PI * freqHz * i / sampleRate);  // double math, float storage
+```
+
+Lesson for future DSP tests: any synthetic-signal generator indexed by a
+large sample count should do its phase arithmetic in `double`, not `float`,
+even though the stored samples are `float`.

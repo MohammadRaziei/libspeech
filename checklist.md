@@ -46,7 +46,13 @@ its tests are green (see `AGENTS`/conversation ground rules).
 - [x] **STFT / spectrogram** — `include/libspeech/dsp/stft.h`, `src/dsp/stft.cpp`
   - [x] TDD tests (`tests/dsp/test_stft.cpp`), 7/7 passing (frame shape, round-trip via weighted overlap-add, edge-taper awareness documented)
   - [x] No new AudioFlux bugs found — this implementation was clean
-- [ ] **MFCC** (composes STFT + DCT — next up)
+- [x] **MFCC** — `include/libspeech/dsp/mfcc.h`, `src/dsp/mfcc.cpp` (composes STFT + a hand-written mel filterbank + `speech::dsp::dctII`)
+  - [x] TDD tests (`tests/dsp/test_mfcc.cpp`), 6/6 passing
+  - [x] **New utility:** `speech::dsp::dctII` (`include/libspeech/dsp/dct.h`) — direct O(N^2) DCT-II for arbitrary N, since `FFT::dct()` requires power-of-2 length and mel-filter counts (e.g. 26, 40) rarely are; 5/5 tests passing
+  - [x] Mel filterbank hand-written (not vendored) — see comment in `mfcc.h` for rationale (AudioFlux's equivalent, `bft_algorithm.c`, bundles reassignment/temporal-feature code libspeech doesn't need)
+  - [x] Found + fixed a **test-infrastructure bug** (not a production bug): `makeSine()` helpers computing phase as `float` lost precision at large sample indices, causing spuriously "inconsistent" MFCC output across frames; fixed by computing phase in `double`, rounding only the final `sin()` result to `float`. Affected `test_resample.cpp`, `test_fft.cpp`, `test_stft.cpp`, `test_mfcc.cpp`.
+
+**DSP layer is now feature-complete per the original plan** (Resample, Window, FFT/DCT, STFT, MFCC). Remaining DSP-layer work is CMake integration, not new operators.
 - [ ] Decide: do we need `filterDesign_fir`/`filterDesign_iir` as a public `speech::dsp` API, or is it purely an internal dependency of Resample?
 - [ ] Benchmark our DSP path vs. sherpa-onnx on at least one op (validates the "why libspeech" question from earlier)
 

@@ -10,7 +10,7 @@ namespace {
 std::vector<float> makeSine(int n, float cyclesOverN) {
     std::vector<float> out(n);
     for (int i = 0; i < n; ++i) {
-        out[i] = std::sin(2.0f * static_cast<float>(M_PI) * cyclesOverN * i / n);
+        out[i] = std::sin(2.0 * M_PI * cyclesOverN * i / n);
     }
     return out;
 }
