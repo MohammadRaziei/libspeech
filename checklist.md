@@ -35,7 +35,13 @@ its tests are green (see `AGENTS`/conversation ground rules).
   - [x] Found + fixed AudioFlux bug: `sourceRate==targetRate` corrupts ratio (Issue 1)
   - [x] Found + fixed amplitude bug: `isScale=1` energy-scales output ~1.66x on downsample (Issue 2)
   - [x] Documented both in `/audioflux_issues.md`
-  - [ ] Wire into main CMake build (`tests/dsp/CMakeLists.txt` or equivalent), not just standalone compile
+- [x] Wire DSP layer into main CMake build: new lightweight `speech_dsp` static
+  library target (src/dsp/*.cpp + vendored audioflux, no ONNXRuntime/CURL
+  dependency), `tests/CMakeLists.txt` wiring all 6 DSP test suites via
+  `add_dsp_test()`, and a `SPEECH_DSP_ONLY` CMake option to configure/build
+  just the DSP layer + tests without touching ONNXRuntime/CURL at all.
+  Verified end-to-end: `cmake -DSPEECH_DSP_ONLY=ON .. && cmake --build . && ctest`
+  → all 6 suites pass through the real build system (not manual g++ anymore).
 - [x] **Window functions** — `include/libspeech/dsp/window.h`, `src/dsp/window.cpp` (flat free-function, not a class)
   - [x] TDD tests (`tests/dsp/test_window.cpp`), 6/6 passing
 - [x] **FFT / IFFT** — `include/libspeech/dsp/fft.h`, `src/dsp/fft.cpp`
@@ -66,7 +72,18 @@ its tests are green (see `AGENTS`/conversation ground rules).
 
 ## Build & packaging
 
-- [ ] Verify full CMake build end-to-end (blocked in this sandbox by `libcurl4-openssl-dev` install failure — needs verification on a real machine)
+- [x] DSP-only CMake path verified end-to-end (`-DSPEECH_DSP_ONLY=ON`, no network/system deps needed)
+- [x] Replace system `libcurl` (`find_package(CURL REQUIRED)`) with vendored
+  `httplib.h` (single header, `src/vendor/httplib/`) + Mbed TLS (git
+  submodule pinned to `v3.6.2`, built from source — NOT vendored/patched
+  like AudioFlux, since crypto code should stay pristine and upstream-
+  updatable). `speech::utils::downloadFile` rewritten around
+  `httplib::Client`. Verified end-to-end with real HTTPS downloads in this
+  sandbox: a plain file from raw.githubusercontent.com (200 OK, correct
+  content) and a cross-host redirect (github.com → objects.githubusercontent.com,
+  the exact pattern ONNXRuntime/model releases use) — both worked with zero
+  system dependencies, only source builds.
+- [ ] Verify full `speech` library CMake build end-to-end on a machine with normal internet access (this sandbox's own egress restrictions, now unrelated to CURL, are the only remaining blocker here)
 - [ ] `pip install` end-to-end smoke test (core promise of the project: zero system deps)
 - [ ] CI update: drop googletest/aixlog submodule steps, add utest.h-based test target
 

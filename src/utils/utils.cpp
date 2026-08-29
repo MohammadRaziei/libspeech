@@ -3,8 +3,10 @@
 //
 #include <fstream>
 #include <iostream>
+#include <regex>
 
-#include <curl/curl.h>
+#define CPPHTTPLIB_MBEDTLS_SUPPORT
+#include "httplib.h"
 
 #include "libspeech/utils/utils.h"
 
@@ -13,28 +15,32 @@
 #include "aixlog.hpp"
 
 
+namespace {
+
+constexpr const char* kTag = "speech::utils::downloadFile";
+
+// Splits a URL into "scheme://host[:port]" and the remaining "/path?query"
+// (httplib::Client is constructed with the former and Get() takes the latter).
+struct ParsedUrl {
+    std::string schemeHost;
+    std::string path;
+};
+
+ParsedUrl parseUrl(const std::string& url) {
+    static const std::regex re(R"(^(https?://[^/]+)(/.*)?$)");
+    std::smatch match;
+    if (std::regex_match(url, match, re)) {
+        return {match[1].str(), match[2].matched ? match[2].str() : "/"};
+    }
+    return {};  // empty schemeHost signals "invalid URL" to the caller
+}
+
+}  // namespace
 
 std::filesystem::path speech::utils::getTempDirectory() {
     // Use filesystem to get the temp directory
     return std::filesystem::temp_directory_path();
 }
-
-size_t WriteCallback(void* ptr, size_t size, size_t nmemb, void* stream) {
-    std::ofstream* outFile = static_cast<std::ofstream*>(stream);
-    outFile->write(static_cast<char*>(ptr), size * nmemb);
-    return size * nmemb;
-}
-
-
-// Progress callback function for CURL
-int ProgressCallback(void* progressPtr, curl_off_t total, curl_off_t now, curl_off_t, curl_off_t) {
-    if (total > 0 && progressPtr) {
-        auto* progressBar = static_cast<indicators::ProgressBar*>(progressPtr);
-        progressBar->set_progress(static_cast<float>(now) / total * 100.0);
-    }
-    return 0;
-}
-// Function to download a file
 
 // Function to download a file
 std::filesystem::path speech::utils::downloadFile(const std::string& url, const std::filesystem::path& outputPath, bool force, bool quiet) {
@@ -48,7 +54,7 @@ std::filesystem::path speech::utils::downloadFile(const std::string& url, const 
 
     // Check if the file already exists and force is false
     if (!force && std::filesystem::exists(finalOutputPath)) {
-        LOG(INFO) << TAG("speech::utils::downloadFile")  << COND(!quiet)
+        LOG(INFO) << TAG(kTag) << COND(!quiet)
                   << "File already exists: " << finalOutputPath << ". Skipping download." << std::endl;
         return finalOutputPath;
     }
@@ -57,68 +63,71 @@ std::filesystem::path speech::utils::downloadFile(const std::string& url, const 
     std::filesystem::path parentDir = finalOutputPath.parent_path();
     if (!parentDir.empty() && !std::filesystem::exists(parentDir)) {
         if (!std::filesystem::create_directories(parentDir)) {
-            LOG(INFO) << TAG("speech::utils::downloadFile")  << COND(!quiet)
+            LOG(INFO) << TAG(kTag) << COND(!quiet)
                       << "Error: Could not create directory: " << parentDir << std::endl;
             return {};  // Return an empty path on failure
         }
     }
 
+    ParsedUrl parsed = parseUrl(url);
+    if (parsed.schemeHost.empty()) {
+        LOG(ERROR) << TAG(kTag) << COND(!quiet) << "Error: Not a valid http(s) URL: " << url << std::endl;
+        return {};
+    }
+
     // Open the output file
     std::ofstream outFile(finalOutputPath, std::ios::binary);
     if (!outFile.is_open()) {
-        LOG(ERROR) << TAG("speech::utils::downloadFile")  << COND(!quiet)
+        LOG(ERROR) << TAG(kTag) << COND(!quiet)
                   << "Error: Could not open file for writing: " << finalOutputPath << std::endl;
         return {};  // Return an empty path on failure
     }
 
-    // Initialize libcurl
-    CURL* curl = curl_easy_init();
-    if (!curl) {
-        LOG(ERROR) << TAG("speech::utils::downloadFile")  << COND(!quiet) << "Error: Could not initialize libcurl." << std::endl;
-        return {};  // Return an empty path on failure
-    }
-
-    // Set libcurl options
-    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &outFile);
-    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-    curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 10L);
+    httplib::Client client(parsed.schemeHost);
+    // Model files (ONNXRuntime releases, model weights, ...) are often
+    // served via a redirect to a different host (e.g. github.com ->
+    // objects.githubusercontent.com); httplib follows cross-host redirects
+    // transparently when this is enabled.
+    client.set_follow_location(true);
+    client.set_connection_timeout(30);
+    client.set_read_timeout(300);  // model files can be large
 
     // Extract Filename from `finalOutputPath`
     std::string filename = finalOutputPath.filename().string();
 
     // Custom Styled Progress Bar
     auto progressBar = speech::utils::createProgressBar("Downloading " + filename + " ");
-
     progressBar->set_progress(0);
 
-    if (!quiet) {
-        curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
-        curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, ProgressCallback);
-        curl_easy_setopt(curl, CURLOPT_XFERINFODATA, progressBar.get());
-    } else {
-        curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 1L);
-    }
+    auto contentReceiver = [&outFile](const char* data, size_t length) {
+        outFile.write(data, static_cast<std::streamsize>(length));
+        return true;
+    };
+    auto progressCallback = [&progressBar, quiet](uint64_t current, uint64_t total) {
+        if (!quiet && total > 0) {
+            progressBar->set_progress(static_cast<float>(current) / static_cast<float>(total) * 100.0f);
+        }
+        return true;  // true = keep going
+    };
 
-    // Perform the request
-    CURLcode res = curl_easy_perform(curl);
-
-    // Cleanup
-    curl_easy_cleanup(curl);
+    httplib::Result res = client.Get(parsed.path, contentReceiver, progressCallback);
     outFile.close();
 
     if (!quiet) {
         progressBar->set_progress(100);
-        LOG(INFO) << TAG("speech::utils::downloadFile")
-                 << "\nDownload completed: " << finalOutputPath << std::endl;
+        LOG(INFO) << TAG(kTag) << "\nDownload completed: " << finalOutputPath << std::endl;
     }
 
-    // Check if the download was successful
-    if (res != CURLE_OK) {
-        LOG(ERROR) << TAG("speech::utils::downloadFile")  << COND(!quiet)
-                  << "Error: Failed to download file. CURL error: " << curl_easy_strerror(res) << std::endl;
-        return {};  // Return an empty path on failure
+    if (!res) {
+        LOG(ERROR) << TAG(kTag) << COND(!quiet)
+                  << "Error: Failed to download file. httplib error: " << httplib::to_string(res.error())
+                  << std::endl;
+        return {};
+    }
+    if (res->status < 200 || res->status >= 300) {
+        LOG(ERROR) << TAG(kTag) << COND(!quiet)
+                  << "Error: Failed to download file. HTTP status: " << res->status << std::endl;
+        return {};
     }
 
     return finalOutputPath;

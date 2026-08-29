@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.19)
 
 option(BUILD_PYTHON "export python module" off)
+option(BUILD_TESTS "build unit tests (speech_dsp only, no ONNXRuntime/CURL needed)" on)
+option(SPEECH_DSP_ONLY "only configure speech_dsp + its tests; skip ONNXRuntime/CURL/the full speech library" off)
 
 set(CMAKE_C_STANDARD 99 CACHE STRING "C version selection")
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -31,14 +33,56 @@ message(STATUS "Project: ${PROJECT_NAME}@v${PROJECT_VERSION}")
 
 file(GLOB SPEECH_ROOT_SOURCES "${PROJECT_SOURCE_DIR}/src/*.cpp")
 file(GLOB SPEECH_SUBDIR_SOURCES "${PROJECT_SOURCE_DIR}/src/*/*.cpp")
+# DSP has its own lightweight target (speech_dsp, see below) since it has no
+# ONNXRuntime/CURL dependency -- don't compile it twice into `speech` too.
+list(FILTER SPEECH_SUBDIR_SOURCES EXCLUDE REGEX "/src/dsp/")
 
 set(SPEECH_SOURCES ${SPEECH_ROOT_SOURCES} ${SPEECH_SUBDIR_SOURCES})
 
 
 
-include(ONNXRuntime)
-find_package(CURL REQUIRED)
 include(AudioFlux)
+
+# speech_dsp: the DSP layer (resample, window, FFT, STFT, MFCC, ...) as its
+# own static library, deliberately independent of ONNXRuntime/CURL/miniaudio.
+# This lets DSP unit tests (see tests/CMakeLists.txt) build and run without
+# pulling in the model/audio-I/O stack -- consistent with the project's
+# "no unnecessary dependencies" goal, and it keeps DSP iteration fast.
+file(GLOB SPEECH_DSP_SOURCES "${PROJECT_SOURCE_DIR}/src/dsp/*.cpp")
+add_library(speech_dsp STATIC ${SPEECH_DSP_SOURCES})
+target_include_directories(speech_dsp
+        PUBLIC ${PROJECT_SOURCE_DIR}/include
+        PUBLIC src/vendor/aixlog/include
+        PRIVATE src/vendor/audioflux/src   # private AudioFlux headers (fft_algorithm.h, stft_algorithm.h, ...)
+)
+target_link_libraries(speech_dsp PUBLIC audioflux)
+
+if(BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
+
+if(SPEECH_DSP_ONLY)
+    message(STATUS "SPEECH_DSP_ONLY=on: skipping ONNXRuntime/CURL and the full speech library.")
+    return()
+endif()
+
+include(ONNXRuntime)
+
+# Model downloading (speech::utils::downloadFile) used to link the SYSTEM
+# libcurl (find_package(CURL REQUIRED) + apt-installed libcurl4-openssl-dev).
+# That's a real system dependency the "pip install and you're done" story
+# doesn't want -- and one this project's own build has hit in practice
+# (a sandboxed CI environment without apt access to security.ubuntu.com
+# failed here). Replaced with httplib.h (single header, vendored under
+# src/vendor/httplib/) + Mbed TLS (a git submodule, NOT vendored/patched
+# like AudioFlux -- crypto code should stay pristine and easily updatable
+# for security patches) built from source, so no system TLS/HTTP library
+# needs to be pre-installed.
+set(ENABLE_PROGRAMS OFF CACHE BOOL "" FORCE)
+set(ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+set(DISABLE_PACKAGE_CONFIG_AND_INSTALL ON CACHE BOOL "" FORCE)
+add_subdirectory(src/third_party/mbedtls)
 
 
 #add_subdirectory(src/third_party/dr_libs)
@@ -54,14 +98,17 @@ target_include_directories(speech
         PRIVATE ${PROJECT_SOURCE_DIR}/src
         PRIVATE src/third_party/dr_libs
         PUBLIC src/vendor/aixlog/include
+        PRIVATE src/vendor/httplib
 )
+
+target_compile_definitions(speech PRIVATE CPPHTTPLIB_MBEDTLS_SUPPORT)
 
 target_link_libraries(speech
         PRIVATE miniaudio
-        PRIVATE CURL::libcurl
+        PRIVATE mbedtls mbedx509 mbedcrypto
         PUBLIC indicators
         PUBLIC onnxruntime_interface
-        PUBLIC audioflux
+        PUBLIC speech_dsp
 )
 
 
