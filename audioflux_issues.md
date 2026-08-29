@@ -1,7 +1,7 @@
 # AudioFlux Issues — Found, Fixed, and Documented
 
 libspeech vendors a subset of [libAudioFlux/audioflux](https://github.com/libAudioFlux/audioflux)
-(MIT licensed) C sources directly into `src/dsp/vendor/audioflux/`, instead of
+(MIT licensed) C sources directly into `src/vendor/audioflux/`, instead of
 depending on the full submodule. While porting `speech::dsp::Resample`
 (the first DSP operator ported) and writing TDD tests for it, two real
 problems in AudioFlux's C code were found. Both are documented here in
@@ -9,7 +9,7 @@ detail, with repro steps and fixes, so they can eventually be turned into
 pull requests against the upstream project.
 
 **Source commit vendored from:** `824f76d5f19d0358779e513d708a987e4fb9224e`
-**Files vendored (resample-only, so far):** see `src/dsp/vendor/audioflux/README.md`
+**Files vendored (resample-only, so far):** see `src/vendor/audioflux/README.md`
 
 Every time a new AudioFlux issue is found while porting another DSP
 operator (FFT, DCT, window functions, ...), add a new numbered section below.
@@ -83,7 +83,7 @@ ratio = targetRate / (float)sourceRate;      // == 1.0
 So only the validity guard needs to remain:
 
 ```c
-// patched (src/dsp/vendor/audioflux/src/dsp/resample_algorithm.c)
+// patched (src/vendor/audioflux/src/dsp/resample_algorithm.c)
 if(sourceRate<=0||targetRate<=0){
     return;
 }

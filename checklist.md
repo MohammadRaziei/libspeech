@@ -18,8 +18,8 @@ its tests are green (see `AGENTS`/conversation ground rules).
 - [x] Remove `tests/third_party/googletest` submodule
 - [x] Vendor `aixlog.hpp` directly (single header), remove `src/third_party/aixlog` submodule
 - [x] Establish logging convention: `aixlog`, `DEBUG` for lifecycle/results/errors, `TRACE` only where it exposes internal computation worth debugging (not on every call)
-- [x] Establish AudioFlux vendoring workflow: copy only the `.c`/`.h` files a ported operator needs into `src/dsp/vendor/audioflux/`, patch in place if needed, log every patch in `/audioflux_issues.md`
-- [x] Remove `src/third_party/audioflux` submodule entirely (nothing in the build references it anymore — everything comes from `src/dsp/vendor/audioflux`)
+- [x] Establish AudioFlux vendoring workflow: copy only the `.c`/`.h` files a ported operator needs into `src/vendor/audioflux/`, patch in place if needed, log every patch in `/audioflux_issues.md`
+- [x] Remove `src/third_party/audioflux` submodule entirely (nothing in the build references it anymore — everything comes from `src/vendor/audioflux`)
 - [ ] Decide fate of `src/third_party/indicators`, `dr_libs`, `miniaudio` (still used by `Audio`/CLI progress bars — keep for now, revisit)
 
 > **Note for future DSP operators:** with the full AudioFlux submodule gone,
@@ -73,7 +73,7 @@ its tests are green (see `AGENTS`/conversation ground rules).
 ## Documentation
 
 - [x] `/audioflux_issues.md` — running log of every AudioFlux bug/quirk found + fixed, PR-ready
-- [x] `src/dsp/vendor/audioflux/README.md` — explains why vendored instead of submoduled
+- [x] `src/vendor/audioflux/README.md` — explains why vendored instead of submoduled
 - [ ] Update root `README.md` Quick Start to match actual current API (it currently references classes/methods that don't exist yet — `AudioProcessor`, `extract_features`, etc.)
 - [ ] `CONTRIBUTING.md` (referenced by README but missing)
 - [ ] Doxygen-style comments on public headers (`Audio`, `BaseModel`, ...)

@@ -4,7 +4,7 @@
 #include <stdexcept>
 
 #include "aixlog.hpp"
-#include "stft_algorithm.h"  // Vendored AudioFlux C header (src/dsp/vendor/audioflux)
+#include "stft_algorithm.h"  // Vendored AudioFlux C header (src/vendor/audioflux)
 
 namespace speech::dsp {
 

@@ -8,7 +8,7 @@
 
 #include <vector>
 
-#include "flux_base.h"  // Vendored AudioFlux header (src/dsp/vendor/audioflux): WindowType enum.
+#include "flux_base.h"  // Vendored AudioFlux header (src/vendor/audioflux): WindowType enum.
 
 // Opaque handle to AudioFlux's underlying C resample object (declared in the
 // global namespace because AudioFlux's own `ResampleObj` typedef points here).

@@ -44,7 +44,7 @@ include(AudioFlux)
 #add_subdirectory(src/third_party/dr_libs)
 add_subdirectory(src/third_party/miniaudio)
 add_subdirectory(src/third_party/indicators)
-#add_subdirectory(src/third_party/aixlog)
+#add_subdirectory(src/vendor/aixlog)
 
 add_library(speech SHARED ${SPEECH_SOURCES})
 
@@ -53,7 +53,7 @@ target_include_directories(speech
         PUBLIC ${PROJECT_SOURCE_DIR}/include          # public headers live under include/libspeech/*
         PRIVATE ${PROJECT_SOURCE_DIR}/src
         PRIVATE src/third_party/dr_libs
-        PUBLIC src/third_party/aixlog/include
+        PUBLIC src/vendor/aixlog/include
 )
 
 target_link_libraries(speech
