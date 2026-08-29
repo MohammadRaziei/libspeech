@@ -5,7 +5,6 @@
 #include <iostream>
 #include <regex>
 
-#define CPPHTTPLIB_MBEDTLS_SUPPORT
 #include "httplib.h"
 
 #include "libspeech/utils/utils.h"

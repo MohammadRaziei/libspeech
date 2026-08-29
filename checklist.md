@@ -72,7 +72,24 @@ its tests are green (see `AGENTS`/conversation ground rules).
 
 ## Build & packaging
 
-- [x] DSP-only CMake path verified end-to-end (`-DSPEECH_DSP_ONLY=ON`, no network/system deps needed)
+- [x] CMakeLists.txt cleanup + three-library split, fully verified end-to-end:
+  - Removed all dead/commented cruft (Conan/oatpp toolchain block, `crow`,
+    `Vorbis`, stale `PUBLIC_SUFFIX_LIST_*` defs, duplicate `file(COPY...)`,
+    commented-out example executables) accumulated from earlier experiments.
+  - Split into three real targets with namespaced aliases:
+    - **`speech::dsp`** (`speech_dsp`) — DSP layer, zero ONNXRuntime/network deps.
+    - **`speech::models`** (`speech_models`) — BaseModel/ONNXModel + VAD/denoiser
+      backends + the download/progress-bar utilities they need (ONNXRuntime,
+      httplib+mbedtls, indicators).
+    - **`speech::speech`** (`speech`) — umbrella SHARED library: audio file I/O
+      (miniaudio/dr_libs) + links `speech::dsp` + `speech::models`, consumed
+      by the Python bindings and example executables.
+  - Fixed a real bug surfaced by the split: `speech_dsp`/`speech_models`/
+    `audioflux` (STATIC) need `-fPIC` to link into the `speech` SHARED
+    library — added `set(CMAKE_POSITION_INDEPENDENT_CODE ON)`.
+  - Verified: full configure from clean (real ONNXRuntime download, no CURL
+    needed), full build (`speech_dsp` → `speech_models` → `speech` →
+    `example`, all link cleanly), and `ctest` (6/6 DSP tests still pass).
 - [x] Replace system `libcurl` (`find_package(CURL REQUIRED)`) with vendored
   `httplib.h` (single header, `src/vendor/httplib/`) + Mbed TLS (git
   submodule pinned to `v3.6.2`, built from source — NOT vendored/patched

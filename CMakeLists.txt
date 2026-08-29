@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.19)
 
 option(BUILD_PYTHON "export python module" off)
-option(BUILD_TESTS "build unit tests (speech_dsp only, no ONNXRuntime/CURL needed)" on)
-option(SPEECH_DSP_ONLY "only configure speech_dsp + its tests; skip ONNXRuntime/CURL/the full speech library" off)
+option(BUILD_TESTS "build unit tests (speech::dsp only, no ONNXRuntime/httplib needed)" on)
+option(SPEECH_DSP_ONLY "only configure speech::dsp + its tests; skip ONNXRuntime/models/audio I/O" off)
 
 set(CMAKE_C_STANDARD 99 CACHE STRING "C version selection")
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -11,45 +11,36 @@ set(CMAKE_CXX_STANDARD 17 CACHE STRING "C++ version selection")
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# speech_dsp, speech_models, and audioflux are STATIC libraries that end up
+# linked into the `speech` SHARED library -- every object file involved
+# needs to be position-independent for that to link.
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
 include(PyProject)
-
 
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
 endif()
 
-
-
-#set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE}" CACHE STRING "" FORCE)
-#set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG}" CACHE STRING "" FORCE)
-#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}" CACHE STRING "" FORCE)
-
-
 project(${PyProject_NAME} LANGUAGES C CXX VERSION ${PyProject_VERSION})
 
 message(STATUS "Project: ${PROJECT_NAME}@v${PROJECT_VERSION}")
 
-file(GLOB SPEECH_ROOT_SOURCES "${PROJECT_SOURCE_DIR}/src/*.cpp")
-file(GLOB SPEECH_SUBDIR_SOURCES "${PROJECT_SOURCE_DIR}/src/*/*.cpp")
-# DSP has its own lightweight target (speech_dsp, see below) since it has no
-# ONNXRuntime/CURL dependency -- don't compile it twice into `speech` too.
-list(FILTER SPEECH_SUBDIR_SOURCES EXCLUDE REGEX "/src/dsp/")
-
-set(SPEECH_SOURCES ${SPEECH_ROOT_SOURCES} ${SPEECH_SUBDIR_SOURCES})
-
-
-
 include(AudioFlux)
 
-# speech_dsp: the DSP layer (resample, window, FFT, STFT, MFCC, ...) as its
-# own static library, deliberately independent of ONNXRuntime/CURL/miniaudio.
-# This lets DSP unit tests (see tests/CMakeLists.txt) build and run without
-# pulling in the model/audio-I/O stack -- consistent with the project's
-# "no unnecessary dependencies" goal, and it keeps DSP iteration fast.
+# ---------------------------------------------------------------------------
+# speech::dsp -- resample, window, FFT, STFT, MFCC, ...
+#
+# Deliberately independent of ONNXRuntime/httplib/miniaudio: this lets DSP
+# unit tests (tests/CMakeLists.txt) build and run without pulling in the
+# model/audio-I/O stack, matching the project's "minimal dependencies" goal
+# and keeping DSP iteration fast. See SPEECH_DSP_ONLY below.
+# ---------------------------------------------------------------------------
 file(GLOB SPEECH_DSP_SOURCES "${PROJECT_SOURCE_DIR}/src/dsp/*.cpp")
 add_library(speech_dsp STATIC ${SPEECH_DSP_SOURCES})
+add_library(speech::dsp ALIAS speech_dsp)
+
 target_include_directories(speech_dsp
         PUBLIC ${PROJECT_SOURCE_DIR}/include
         PUBLIC src/vendor/aixlog/include
@@ -63,56 +54,80 @@ if(BUILD_TESTS)
 endif()
 
 if(SPEECH_DSP_ONLY)
-    message(STATUS "SPEECH_DSP_ONLY=on: skipping ONNXRuntime/CURL and the full speech library.")
+    message(STATUS "SPEECH_DSP_ONLY=on: skipping ONNXRuntime/models/audio I/O.")
     return()
 endif()
 
 include(ONNXRuntime)
 
+add_subdirectory(src/third_party/miniaudio)
+add_subdirectory(src/third_party/indicators)
+
+# ---------------------------------------------------------------------------
 # Model downloading (speech::utils::downloadFile) used to link the SYSTEM
-# libcurl (find_package(CURL REQUIRED) + apt-installed libcurl4-openssl-dev).
-# That's a real system dependency the "pip install and you're done" story
-# doesn't want -- and one this project's own build has hit in practice
-# (a sandboxed CI environment without apt access to security.ubuntu.com
-# failed here). Replaced with httplib.h (single header, vendored under
+# libcurl (find_package(CURL REQUIRED) + apt-installed libcurl4-openssl-dev)
+# -- a real system dependency the "pip install and you're done" story
+# doesn't want, and one this project's own build has hit in practice (a
+# sandboxed CI environment without apt access to security.ubuntu.com failed
+# here). Replaced with httplib.h (single header, vendored under
 # src/vendor/httplib/) + Mbed TLS (a git submodule, NOT vendored/patched
-# like AudioFlux -- crypto code should stay pristine and easily updatable
-# for security patches) built from source, so no system TLS/HTTP library
-# needs to be pre-installed.
+# like AudioFlux -- crypto code should stay pristine and upstream-
+# updatable) built from source, so no system TLS/HTTP library needs to be
+# pre-installed.
+# ---------------------------------------------------------------------------
 set(ENABLE_PROGRAMS OFF CACHE BOOL "" FORCE)
 set(ENABLE_TESTING OFF CACHE BOOL "" FORCE)
 set(DISABLE_PACKAGE_CONFIG_AND_INSTALL ON CACHE BOOL "" FORCE)
 add_subdirectory(src/third_party/mbedtls)
 
+# ---------------------------------------------------------------------------
+# speech::models -- BaseModel/ONNXModel and the VAD/denoiser backends.
+#
+# Separate from speech::dsp (no shared code) and from the main `speech`
+# library (no audio-file-I/O dependency): models take raw float buffers in
+# and out, and only need ONNXRuntime plus the download/progress-bar utility
+# code (base_model.cpp downloads .onnx weights on first use).
+# ---------------------------------------------------------------------------
+file(GLOB SPEECH_MODELS_SOURCES "${PROJECT_SOURCE_DIR}/src/models/*.cpp")
+add_library(speech_models STATIC
+        ${SPEECH_MODELS_SOURCES}
+        src/utils/utils.cpp
+        src/utils/progressbar.cpp
+)
+add_library(speech::models ALIAS speech_models)
 
-#add_subdirectory(src/third_party/dr_libs)
-add_subdirectory(src/third_party/miniaudio)
-add_subdirectory(src/third_party/indicators)
-#add_subdirectory(src/vendor/aixlog)
+target_include_directories(speech_models
+        PUBLIC ${PROJECT_SOURCE_DIR}/include
+        PUBLIC src/vendor/aixlog/include
+        PRIVATE ${PROJECT_SOURCE_DIR}/src   # for utils/progressbar.h
+        PRIVATE src/vendor/httplib
+)
+target_compile_definitions(speech_models PRIVATE CPPHTTPLIB_MBEDTLS_SUPPORT)
+target_link_libraries(speech_models
+        PUBLIC onnxruntime_interface
+        PUBLIC indicators
+        PRIVATE mbedtls mbedx509 mbedcrypto
+)
 
-add_library(speech SHARED ${SPEECH_SOURCES})
-
+# ---------------------------------------------------------------------------
+# speech -- the umbrella library: audio file I/O (miniaudio/dr_libs) plus
+# speech::dsp and speech::models, all in one linkable/installable target for
+# consumers (the Python bindings, example executables, downstream projects).
+# ---------------------------------------------------------------------------
+add_library(speech SHARED src/audio.cpp)
+add_library(speech::speech ALIAS speech)
 
 target_include_directories(speech
         PUBLIC ${PROJECT_SOURCE_DIR}/include          # public headers live under include/libspeech/*
         PRIVATE ${PROJECT_SOURCE_DIR}/src
         PRIVATE src/third_party/dr_libs
-        PUBLIC src/vendor/aixlog/include
-        PRIVATE src/vendor/httplib
 )
-
-target_compile_definitions(speech PRIVATE CPPHTTPLIB_MBEDTLS_SUPPORT)
 
 target_link_libraries(speech
         PRIVATE miniaudio
-        PRIVATE mbedtls mbedx509 mbedcrypto
-        PUBLIC indicators
-        PUBLIC onnxruntime_interface
-        PUBLIC speech_dsp
+        PUBLIC speech::dsp
+        PUBLIC speech::models
 )
-
-
-
 
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
@@ -156,14 +171,10 @@ endif()
 
 
 if(DEFINED PYTHON_PROJECT_NAME)
-    # Try to import all Python components potentially needed by nanobind
-    #set(Python3_FIND_STRATEGY LOCATION)
     find_package(Python 3.8
             REQUIRED COMPONENTS Interpreter Development.Module
             OPTIONAL_COMPONENTS Development.SABIModule)
-    # Import nanobind through CMake's find_package mechanism
     find_package(nanobind CONFIG REQUIRED)
-
 
     set(NB_MODULE _about)
     nanobind_add_module(${NB_MODULE} STABLE_ABI NB_STATIC ${PROJECT_SOURCE_DIR}/src/binding/about/about.cpp)
@@ -180,8 +191,6 @@ if(DEFINED PYTHON_PROJECT_NAME)
         file(GLOB NB_MODULE_SOURCES ${NB_MODULE_PATH}/*.cpp)
 
         message(STATUS "Found module: ${NB_MODULE}")
-
-        # Add more commands here to process each directory as needed
 
         # We are now ready to compile the actual extension module
         nanobind_add_module(
@@ -208,31 +217,15 @@ if(DEFINED PYTHON_PROJECT_NAME)
         target_include_directories(${NB_MODULE} PRIVATE include src)
         target_compile_definitions(${NB_MODULE} PRIVATE NB_MODULE_NAME=${NB_MODULE})
         target_link_directories(${NB_MODULE} PRIVATE speech)
-#        target_compile_definitions(${NB_MODULE} PRIVATE
-#                DONT_INIT_PSL
-#                PUBLIC_SUFFIX_LIST_URL="${PUBLIC_SUFFIX_LIST_URL}"
-#                PUBLIC_SUFFIX_LIST_DAT="${PUBLIC_SUFFIX_LIST_DAT}"
-#        )
     endforeach()
 
-
-#    get_target_property(SPEECH_LIBS speech LINK_LIBRARIES)
-    set(SPEECH_LIBS miniaudio indicators onnxruntime_interface audioflux)
-
     if(DEFINED SKBUILD)
-
-
-        install (TARGETS ${PYTHON_BIND_MODULES} speech audioflux
+        install (TARGETS ${PYTHON_BIND_MODULES} speech
                 CONFIGURATIONS Release
                 LIBRARY DESTINATION ${PYTHON_PROJECT_NAME})
 
         install (FILES ${ONNXRUNTIME_LIB_FILE}
                 DESTINATION ${SKBUILD_PROJECT_NAME})
-
-#        file(COPY ${ONNXRUNTIME_LIB_FILE} DESTINATION ${PYTHON_PROJECT_NAME} )
-
-        #        file(COPY ${ONNXRUNTIME_LIB_FILE} DESTINATION ${PYTHON_PROJECT_NAME}/${PROJECT_NAME})
-
     else()
         file(COPY ${PROJECT_SOURCE_DIR}/src/${PROJECT_NAME} DESTINATION ${PYTHON_PROJECT_NAME})
         file(COPY ${ONNXRUNTIME_LIB_FILE} DESTINATION ${PYTHON_PROJECT_NAME}/${PROJECT_NAME})
@@ -247,53 +240,11 @@ if(DEFINED SKBUILD)
     RETURN()
 endif()
 
-
-
-
-#add_executable(silero examples/silero/silero-vad-onnx.cpp)
-#target_link_libraries(silero PRIVATE speech)
-
-
-
 add_executable(example examples/main.cpp)
 target_link_libraries(example PRIVATE speech)
-
-
-
-# add_subdirectory(src/third_party/crow)
-
-set(CMAKE_TOOLCHAIN_FILE "${CMAKE_BINARY_DIR}/conan_toolchain.cmake" CACHE PATH "Path to Conan-generated toolchain file")
-
-# Include the toolchain file if it exists
-if(EXISTS "${CMAKE_TOOLCHAIN_FILE}")
-    message(STATUS "Using Conan-generated toolchain file: ${CMAKE_TOOLCHAIN_FILE}")
-else()
-    message(WARNING "Conan-generated toolchain file not found: ${CMAKE_TOOLCHAIN_FILE}")
-endif()
-
-#include(Conan)
-#
-#find_package(oatpp REQUIRED)
-#find_package(oatpp-swagger REQUIRED)
-
-
-#add_executable(denoiser_app examples/denoiser_app/main.cpp)
-#target_link_libraries(denoiser_app PRIVATE oatpp::oatpp oatpp::oatpp-swagger)
-
-#
-#add_executable(silero_app examples/silero_app/main.cpp)
-#target_link_libraries(silero_app PRIVATE speech oatpp::oatpp oatpp::oatpp-swagger)
-#
-
-
-# find_package(Vorbis REQUIRED)
-# target_link_libraries(example PRIVATE Vorbis::Vorbis)
 
 install(TARGETS speech
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib
     INCLUDES DESTINATION include
 )
-
-
-
