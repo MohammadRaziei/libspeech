@@ -38,9 +38,9 @@ its tests are green (see `AGENTS`/conversation ground rules).
 - [x] Wire DSP layer into main CMake build: new lightweight `speech_dsp` static
   library target (src/dsp/*.cpp + vendored audioflux, no ONNXRuntime/CURL
   dependency), `tests/CMakeLists.txt` wiring all 6 DSP test suites via
-  `add_dsp_test()`, and a `SPEECH_DSP_ONLY` CMake option to configure/build
+  `add_dsp_test()`, and a `BUILD_MODELS` CMake option (default on; off skips ONNXRuntime/mbedtls/models) to configure/build
   just the DSP layer + tests without touching ONNXRuntime/CURL at all.
-  Verified end-to-end: `cmake -DSPEECH_DSP_ONLY=ON .. && cmake --build . && ctest`
+  Verified end-to-end: `cmake -DBUILD_MODELS=OFF .. && cmake --build . && ctest`
   → all 6 suites pass through the real build system (not manual g++ anymore).
 - [x] **Window functions** — `include/libspeech/dsp/window.h`, `src/dsp/window.cpp` (flat free-function, not a class)
   - [x] TDD tests (`tests/dsp/test_window.cpp`), 6/6 passing

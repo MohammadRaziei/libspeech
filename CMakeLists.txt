@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.19)
 
 option(BUILD_PYTHON "export python module" off)
 option(BUILD_TESTS "build unit tests (speech::dsp only, no ONNXRuntime/httplib needed)" on)
-option(SPEECH_DSP_ONLY "only configure speech::dsp + its tests; skip ONNXRuntime/models/audio I/O" off)
+option(BUILD_MODELS "build speech::models + the speech library (needs ONNXRuntime download + mbedtls build); off configures speech::dsp + tests only" on)
 
 set(CMAKE_C_STANDARD 99 CACHE STRING "C version selection")
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -35,7 +35,7 @@ include(AudioFlux)
 # Deliberately independent of ONNXRuntime/httplib/miniaudio: this lets DSP
 # unit tests (tests/CMakeLists.txt) build and run without pulling in the
 # model/audio-I/O stack, matching the project's "minimal dependencies" goal
-# and keeping DSP iteration fast. See SPEECH_DSP_ONLY below.
+# and keeping DSP iteration fast. See BUILD_MODELS below.
 # ---------------------------------------------------------------------------
 file(GLOB SPEECH_DSP_SOURCES "${PROJECT_SOURCE_DIR}/src/dsp/*.cpp")
 add_library(speech_dsp STATIC ${SPEECH_DSP_SOURCES})
@@ -53,8 +53,8 @@ if(BUILD_TESTS)
     add_subdirectory(tests)
 endif()
 
-if(SPEECH_DSP_ONLY)
-    message(STATUS "SPEECH_DSP_ONLY=on: skipping ONNXRuntime/models/audio I/O.")
+if(NOT BUILD_MODELS)
+    message(STATUS "BUILD_MODELS=off: configuring speech::dsp + tests only, skipping ONNXRuntime/models/audio I/O.")
     return()
 endif()
 
