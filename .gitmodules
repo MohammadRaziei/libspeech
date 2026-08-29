@@ -1,10 +1,12 @@
 [submodule "src/third_party/miniaudio"]
 	path = src/third_party/miniaudio
 	url = https://github.com/mackron/miniaudio.git
+	shallow = true
 
 [submodule "src/third_party/dr_libs"]
 	path = src/third_party/dr_libs
 	url = https://github.com/mackron/dr_libs.git
+	shallow = true
 
 [submodule "src/third_party/indicators"]
 	path = src/third_party/indicators
