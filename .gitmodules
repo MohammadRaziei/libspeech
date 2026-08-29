@@ -9,6 +9,7 @@
 [submodule "src/third_party/indicators"]
 	path = src/third_party/indicators
 	url = https://github.com/p-ranav/indicators
+	shallow = true
 
 [submodule "src/third_party/mbedtls"]
 	path = src/third_party/mbedtls
