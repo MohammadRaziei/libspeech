@@ -19,8 +19,14 @@ its tests are green (see `AGENTS`/conversation ground rules).
 - [x] Vendor `aixlog.hpp` directly (single header), remove `src/third_party/aixlog` submodule
 - [x] Establish logging convention: `aixlog`, `DEBUG` for lifecycle/results/errors, `TRACE` only where it exposes internal computation worth debugging (not on every call)
 - [x] Establish AudioFlux vendoring workflow: copy only the `.c`/`.h` files a ported operator needs into `src/dsp/vendor/audioflux/`, patch in place if needed, log every patch in `/audioflux_issues.md`
-- [ ] Remove remaining unused submodules once nothing depends on them (`src/third_party/audioflux` full submodule — keep until every needed DSP op is vendored)
+- [x] Remove `src/third_party/audioflux` submodule entirely (nothing in the build references it anymore — everything comes from `src/dsp/vendor/audioflux`)
 - [ ] Decide fate of `src/third_party/indicators`, `dr_libs`, `miniaudio` (still used by `Audio`/CLI progress bars — keep for now, revisit)
+
+> **Note for future DSP operators:** with the full AudioFlux submodule gone,
+> the next time we need to vendor a new `.c`/`.h` file (e.g. for STFT/MFCC),
+> we'll temporarily shallow-clone upstream AudioFlux to pull just that file,
+> then discard the clone — same as we'd do for any other one-off upstream
+> reference, no need to keep the whole submodule around permanently.
 
 ## DSP layer (`speech::dsp`, flat/non-virtual, vendored AudioFlux C under the hood)
 
@@ -37,8 +43,10 @@ its tests are green (see `AGENTS`/conversation ground rules).
 - [x] **DCT / IDCT** — implemented as `FFT::dct()`/`FFT::idct()` (AudioFlux computes DCT via the same FFT object, so no separate class)
   - [x] Found + documented AudioFlux footgun: `fftObj_idct()` mutates its input in place (Issue 3) -- worked around with an internal copy in our wrapper
   - [x] Round-trip + no-mutation regression tests passing
-- [ ] **STFT / spectrogram** (composes Window + FFT — next up)
-- [ ] **MFCC** (composes STFT + DCT — only after STFT is solid)
+- [x] **STFT / spectrogram** — `include/libspeech/dsp/stft.h`, `src/dsp/stft.cpp`
+  - [x] TDD tests (`tests/dsp/test_stft.cpp`), 7/7 passing (frame shape, round-trip via weighted overlap-add, edge-taper awareness documented)
+  - [x] No new AudioFlux bugs found — this implementation was clean
+- [ ] **MFCC** (composes STFT + DCT — next up)
 - [ ] Decide: do we need `filterDesign_fir`/`filterDesign_iir` as a public `speech::dsp` API, or is it purely an internal dependency of Resample?
 - [ ] Benchmark our DSP path vs. sherpa-onnx on at least one op (validates the "why libspeech" question from earlier)
 
