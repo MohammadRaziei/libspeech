@@ -10,3 +10,8 @@
 	path = src/third_party/indicators
 	url = https://github.com/p-ranav/indicators
 
+[submodule "src/third_party/mbedtls"]
+	path = src/third_party/mbedtls
+	url = https://github.com/Mbed-TLS/mbedtls.git
+	shallow = true
+	branch = v3.6.2
