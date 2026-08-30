@@ -122,4 +122,3 @@ UTEST(FFT, InvalidRadix2ExpThrows) {
     ASSERT_TRUE(threw);
 }
 
-UTEST_MAIN();

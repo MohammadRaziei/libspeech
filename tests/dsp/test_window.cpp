@@ -65,4 +65,3 @@ UTEST(Window, ZeroOrNegativeLengthThrows) {
     ASSERT_TRUE(threw);
 }
 
-UTEST_MAIN();

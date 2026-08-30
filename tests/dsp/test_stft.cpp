@@ -100,4 +100,3 @@ UTEST(STFT, InvalidRadix2ExpThrows) {
     ASSERT_TRUE(threw);
 }
 
-UTEST_MAIN();

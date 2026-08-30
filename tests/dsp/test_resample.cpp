@@ -80,4 +80,3 @@ UTEST(Resample, PreservesSignalEnergyRoughly)  {
     ASSERT_TRUE(maxAbs < 1.5f);
 }
 
-UTEST_MAIN();

@@ -54,4 +54,3 @@ UTEST(DctII, NumOutputsOutOfRangeThrows) {
     ASSERT_TRUE(threw);
 }
 
-UTEST_MAIN();

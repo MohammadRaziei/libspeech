@@ -126,4 +126,3 @@ UTEST(MFCC, TooManyCoefficientsThrows) {
     ASSERT_TRUE(threw);
 }
 
-UTEST_MAIN();
