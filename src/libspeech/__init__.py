@@ -3,11 +3,34 @@ from pathlib import Path
 
 from ctypes import *
 
-cdll.LoadLibrary(Path(__file__).parent.joinpath("libonnxruntime.so.1.21.0").as_posix())
-cdll.LoadLibrary(Path(__file__).parent.joinpath("libaudioflux.so").as_posix())
-cdll.LoadLibrary(Path(__file__).parent.joinpath("libspeech.so").as_posix())
+_here = Path(__file__).parent
+
+# ONNXRuntime ships as a separate shared library we load explicitly before
+# importing the compiled extensions (they dlopen symbols from it at import
+# time). Its filename is version-suffixed (e.g. libonnxruntime.so.1.21.0);
+# glob for whatever's actually here instead of hardcoding a version, so a
+# future ONNXRuntime version bump (see cmake/ONNXRuntime.cmake) doesn't
+# silently break this import.
+for _onnxruntime_lib in _here.glob("libonnxruntime.so*"):
+    cdll.LoadLibrary(_onnxruntime_lib.as_posix())
+    break
+
+# NOTE: AudioFlux and Mbed TLS are statically linked into libspeech.so
+# itself (see CMakeLists.txt: speech_dsp/speech_models are STATIC
+# libraries), so there is no separate libaudioflux.so/libmbedtls.so to
+# preload here -- only libspeech.so itself needs an explicit load.
+cdll.LoadLibrary(_here.joinpath("libspeech.so").as_posix())
 
 
 from ._about import __version__
 
+# The compiled extension modules (_about, _audio, ...) are intentionally
+# underscore-prefixed and not meant to be imported directly by users --
+# `import libspeech; libspeech.Audio(...)`, not `import _audio`. Re-export
+# the public names here, matching ctoon's `from .ctoon_py import *` pattern.
 from ._audio import Audio
+
+__all__ = [
+    "__version__",
+    "Audio",
+]

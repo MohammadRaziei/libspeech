@@ -101,6 +101,20 @@ else()
     message(STATUS "ONNX Runtime already exists in '${ONNXRUNTIME_DIR}'. Skipping download.")
 endif()
 
+# Determine the runtime library file path -- unconditionally, regardless of
+# whether we just downloaded it above or it already existed. This used to
+# live only inside the "already exists" branch above, which meant a
+# completely fresh (first-ever) download never set this variable at all,
+# silently breaking the Python package's runtime library copy step later
+# (file(COPY "${ONNXRUNTIME_LIB_FILE}" ...) with an empty path is a no-op,
+# not an error) -- exactly the scenario every new contributor or a CI cache
+# miss hits.
+if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+    set(ONNXRUNTIME_LIB_FILE "${ONNXRUNTIME_DIR}/lib/onnxruntime.dll")
+else()
+    set(ONNXRUNTIME_LIB_FILE "${ONNXRUNTIME_DIR}/lib/libonnxruntime.so.${onnx_version}")
+endif()
+
 # Create a .gitignore file in the ONNX Runtime directory
 file(WRITE "${ONNXRUNTIME_DIR}/.gitignore" "*\n")
 

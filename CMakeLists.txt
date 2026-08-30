@@ -138,8 +138,13 @@ elseif(BUILD_PYTHON)
     set(PYTHON_PROJECT_NAME "${CMAKE_BINARY_DIR}")
 
     if(NOT PYTHON_REQUIREMENT_INSTALLED)
+        # --break-system-packages: modern Debian/Ubuntu (PEP 668) refuse a
+        # plain `pip install` into the system Python otherwise. This flag
+        # itself requires pip >= 23.0.1 (Jan 2023) to even be recognized --
+        # a safe assumption in 2026, but worth knowing if this ever needs
+        # to support a much older pip.
         execute_process(
-                COMMAND "${Python3_EXECUTABLE}" -m pip install
+                COMMAND "${Python3_EXECUTABLE}" -m pip install --break-system-packages
                 nanobind ninja pytest-xdist pip-tools # build requirements
                 OUTPUT_QUIET COMMAND_ERROR_IS_FATAL ANY
                 WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
@@ -151,7 +156,7 @@ elseif(BUILD_PYTHON)
                 WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
         )
         execute_process(
-                COMMAND "${Python3_EXECUTABLE}" -m pip install -r ${CMAKE_CURRENT_BINARY_DIR}/requirements.txt
+                COMMAND "${Python3_EXECUTABLE}" -m pip install --break-system-packages -r ${CMAKE_CURRENT_BINARY_DIR}/requirements.txt
                 OUTPUT_QUIET COMMAND_ERROR_IS_FATAL ANY
                 WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
         )
@@ -211,12 +216,12 @@ if(DEFINED PYTHON_PROJECT_NAME)
                 NB_STATIC
 
                 # Source code goes here
-                ${NB_MODULE_SOURCES} ${SOURCES}
+                ${NB_MODULE_SOURCES}
         )
 
         target_include_directories(${NB_MODULE} PRIVATE include src)
         target_compile_definitions(${NB_MODULE} PRIVATE NB_MODULE_NAME=${NB_MODULE})
-        target_link_directories(${NB_MODULE} PRIVATE speech)
+        target_link_libraries(${NB_MODULE} PRIVATE speech)
     endforeach()
 
     if(DEFINED SKBUILD)
@@ -233,6 +238,12 @@ if(DEFINED PYTHON_PROJECT_NAME)
         foreach(_core IN LISTS PYTHON_BIND_MODULES)
             set_target_properties(${_core} PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${PYTHON_PROJECT_NAME}/${PROJECT_NAME})
         endforeach()
+
+        # libspeech.so itself must land inside the package directory too --
+        # __init__.py's `cdll.LoadLibrary(_here / "libspeech.so")` looks for
+        # it right next to _audio.abi3.so/_about.abi3.so, not in the
+        # top-level build directory (where it would otherwise default to).
+        set_target_properties(speech PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${PYTHON_PROJECT_NAME}/${PROJECT_NAME})
     endif()
 endif()
 

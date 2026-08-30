@@ -111,3 +111,66 @@ its tests are green (see `AGENTS`/conversation ground rules).
 - [ ] Update root `README.md` Quick Start to match actual current API (it currently references classes/methods that don't exist yet — `AudioProcessor`, `extract_features`, etc.)
 - [ ] `CONTRIBUTING.md` (referenced by README but missing)
 - [ ] Doxygen-style comments on public headers (`Audio`, `BaseModel`, ...)
+
+## Python bindings (nanobind)
+
+- [x] Fixed `bind_audio` (the `_audio` module): it referenced a nonexistent
+  `speech::Audio::sampleRate()` (the real method is `sample_rate()`) --
+  this binding never actually compiled before.
+- [x] Fixed a real CMake bug: the nanobind module target used
+  `target_link_directories(${NB_MODULE} PRIVATE speech)`, which only adds a
+  search path and never actually links the library -- every symbol from
+  libspeech would have been unresolved at import time. Changed to
+  `target_link_libraries`.
+- [x] Completed the `_audio` binding to cover the full `speech::Audio` API:
+  `load` (both overloads: file path and raw PCM), `play`, `save`,
+  `to_mono`, `resample`, `data()` (both overloads), `sample_rate`,
+  `duration`, `__len__`, `__repr__`.
+- [x] Found + fixed a real bug in my own binding while testing: `size()`
+  returns the sample count *per channel*, not the channel count --
+  `__repr__`'s "channels=" label and the `__len__` docstring were wrong
+  until corrected to use `data().size()` for the true channel count.
+- [x] Fixed `pip install` in the CMake Python-deps bootstrap step failing
+  with `externally-managed-environment` (PEP 668, default on modern
+  Debian/Ubuntu) by adding `--break-system-packages`.
+- [x] Verified end-to-end in this sandbox: full `-DBUILD_PYTHON=ON` configure
+  + build (nanobind auto-installed, ONNXRuntime downloaded, `_about.abi3.so`
+  and `_audio.abi3.so` both built), then actually imported both modules from
+  real Python and exercised `Audio`: load-from-raw-PCM, `to_mono`,
+  `resample`, `data()`, save-to-WAV, and load-from-WAV -- all correct.
+- [ ] Bind `speech::dsp` (Resample, MFCC, ...) and `speech::models`
+  (Denoiser, SileroVad) for Python -- currently only `Audio` is exposed.
+
+## Public Python import path (`import libspeech`, not `import _audio`)
+
+The underscore-prefixed extension modules (`_audio`, `_about`) are private
+implementation details, matching ctoon's `ctoon_py` convention -- users
+should always `import libspeech` and get the clean public API from
+`libspeech/__init__.py`'s re-exports, never import the compiled extension
+directly. Testing through that public path (instead of `import _audio`
+directly, which skips `__init__.py` entirely) surfaced three real bugs:
+
+- [x] `__init__.py` tried to `cdll.LoadLibrary(".../libaudioflux.so")`, which
+  no longer exists as a separate shared library now that AudioFlux is
+  statically linked into `speech_dsp`/`speech` -- `import libspeech` was
+  crashing outright. Removed the stale preload; also made the ONNXRuntime
+  `.so` lookup glob-based instead of hardcoding `"1.21.0"`, so a future
+  version bump (`cmake/ONNXRuntime.cmake`) doesn't silently break this again.
+- [x] Found + fixed a real bug in `cmake/ONNXRuntime.cmake`: `ONNXRUNTIME_LIB_FILE`
+  was only ever set inside the "directory already exists" branch -- on a
+  completely fresh (first-ever) download, the variable was never set at
+  all, so the later `file(COPY ${ONNXRUNTIME_LIB_FILE} ...)` silently
+  copied nothing (empty path = no-op, not an error). Exactly the scenario
+  every new contributor or a CI cache miss hits. Moved the lib-file-path
+  determination to run unconditionally after both branches.
+- [x] Found + fixed a real bug in `CMakeLists.txt`: `libspeech.so` built to
+  the top-level build directory by default, but `__init__.py`'s
+  `cdll.LoadLibrary` looks for it right next to `_audio.abi3.so`/
+  `_about.abi3.so` inside the package directory. Added
+  `set_target_properties(speech PROPERTIES LIBRARY_OUTPUT_DIRECTORY ...)`
+  to route it there too.
+- [x] Verified end-to-end via the real public path this time: fresh
+  `-DBUILD_PYTHON=ON` build from a clean ONNXRuntime download,
+  `import libspeech` (not `import _audio`), `libspeech.__version__`,
+  `libspeech.Audio()` with the full load/to_mono/resample/save/load-from-wav
+  flow, and the standalone `example` executable all working correctly.
