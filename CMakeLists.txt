@@ -247,6 +247,13 @@ if(DEFINED PYTHON_PROJECT_NAME)
     endif()
 endif()
 
+# Python tests need the bindings fully configured above (the _audio target,
+# ${PYTHON_PROJECT_NAME}) -- and only make sense for a local dev build, not
+# while scikit-build-core is driving an actual `pip install .` package build.
+if(BUILD_TESTS AND DEFINED PYTHON_PROJECT_NAME AND NOT DEFINED SKBUILD)
+    add_subdirectory(tests/python)
+endif()
+
 if(DEFINED SKBUILD)
     RETURN()
 endif()

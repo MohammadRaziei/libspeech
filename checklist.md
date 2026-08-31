@@ -174,3 +174,28 @@ directly, which skips `__init__.py` entirely) surfaced three real bugs:
   `import libspeech` (not `import _audio`), `libspeech.__version__`,
   `libspeech.Audio()` with the full load/to_mono/resample/save/load-from-wav
   flow, and the standalone `example` executable all working correctly.
+
+## Python tests wired into the polyglot `speech_test` umbrella
+
+`speech_test` used to only run `speech_test_dsp` -- Python had no tests at
+all, and no CMake wiring to run them even if it did. Fixed both, mirroring
+ctoon's `tests/python/CMakeLists.txt` pattern:
+
+- [x] `tests/python/test_audio.py` -- real pytest tests for everything
+  manually verified while fixing the bindings (version, load-from-raw-PCM,
+  `__len__` is sample count not channel count, `to_mono`, `resample`
+  including the same-rate no-op case, save/load WAV round-trip, `__repr__`
+  channel count). 8 tests.
+- [x] `tests/python/CMakeLists.txt` -- `speech_test_python` target (built +
+  run via `cmake --build . --target speech_test_python`, or through
+  `ctest`), gated on pytest being installed (warns and skips otherwise,
+  same as ctoon), added as a dependency of `speech_test`. Included from the
+  main `CMakeLists.txt` only after Python bindings are configured (needs
+  the `_audio` target + `${PYTHON_PROJECT_NAME}`), and only for local dev
+  builds (`NOT DEFINED SKBUILD`).
+- [x] Verified end-to-end: `cmake --build . --target speech_test` now runs
+  all 37 DSP tests *and* all 8 Python tests in one command; `ctest` shows
+  both `speech_dsp` and `speech_python` entries; `-DBUILD_MODELS=OFF`
+  (DSP-only) still works correctly with no Python target present.
+- [ ] Coverage reporting (lcov/coverage.py + merged dashboard) -- ctoon has
+  an elaborate version of this; not set up here yet, out of scope for now.
