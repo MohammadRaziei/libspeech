@@ -29,8 +29,12 @@ from ._about import __version__
 # `import libspeech; libspeech.Audio(...)`, not `import _audio`. Re-export
 # the public names here, matching ctoon's `from .ctoon_py import *` pattern.
 from ._audio import Audio
+from ._models import Denoiser, SileroVad, SpeechTimestamp
 
 __all__ = [
     "__version__",
     "Audio",
+    "Denoiser",
+    "SileroVad",
+    "SpeechTimestamp",
 ]

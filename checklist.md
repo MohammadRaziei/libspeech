@@ -199,3 +199,28 @@ ctoon's `tests/python/CMakeLists.txt` pattern:
   (DSP-only) still works correctly with no Python target present.
 - [ ] Coverage reporting (lcov/coverage.py + merged dashboard) -- ctoon has
   an elaborate version of this; not set up here yet, out of scope for now.
+
+## Python bindings for speech::models
+
+- [x] New `bind_models` module (`_models`, re-exported as
+  `libspeech.Denoiser`, `libspeech.SileroVad`, `libspeech.SpeechTimestamp`)
+  -- previously only `Audio` was exposed to Python.
+- [x] `Denoiser`: no public constructor bound (matches the C++ abstract
+  interface) -- only `Denoiser.create(backend, model_path, sample_rate)`
+  and `.process(input_audio)`.
+- [x] `SileroVad`: full constructor (all tunable parameters), `.process()`,
+  `.get_speech_timestamps()`, `.reset()`.
+- [x] `SpeechTimestamp`: `start`/`end` (samples), `start_s`/`end_s`
+  (seconds), `__repr__`, `__eq__`.
+- [x] Found + fixed a real, pre-existing bug while testing this binding:
+  `timestamp_t::start_s()`/`end_s()` (`include/libspeech/models/silero_vad.h`)
+  performed integer division (`start / sample_rate`, both `int`), always
+  truncating to `0.0` unless `start`/`end` happened to exceed `sample_rate`.
+  Fixed by casting to `float` before dividing.
+- [x] `tests/python/test_models.py` -- 4 new tests (timestamp seconds
+  conversion regression test, repr, and clean-error-propagation checks for
+  both `Denoiser.create` with an unknown backend and `SileroVad` with a
+  nonexistent model). Real ONNX inference isn't exercised (needs downloaded
+  model weights) -- these validate the binding surface and error handling.
+- [x] Verified end-to-end: `cmake --build . --target speech_test` now runs
+  37 DSP tests + 12 Python tests (8 audio + 4 models) together.

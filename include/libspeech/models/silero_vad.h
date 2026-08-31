@@ -33,11 +33,11 @@ class timestamp_t {
     }
 
     float start_s() const {
-        return start / sample_rate;
+        return static_cast<float>(start) / static_cast<float>(sample_rate);
     }
 
     float end_s() const {
-        return end / sample_rate;
+        return static_cast<float>(end) / static_cast<float>(sample_rate);
     }
 
    public:
