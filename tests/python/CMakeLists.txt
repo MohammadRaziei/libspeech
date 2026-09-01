@@ -35,7 +35,13 @@ if(TARGET _audio)
 
         # _audio/_about/speech all need to be built (and land inside the
         # package directory) before pytest can `import libspeech`.
-        add_dependencies(speech_test_python _audio _about speech)
+        # PYTHON_BIND_MODULES (set in the main CMakeLists.txt) already lists
+        # every discovered binding module (_about, _audio, _models, ...) --
+        # depend on all of them, not a hardcoded subset, so adding a new
+        # binding module can never again silently miss being built before
+        # these tests run (that's exactly the bug that caused a real
+        # ModuleNotFoundError for _models after it was first added).
+        add_dependencies(speech_test_python ${PYTHON_BIND_MODULES} speech)
         add_dependencies(speech_test speech_test_python)
     endif()
 endif()

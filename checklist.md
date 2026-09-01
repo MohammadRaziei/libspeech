@@ -224,3 +224,48 @@ ctoon's `tests/python/CMakeLists.txt` pattern:
   model weights) -- these validate the binding surface and error handling.
 - [x] Verified end-to-end: `cmake --build . --target speech_test` now runs
   37 DSP tests + 12 Python tests (8 audio + 4 models) together.
+
+## Version handling (ctoon-style single source of truth)
+
+- [x] New `include/libspeech/version.h`: `#define LIBSPEECH_VERSION_MAJOR/MINOR/PATCH`
+  is now the single source of truth (was: a hardcoded string in
+  `pyproject.toml`, read backwards into CMake -- meaning the C++ code
+  itself had no compile-time-visible version at all).
+- [x] `cmake/DynamicVersion.cmake` (adapted from ctoon) parses the header
+  and feeds `project(libspeech ... VERSION ...)`; replaces the old
+  `cmake/PyProject.cmake` (removed).
+- [x] `pyproject.toml`: `version = "0.0.1"` → `dynamic = ["version"]` +
+  `[tool.scikit-build.metadata.version]` regex provider reading the same
+  header -- so CMake and the Python package version can never drift apart.
+- [x] `version.py` (adapted from ctoon's, same CLI): `python version.py`
+  shows the version, `python version.py minor +`/`patch 4`/etc. bumps or
+  sets a component, `python version.py tag create [major|minor|patch|X.Y.Z]`
+  bumps, commits, and tags a release. Verified: show, bump, and revert all
+  correctly edit `include/libspeech/version.h`.
+- [x] Verified end-to-end: fresh configure correctly reports
+  `Project: libspeech@v0.0.1` (read from the header, not pyproject.toml).
+
+## Fixed: `_models` binding not found on a real build (user-reported)
+
+Root-caused a `ModuleNotFoundError: No module named 'libspeech._models'`
+from an uploaded build log. Two contributing issues, both fixed:
+
+- [x] `file(GLOB PYTHON_BIND_MODULES_PATH ...)` (and the per-module
+  `NB_MODULE_SOURCES` glob) lacked `CONFIGURE_DEPENDS`, so a newly added
+  `src/binding/bind_*` directory wasn't picked up by an incremental
+  `cmake --build` without a manual reconfigure. Added `CONFIGURE_DEPENDS`
+  to both (plus the `speech_dsp`/`speech_models` source globs, same class
+  of bug) -- but note: this is CMake's own documented *best-effort*
+  behavior, not a hard guarantee on every generator (observed unreliable
+  with the Unix Makefiles generator in this sandbox); if a new file/module
+  still isn't picked up, a manual `cmake ..` (or fresh build directory)
+  remains the guaranteed fallback.
+- [x] The *actual* root cause of the specific reported error: `_models` was
+  simply missing from `add_dependencies(speech_test_python ...)` in
+  `tests/python/CMakeLists.txt` -- reproduced from a completely fresh
+  configure (so it wasn't just glob staleness). Fixed, and hardened against
+  this ever recurring by depending on `${PYTHON_BIND_MODULES}` (every
+  discovered binding module) instead of a hardcoded name list.
+- [x] Verified end-to-end from scratch: fresh configure + `--target
+  speech_test` now correctly builds and runs all 37 DSP tests and all 12
+  Python tests (8 audio + 4 models).

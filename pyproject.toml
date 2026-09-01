@@ -6,7 +6,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "libspeech"
-version = "0.0.1"
+dynamic = ["version"]
 description = "Best library for speech"
 readme = "README.md"
 authors = [
@@ -60,6 +60,16 @@ test-skip = ["*universal2:arm64"]
 [tool.scikit-build]
 #wheel.expand-macos-universal-tags = true
 cmake.verbose = true
+
+[tool.scikit-build.metadata.version]
+provider = "scikit_build_core.metadata.regex"
+input = "include/libspeech/version.h"
+regex = '''(?sx)
+\#define \s+ LIBSPEECH_VERSION_MAJOR \s+ (?P<major>\d+) .*?
+\#define \s+ LIBSPEECH_VERSION_MINOR \s+ (?P<minor>\d+) .*?
+\#define \s+ LIBSPEECH_VERSION_PATCH \s+ (?P<patch>\d+) .*?
+'''
+result = "{major}.{minor}.{patch}"
 
 
 [tool.pytest.ini_options]

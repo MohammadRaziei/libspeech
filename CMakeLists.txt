@@ -17,13 +17,19 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
-include(PyProject)
+include(DynamicVersion)
+
+extract_version_string(
+    HEADER_FILE ${CMAKE_CURRENT_LIST_DIR}/include/libspeech/version.h
+    VERSION_PREFIX LIBSPEECH_
+    OUTPUT_VAR PROJECT_VERSION
+)
 
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
 endif()
 
-project(${PyProject_NAME} LANGUAGES C CXX VERSION ${PyProject_VERSION})
+project(libspeech LANGUAGES C CXX VERSION ${PROJECT_VERSION})
 
 message(STATUS "Project: ${PROJECT_NAME}@v${PROJECT_VERSION}")
 
@@ -37,7 +43,7 @@ include(AudioFlux)
 # model/audio-I/O stack, matching the project's "minimal dependencies" goal
 # and keeping DSP iteration fast. See BUILD_MODELS below.
 # ---------------------------------------------------------------------------
-file(GLOB SPEECH_DSP_SOURCES "${PROJECT_SOURCE_DIR}/src/dsp/*.cpp")
+file(GLOB SPEECH_DSP_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/dsp/*.cpp")
 add_library(speech_dsp STATIC ${SPEECH_DSP_SOURCES})
 add_library(speech::dsp ALIAS speech_dsp)
 
@@ -88,7 +94,7 @@ add_subdirectory(src/third_party/mbedtls)
 # and out, and only need ONNXRuntime plus the download/progress-bar utility
 # code (base_model.cpp downloads .onnx weights on first use).
 # ---------------------------------------------------------------------------
-file(GLOB SPEECH_MODELS_SOURCES "${PROJECT_SOURCE_DIR}/src/models/*.cpp")
+file(GLOB SPEECH_MODELS_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/models/*.cpp")
 add_library(speech_models STATIC
         ${SPEECH_MODELS_SOURCES}
         src/utils/utils.cpp
@@ -187,13 +193,19 @@ if(DEFINED PYTHON_PROJECT_NAME)
             VERSION_INFO=${PROJECT_VERSION}
             NB_MODULE_NAME=${NB_MODULE})
 
-    file(GLOB PYTHON_BIND_MODULES_PATH ${PROJECT_SOURCE_DIR}/src/binding/bind_*)
+    # CONFIGURE_DEPENDS: best-effort auto-detection of new bind_* directories
+    # without a manual reconfigure. This is NOT guaranteed by CMake to work
+    # on every generator/environment (e.g. observed unreliable with the Unix
+    # Makefiles generator in some setups) -- if a newly added binding module
+    # doesn't show up after `cmake --build`, run `cmake ..` (or delete and
+    # recreate the build directory) once to force a fresh configure.
+    file(GLOB PYTHON_BIND_MODULES_PATH CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/src/binding/bind_*)
     set(PYTHON_BIND_MODULES "${NB_MODULE}")
     foreach(NB_MODULE_PATH IN LISTS PYTHON_BIND_MODULES_PATH)
         get_filename_component(NB_MODULE ${NB_MODULE_PATH} NAME)
         string(REGEX REPLACE "bind(.*)" "\\1" NB_MODULE ${NB_MODULE})
         list(APPEND PYTHON_BIND_MODULES ${NB_MODULE})
-        file(GLOB NB_MODULE_SOURCES ${NB_MODULE_PATH}/*.cpp)
+        file(GLOB NB_MODULE_SOURCES CONFIGURE_DEPENDS ${NB_MODULE_PATH}/*.cpp)
 
         message(STATUS "Found module: ${NB_MODULE}")
 
