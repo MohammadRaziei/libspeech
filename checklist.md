@@ -59,14 +59,29 @@ its tests are green (see `AGENTS`/conversation ground rules).
   - [x] Found + fixed a **test-infrastructure bug** (not a production bug): `makeSine()` helpers computing phase as `float` lost precision at large sample indices, causing spuriously "inconsistent" MFCC output across frames; fixed by computing phase in `double`, rounding only the final `sin()` result to `float`. Affected `test_resample.cpp`, `test_fft.cpp`, `test_stft.cpp`, `test_mfcc.cpp`.
 
 **DSP layer is now feature-complete per the original plan** (Resample, Window, FFT/DCT, STFT, MFCC). Remaining DSP-layer work is CMake integration, not new operators.
-- [ ] Decide: do we need `filterDesign_fir`/`filterDesign_iir` as a public `speech::dsp` API, or is it purely an internal dependency of Resample?
+- [x] Decided: `filterDesign_fir`/`filterDesign_iir` stay internal
+  (Resample-only dependency, not exposed as a public `speech::dsp` API or
+  Python binding) -- no evidence of a standalone use case for them yet;
+  revisit if one comes up.
 - [ ] Benchmark our DSP path vs. sherpa-onnx on at least one op (validates the "why libspeech" question from earlier)
 
 ## Models layer (`speech::models`, small interfaces where backends compete)
 
 - [x] `Denoiser` interface (`include/libspeech/models/denoiser.h`) with `Create(backend, url, sample_rate)` factory
 - [x] `FacebookDenoiser` and `SpeechBrainDenoiser` implement `Denoiser`
-- [ ] Tests for `Denoiser` factory + both backends (TDD, currently untested)
+- [x] Tests for `Denoiser` factory (`tests/models/test_denoiser.cpp`, wired
+  as `speech_test_models` alongside `speech_test_dsp`/`speech_test_python`
+  under the `speech_test` umbrella): 3 tests covering the unknown-backend
+  error path (network-free, since that check happens before any ONNX
+  Runtime/download code runs). Verified end-to-end via `ctest` and
+  `cmake --build . --target speech_test`; `-DBUILD_MODELS=OFF` correctly
+  skips this without error.
+  - [ ] Follow-up: integration tests actually constructing
+    `FacebookDenoiser`/`SpeechBrainDenoiser` and calling `.process()` need
+    real ONNX model weights downloaded from this project's GitHub release
+    -- couldn't confirm the actual asset filenames exist yet (a web search
+    for `MohammadRaziei/libspeech` releases turned up nothing), so this is
+    blocked on the maintainer publishing those model weights first.
 - [ ] Revisit `BaseModel`/`ONNXModel` for cross-platform issues (e.g. `getenv("HOME")` breaks on Windows despite README claiming cross-platform support)
 - [ ] `SileroVad` — leave as concrete class (no interface) unless/until a second VAD backend actually exists (YAGNI)
 
@@ -138,8 +153,15 @@ its tests are green (see `AGENTS`/conversation ground rules).
   and `_audio.abi3.so` both built), then actually imported both modules from
   real Python and exercised `Audio`: load-from-raw-PCM, `to_mono`,
   `resample`, `data()`, save-to-WAV, and load-from-WAV -- all correct.
-- [ ] Bind `speech::dsp` (Resample, MFCC, ...) and `speech::models`
-  (Denoiser, SileroVad) for Python -- currently only `Audio` is exposed.
+- [x] Bind `speech::dsp` (Resample, window, FFT, STFT, MFCC, dctII) for
+  Python too -- new `_dsp` module (`libspeech.Resample`, `.window`, `.FFT`,
+  `.STFT`, `.MFCC`, `.MFCCParams`, `.dct`, `.WindowType`), wired as
+  `speech_test_python_dsp`. 8 new pytest tests mirroring the correctness
+  properties already validated in `tests/dsp/` (impulse response, DCT
+  energy compaction, resample identity/length, STFT frame shape, MFCC
+  output shape). `speech::models` was already bound (see earlier entry).
+  Verified end-to-end: full build + `ctest` (5/5: cpp_dsp, cpp_models,
+  python_audio, python_models, python_dsp) all pass.
 
 ## Public Python import path (`import libspeech`, not `import _audio`)
 
@@ -269,3 +291,138 @@ from an uploaded build log. Two contributing issues, both fixed:
 - [x] Verified end-to-end from scratch: fresh configure + `--target
   speech_test` now correctly builds and runs all 37 DSP tests and all 12
   Python tests (8 audio + 4 models).
+
+## Test target naming: two explicit axes (language x module)
+
+The previous naming (`speech_test_dsp`, `speech_test_models`,
+`speech_test_python`) mixed the language and module axes inconsistently --
+ctoon only has one axis (language) because it's a single-module library;
+libspeech needs both explicit since the C++ side itself is split into
+independent libraries. Renamed everything to `speech_test_<language>_<module>`:
+
+```
+speech_test                       -- everything
+|-- speech_test_cpp               -- all C++ tests
+|   |-- speech_test_cpp_dsp       -- speech::dsp (cheap, no ONNXRuntime/network)
+|   `-- speech_test_cpp_models    -- speech::models
+`-- speech_test_python            -- all Python tests
+    |-- speech_test_python_audio  -- libspeech.Audio
+    `-- speech_test_python_models -- libspeech.Denoiser/SileroVad
+```
+
+- [x] `speech_test_<language>` now genuinely aggregates every module under
+  that language (verified: `speech_test_cpp` builds+runs both dsp's 37
+  tests and models' 3 tests; `speech_test_python` runs both audio's 8 and
+  models' 4 pytest files).
+- [x] ctest entries renamed to match: `cpp_dsp`, `cpp_models`,
+  `python_audio`, `python_models`.
+- [x] Found + fixed a real bug introduced during this rename: echo strings
+  like `"-- Running speech::dsp (C++) tests..."` contain unescaped
+  parentheses, which broke the generated Makefile's shell syntax
+  (`/bin/sh: Syntax error: "(" unexpected`) -- reproduced consistently, not
+  a flaky/parallel-build issue. Removed the parentheses from all such
+  cosmetic echo strings.
+- [x] Verified `-DBUILD_MODELS=OFF` still works cleanly: `speech_test`,
+  `speech_test_cpp`, `speech_test_python` aggregate targets always exist
+  (declared in tests/CMakeLists.txt unconditionally), but only
+  `speech_test_cpp_dsp` attaches under this flag -- `speech_test_python`
+  correctly ends up as a harmless empty aggregate (no leaves, no error).
+- Known minor cosmetic issue: running `speech_test_python` (or any
+  multi-leaf aggregate) with `-j>1` under the Unix Makefiles generator
+  interleaves the two pytest processes' terminal output (both still pass
+  correctly) -- not worth fixing at the cost of forcing serial execution;
+  use `-j1` or Ninja for clean output if this matters.
+- Considered simplifying further (only splitting out `models`, folding
+  `dsp`/`audio` into their language's top-level name with no suffix), then
+  reverted: `audio` (file I/O, the umbrella `Audio` class) and `dsp`
+  (signal-processing algorithms) are genuinely distinct concepts, not
+  redundant fragmentation -- worth keeping explicit even though, right now,
+  each only exists on one language side (`dsp`: C++ only; `audio`: Python
+  only, since `speech::dsp` isn't bound to Python yet).
+
+## Consistent C++ namespacing for all three modules (matching CMake targets)
+
+Previously: `speech::dsp` was properly namespaced, but `speech::models`
+classes (`Denoiser`, `BaseModel`, `ONNXModel`, `SileroVadModel`,
+`timestamp_t`, ...) were sitting in the **global namespace** with no
+namespace at all, and `Audio` was directly in `speech` rather than its own
+submodule namespace. Fixed all three to match the CMake target structure:
+
+- [x] `speech::dsp` -- unchanged (already correct).
+- [x] `speech::models` -- wrapped every header and .cpp
+  (`base_model.h/.cpp`, `denoiser.h/.cpp`, `onnx_model.h/.cpp`,
+  `silero_vad.h/.cpp`, `facebook_denoiser.h/.cpp`,
+  `speechbrain_denoiser.h/.cpp`) in `namespace speech::models { ... }`.
+- [x] `speech::io` (not `speech::audio` -- see reasoning below) -- moved
+  `Audio`/`AudioImpl` from bare `speech::` into `speech::io::`.
+- **Why `io` and not `audio`:** the class itself is named `Audio`, so a
+  `speech::audio` namespace would produce `speech::audio::Audio` -- a
+  stutter. `speech::io::Audio` reads cleanly and matches the established
+  pattern where the namespace names the *domain* (dsp, models, io), not
+  the primary class.
+- [x] New `speech::io` CMake target (`speech_io`, alias `speech::io`),
+  mirroring `speech_dsp`/`speech_models` exactly: its own static library
+  containing `src/audio.cpp`, depending on `miniaudio`/`indicators`
+  privately and `speech::dsp` publicly (for `Resample`). The `speech`
+  umbrella library is now a pure aggregator (`speech::io` + `speech::dsp`
+  + `speech::models`) with no code of its own -- needed a trivial
+  placeholder source file since CMake refuses a truly sourceless `SHARED`
+  library target.
+- [x] Updated every consumer: `src/binding/bind_audio/main.cpp`,
+  `src/binding/bind_models/main.cpp` (plus a self-inflicted sed bug fixed
+  along the way -- the Python-facing name string `"Denoiser"` got
+  overwritten to the fully-qualified C++ name by an over-eager
+  find/replace), `examples/main.cpp`, `examples/silero_app/main.cpp`,
+  `tests/models/test_denoiser.cpp`.
+- [x] Found + fixed real compile errors along the way (this refactor
+  touched ~15 files; a fully clean build wasn't achieved on the first
+  pass): stale `speech::AudioImpl::`/`speech::Audio` qualifications left
+  over in `audio.cpp`'s out-of-class method definitions and return types,
+  and unqualified `timestamp_t` in the example files.
+- [x] Verified end-to-end from a clean build: all 40 C++ tests
+  (`speech_test_cpp`) and all 12 Python tests (`speech_test_python`) pass;
+  a real Python session (`import libspeech`, `Audio.load/resample`,
+  `SpeechTimestamp.start_s`) works correctly against the restructured
+  libraries.
+
+## `speech::speech` given a real purpose (the "everything" alias)
+
+Previously `speech::speech` (the `PackageName::PackageName` CMake
+convention) was defined but never actually used anywhere -- existed in
+name only. Fixed:
+
+- [x] Documented its role explicitly in `CMakeLists.txt`: link `speech::speech`
+  when you want everything (`speech::io` + `speech::dsp` + `speech::models`)
+  in one go, vs. linking `speech::dsp` etc. directly for just one piece.
+- [x] Actually used it where the whole library genuinely is needed: the
+  nanobind Python modules and the `example` executable now link
+  `speech::speech` instead of the bare `speech` target name.
+- [x] Verified end-to-end: full build succeeds, and `./example` actually
+  *runs* -- real audio playback simulation, resampling, and denoising all
+  executed correctly, confirming `speech::speech` genuinely aggregates and
+  links everything at runtime, not just at compile time.
+
+## Python binding module naming, matching the CMake target names
+
+Previously: `speech_dsp`/`speech_io`/`speech_models` (C++ static libs) but
+`_dsp`/`_audio`/`_models` (Python extension modules) -- mismatched, and
+`audio` didn't match the `io` namespace decision made earlier. Renamed to
+`speech_dsp_py`/`speech_io_py`/`speech_models_py`:
+
+- [x] `src/binding/bind_audio/` renamed to `src/binding/bind_io/` (matches
+  `speech::io`).
+- [x] Module-name derivation in `CMakeLists.txt` changed from
+  `bind_X -> _X` to `bind_X -> speech_X_py`.
+- [x] `libspeech/__init__.py` updated: `from .speech_io_py import Audio`,
+  `from .speech_dsp_py import ...`, `from .speech_models_py import ...`.
+- [x] Found + fixed a stale guard: `tests/python/CMakeLists.txt` still
+  checked `if(TARGET _audio)` (the old name) to decide whether to wire up
+  Python tests -- silently skipped all three Python test suites once the
+  target was renamed, with no error (ctest just showed 2/2 instead of 5/5).
+  Fixed to check the new name.
+- [x] Verified end-to-end: fresh configure discovers `speech_dsp_py`,
+  `speech_io_py`, `speech_models_py`; the built `.so` files are named
+  correctly (`speech_dsp_py.abi3.so`, etc.); `ctest` shows 5/5
+  (`cpp_dsp`, `cpp_models`, `python_audio`, `python_models`, `python_dsp`);
+  a real `import libspeech` session resolves `Audio`/`Resample`/`Denoiser`
+  to their new module paths correctly.

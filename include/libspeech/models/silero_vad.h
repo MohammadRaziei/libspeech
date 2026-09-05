@@ -12,6 +12,8 @@
 
 #include "libspeech/utils/utils.h"
 
+namespace speech::models {
+
 // Forward declaration of timestamp_t class
 class timestamp_t {
    public:
@@ -123,5 +125,6 @@ class SileroVadModel : public ONNXModel {
     void predict(const std::vector<float>& data_chunk);
 };
 
+}  // namespace speech::models
 
 #endif  // LIBSPEECH_SILERO_VAD_H

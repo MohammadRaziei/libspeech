@@ -11,6 +11,8 @@
 
 #include "libspeech/models/facebook_denoiser.h"
 
+namespace speech::models {
+
 
 /**
  * Constructor for FacebookDenoiser.
@@ -78,3 +80,6 @@ std::vector<float> SpeechBrainDenoiser::process(const std::vector<float>& input_
 SpeechBrainDenoiser::~SpeechBrainDenoiser() {
 
 }
+
+
+}  // namespace speech::models

@@ -10,6 +10,8 @@
 #include "libspeech/models/denoiser.h"
 #include <vector>
 
+namespace speech::models {
+
 /**
  * FacebookDenoiser class: Inherits from ONNXModel and provides functionality for denoising audio.
  */
@@ -37,5 +39,6 @@ class FacebookDenoiser : public ONNXModel, public Denoiser {
 
 };
 
+}  // namespace speech::models
 
 #endif  // LIBSPEECH_FACEBOOK_DENOISER_H

@@ -49,13 +49,13 @@ class SpeechController : public oatpp::web::server::api::ApiController {
             }
 
             // Load the audio file
-            speech::Audio audio;
+            speech::io::Audio audio;
             if (!audio.load(fileName)) {
                 throw std::runtime_error("Failed to load audio file.");
             }
 
             // Initialize the SileroVAD model
-            SileroVadModel vad;
+            speech::models::SileroVadModel vad;
 
             // Resample the audio to the required sample rate
             const auto audio16k = audio.to_mono().resample(vad.sample_rate);
@@ -64,7 +64,7 @@ class SpeechController : public oatpp::web::server::api::ApiController {
             vad.processOnVector(audio16k.data(0));
 
             // Retrieve speech timestamps
-            std::vector<timestamp_t> stamps = vad.get_speech_timestamps();
+            std::vector<speech::models::timestamp_t> stamps = vad.get_speech_timestamps();
 
             // Prepare the response
             auto response = SpeechResponseDto::createShared();

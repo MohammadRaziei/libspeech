@@ -9,6 +9,8 @@
 #include <string>
 #include <vector>
 
+namespace speech::models {
+
 /**
  * Denoiser: shared interface every denoising backend implements.
  * Lets callers swap backends without caring which one is loaded.
@@ -28,5 +30,7 @@ class Denoiser {
                                              const std::string& url,
                                              int sample_rate = 16000);
 };
+
+}  // namespace speech::models
 
 #endif  // LIBSPEECH_DENOISER_H

@@ -24,16 +24,28 @@ cdll.LoadLibrary(_here.joinpath("libspeech.so").as_posix())
 
 from ._about import __version__
 
-# The compiled extension modules (_about, _audio, ...) are intentionally
-# underscore-prefixed and not meant to be imported directly by users --
-# `import libspeech; libspeech.Audio(...)`, not `import _audio`. Re-export
-# the public names here, matching ctoon's `from .ctoon_py import *` pattern.
-from ._audio import Audio
-from ._models import Denoiser, SileroVad, SpeechTimestamp
+# The compiled extension modules (_about, speech_io_py, ...) are
+# intentionally underscore/private-prefixed and not meant to be imported
+# directly by users -- `import libspeech; libspeech.Audio(...)`, not
+# `import speech_io_py`. Re-export the public names here, matching ctoon's
+# `from .ctoon_py import *` pattern. Module names mirror the CMake target
+# names (speech_dsp/speech_io/speech_models -> speech_dsp_py/speech_io_py/
+# speech_models_py) so the two naming schemes stay in sync.
+from .speech_io_py import Audio
+from .speech_dsp_py import Resample, WindowType, window, dct, FFT, STFT, MFCC, MFCCParams
+from .speech_models_py import Denoiser, SileroVad, SpeechTimestamp
 
 __all__ = [
     "__version__",
     "Audio",
+    "Resample",
+    "WindowType",
+    "window",
+    "dct",
+    "FFT",
+    "STFT",
+    "MFCC",
+    "MFCCParams",
     "Denoiser",
     "SileroVad",
     "SpeechTimestamp",

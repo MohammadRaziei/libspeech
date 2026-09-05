@@ -5,6 +5,8 @@
 #include "libspeech/models/onnx_model.h"
 #include <stdexcept>
 
+namespace speech::models {
+
 /**
  * Constructor for ONNXModel.
  * @param url The URL of the ONNX model file to download.
@@ -52,3 +54,6 @@ void ONNXModel::init_engine_threads(int inter_threads, int intra_threads) {
 ONNXModel::~ONNXModel() {
 
 }
+
+
+}  // namespace speech::models

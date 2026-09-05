@@ -4,6 +4,8 @@
 
 #include "libspeech/models/silero_vad.h"
 
+namespace speech::models {
+
 // Resets internal state (_state, _context, etc.)
 void SileroVadModel::reset_states() {
     std::memset(_state.data(), 0, _state.size() * sizeof(float));
@@ -172,3 +174,5 @@ const std::vector<timestamp_t> SileroVadModel::get_speech_timestamps() const {
 void SileroVadModel::reset() {
     reset_states();
 }
+
+}  // namespace speech::models

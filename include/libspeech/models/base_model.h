@@ -11,6 +11,8 @@
 #include <iostream>
 
 
+namespace speech::models {
+
 class BaseModel {
    protected:
     std::string url;
@@ -23,5 +25,7 @@ class BaseModel {
    protected:
     void download_model();
 };
+
+}  // namespace speech::models
 
 #endif  // LIBSPEECH_BASE_MODEL_H

@@ -1,4 +1,4 @@
-#include "libspeech/audio.h"           // For speech::Audio
+#include "libspeech/audio.h"           // For speech::io::Audio
 #include <iostream>
 
 #include "libspeech/models/silero_vad.h" // Include the SileroVAD model header
@@ -44,7 +44,7 @@ int main2() {
     try {
 
         // Initialize the SileroVAD model
-        SileroVadModel vad;
+        speech::models::SileroVadModel vad;
 
         // Download and load the audio file
 //        std::string url = "https://github.com/MohammadRaziei/libspeech/releases/download/resources/example-en-biden-large.mp3";
@@ -59,7 +59,7 @@ int main2() {
         }
 
         // Load the audio file
-        speech::Audio audio;
+        speech::io::Audio audio;
         if (!audio.load(fileName)) {
             LOG(FATAL) << "Failed to load audio file." << std::endl;
             return -1;
@@ -73,7 +73,7 @@ int main2() {
         vad.processOnVector(audio16k.data(0));
 
         // Retrieve and print speech timestamps
-        std::vector<timestamp_t> stamps = vad.get_speech_timestamps();
+        std::vector<speech::models::timestamp_t> stamps = vad.get_speech_timestamps();
         for (const auto& stamp : stamps) {
             LOG(INFO) << "Speech detected from " << AixLog::Color::cyan << stamp.start_s() << " to " << stamp.end_s() << AixLog::Color::none << " seconds." << std::endl;
         }
@@ -109,7 +109,7 @@ int main5() {
         }
 
         // Load the audio file
-        speech::Audio audio;
+        speech::io::Audio audio;
         if (!audio.load(fileName)) {
             LOG(FATAL) << "Failed to load audio file." << std::endl;
             return -1;
@@ -118,7 +118,7 @@ int main5() {
 
 
 
-        SpeechBrainDenoiser denoiser("speechbrain-sepformer-wham16k-enhancement.onnx", 16000);
+        speech::models::SpeechBrainDenoiser denoiser("speechbrain-sepformer-wham16k-enhancement.onnx", 16000);
 
         auto audio_process = audio.to_mono().resample(denoiser.sample_rate);
         auto process_data = audio_process.data(0);
@@ -176,7 +176,7 @@ int main4() {
     try {
 
         // Initialize the SileroVAD model
-        SileroVadModel vad;
+        speech::models::SileroVadModel vad;
 
         // Download and load the audio file
 //        std::string url = "https://github.com/MohammadRaziei/libspeech/releases/download/resources/example-en-biden-large.mp3";
@@ -191,7 +191,7 @@ int main4() {
         }
 
         // Load the audio file
-        speech::Audio audio;
+        speech::io::Audio audio;
         if (!audio.load(fileName)) {
             LOG(FATAL) << "Failed to load audio file." << std::endl;
             return -1;
@@ -205,7 +205,7 @@ int main4() {
         vad.processOnVector(audio16k.data(0));
 
         // Retrieve and print speech timestamps
-        std::vector<timestamp_t> stamps = vad.get_speech_timestamps();
+        std::vector<speech::models::timestamp_t> stamps = vad.get_speech_timestamps();
         for (const auto& stamp : stamps) {
             LOG(INFO) << "Speech detected from " << AixLog::Color::cyan << stamp.start_s() << " to " << stamp.end_s() << AixLog::Color::none << " seconds." << std::endl;
         }
@@ -225,7 +225,7 @@ int main() {
 
         // Define the model URL and base directory.
 
-        // Create an instance of FacebookDenoiser.
+        // Create an instance of speech::models::FacebookDenoiser.
 
         // Prepare input audio data (example: 1 second of silence at 16000 Hz).
 //        std::string url = "https://github.com/MohammadRaziei/libspeech/releases/download/resources/alex-noisy.mp3";
@@ -242,7 +242,7 @@ int main() {
         }
 
         // Load the audio file
-        speech::Audio audio;
+        speech::io::Audio audio;
         if (!audio.load(fileName)) {
             LOG(FATAL) << "Failed to load audio file." << std::endl;
             return -1;
@@ -251,7 +251,7 @@ int main() {
 
         std::string model_url = "facebook-denoiser-dns64.onnx";
 
-        FacebookDenoiser denoiser(model_url);
+        speech::models::FacebookDenoiser denoiser(model_url);
 
         auto audio_process = audio.to_mono().resample(denoiser.sample_rate);
 

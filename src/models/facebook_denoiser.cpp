@@ -4,6 +4,8 @@
 
 #include "libspeech/models/facebook_denoiser.h"
 
+namespace speech::models {
+
 
 /**
  * Constructor for FacebookDenoiser.
@@ -68,3 +70,6 @@ std::vector<float> FacebookDenoiser::process(const std::vector<float>& input_aud
 FacebookDenoiser::~FacebookDenoiser() {
 
 }
+
+
+}  // namespace speech::models

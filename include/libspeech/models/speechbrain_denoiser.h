@@ -10,6 +10,8 @@
 #include "libspeech/models/denoiser.h"
 #include <vector>
 
+namespace speech::models {
+
 /**
  * SpeechBrainDenoiser class: Inherits from ONNXModel and provides functionality for denoising audio.
  */
@@ -37,6 +39,6 @@ public:
 
 };
 
-
+}  // namespace speech::models
 
 #endif //LIBSPEECH_SPEECHBRAIN_DENOISER_H

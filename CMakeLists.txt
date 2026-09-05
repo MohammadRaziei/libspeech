@@ -115,22 +115,54 @@ target_link_libraries(speech_models
         PRIVATE mbedtls mbedx509 mbedcrypto
 )
 
+if(BUILD_TESTS)
+    add_subdirectory(tests/models)
+endif()
+
 # ---------------------------------------------------------------------------
-# speech -- the umbrella library: audio file I/O (miniaudio/dr_libs) plus
-# speech::dsp and speech::models, all in one linkable/installable target for
-# consumers (the Python bindings, example executables, downstream projects).
+# speech::io -- audio file I/O (the Audio class: load/save/play/resample/
+# to_mono), backed by miniaudio + dr_libs. Mirrors speech::dsp/speech::models:
+# its own static library, its own namespace (speech::io in the C++ code,
+# matching this CMake alias).
 # ---------------------------------------------------------------------------
-add_library(speech SHARED src/audio.cpp)
+add_library(speech_io STATIC src/audio.cpp)
+add_library(speech::io ALIAS speech_io)
+
+target_include_directories(speech_io
+        PUBLIC ${PROJECT_SOURCE_DIR}/include
+        PRIVATE ${PROJECT_SOURCE_DIR}/src
+        PRIVATE src/third_party/dr_libs
+        PRIVATE src/vendor/aixlog/include
+)
+target_link_libraries(speech_io
+        PRIVATE miniaudio
+        PRIVATE indicators
+        PUBLIC speech::dsp
+)
+
+# ---------------------------------------------------------------------------
+# speech -- the umbrella library: speech::io, speech::dsp, and
+# speech::models, all in one linkable/installable target for consumers (the
+# Python bindings, example executables, downstream projects).
+#
+# speech::speech (the PackageName::PackageName convention many CMake
+# packages export) is the "I want everything" entry point: link it to pull
+# in speech::io + speech::dsp + speech::models in one go, as opposed to
+# linking speech::dsp (etc.) directly when only one piece is needed. Used
+# below for the Python bindings and the example executable, both of which
+# genuinely need the whole library.
+# ---------------------------------------------------------------------------
+add_library(speech SHARED src/speech_umbrella_placeholder.cpp)
 add_library(speech::speech ALIAS speech)
+
+set_target_properties(speech PROPERTIES LINKER_LANGUAGE CXX)
 
 target_include_directories(speech
         PUBLIC ${PROJECT_SOURCE_DIR}/include          # public headers live under include/libspeech/*
-        PRIVATE ${PROJECT_SOURCE_DIR}/src
-        PRIVATE src/third_party/dr_libs
 )
 
 target_link_libraries(speech
-        PRIVATE miniaudio
+        PUBLIC speech::io
         PUBLIC speech::dsp
         PUBLIC speech::models
 )
@@ -203,7 +235,7 @@ if(DEFINED PYTHON_PROJECT_NAME)
     set(PYTHON_BIND_MODULES "${NB_MODULE}")
     foreach(NB_MODULE_PATH IN LISTS PYTHON_BIND_MODULES_PATH)
         get_filename_component(NB_MODULE ${NB_MODULE_PATH} NAME)
-        string(REGEX REPLACE "bind(.*)" "\\1" NB_MODULE ${NB_MODULE})
+        string(REGEX REPLACE "bind_(.*)" "speech_\\1_py" NB_MODULE ${NB_MODULE})
         list(APPEND PYTHON_BIND_MODULES ${NB_MODULE})
         file(GLOB NB_MODULE_SOURCES CONFIGURE_DEPENDS ${NB_MODULE_PATH}/*.cpp)
 
@@ -233,7 +265,7 @@ if(DEFINED PYTHON_PROJECT_NAME)
 
         target_include_directories(${NB_MODULE} PRIVATE include src)
         target_compile_definitions(${NB_MODULE} PRIVATE NB_MODULE_NAME=${NB_MODULE})
-        target_link_libraries(${NB_MODULE} PRIVATE speech)
+        target_link_libraries(${NB_MODULE} PRIVATE speech::speech)
     endforeach()
 
     if(DEFINED SKBUILD)
@@ -271,7 +303,7 @@ if(DEFINED SKBUILD)
 endif()
 
 add_executable(example examples/main.cpp)
-target_link_libraries(example PRIVATE speech)
+target_link_libraries(example PRIVATE speech::speech)
 
 install(TARGETS speech
     LIBRARY DESTINATION lib

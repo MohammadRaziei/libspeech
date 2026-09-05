@@ -9,6 +9,8 @@
 #include "base_model.h"
 #include "onnxruntime_cxx_api.h"
 
+namespace speech::models {
+
 /**
  * ONNXModel serves as a base class for models that use ONNX Runtime.
  * It provides functionality for initializing and managing ONNX sessions.
@@ -51,5 +53,7 @@ class ONNXModel : public BaseModel {
 public:
     const int sample_rate;
 };
+
+}  // namespace speech::models
 
 #endif  // LIBSPEECH_ONNX_MODEL_H
