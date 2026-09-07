@@ -8,6 +8,7 @@
 #include <memory>
 #include "base_model.h"
 #include "onnxruntime_cxx_api.h"
+#include "libspeech/utils/utils.h"
 
 namespace speech::models {
 
@@ -31,7 +32,7 @@ class ONNXModel : public BaseModel {
      * @param url The URL of the ONNX model file to download.
      * @param base_dir The base directory where the model will be stored. Defaults to ~/.libspeech.
      */
-    ONNXModel(const std::string& url, const int sample_rate, const std::filesystem::path& base_dir = std::filesystem::path(getenv("HOME")) / ".libspeech");
+    ONNXModel(const std::string& url, const int sample_rate, const std::filesystem::path& base_dir = speech::utils::getDefaultModelCacheDir());
 
     /**
      * Destructor for ONNXModel.

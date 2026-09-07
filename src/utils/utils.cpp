@@ -4,6 +4,7 @@
 #include <fstream>
 #include <iostream>
 #include <regex>
+#include <cstdlib>
 
 #include "httplib.h"
 
@@ -39,6 +40,40 @@ ParsedUrl parseUrl(const std::string& url) {
 std::filesystem::path speech::utils::getTempDirectory() {
     // Use filesystem to get the temp directory
     return std::filesystem::temp_directory_path();
+}
+
+std::filesystem::path speech::utils::getDefaultModelCacheDir() {
+    // HOME is the standard Unix/macOS env var. On Windows it's generally
+    // NOT set -- getenv("HOME") returns nullptr there -- so it must not be
+    // the only thing checked.
+    if (const char* home = std::getenv("HOME")) {
+        return std::filesystem::path(home) / ".libspeech";
+    }
+
+    // USERPROFILE is the standard Windows equivalent (e.g. C:\Users\Name).
+    if (const char* userProfile = std::getenv("USERPROFILE")) {
+        return std::filesystem::path(userProfile) / ".libspeech";
+    }
+
+    // Older Windows / some restricted environments only set these two
+    // separately (e.g. HOMEDRIVE=C: HOMEPATH=\Users\Name) rather than
+    // USERPROFILE.
+    const char* homeDrive = std::getenv("HOMEDRIVE");
+    const char* homePath = std::getenv("HOMEPATH");
+    if (homeDrive && homePath) {
+        return std::filesystem::path(std::string(homeDrive) + homePath) / ".libspeech";
+    }
+
+    // Last resort: fall back to the system temp directory rather than
+    // crashing (constructing a std::filesystem::path from a null pointer,
+    // e.g. `std::filesystem::path(getenv("HOME"))` when HOME is unset, is
+    // undefined behavior -- this is exactly the bug being fixed here).
+    LOG(WARNING) << TAG("speech::utils::getDefaultModelCacheDir")
+                 << "Could not determine the user's home directory (HOME/USERPROFILE/"
+                    "HOMEDRIVE+HOMEPATH all unset); falling back to the system temp "
+                    "directory for downloaded model weights."
+                 << std::endl;
+    return std::filesystem::temp_directory_path() / ".libspeech";
 }
 
 // Function to download a file

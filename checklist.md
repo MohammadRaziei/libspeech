@@ -426,3 +426,76 @@ Previously: `speech_dsp`/`speech_io`/`speech_models` (C++ static libs) but
   (`cpp_dsp`, `cpp_models`, `python_audio`, `python_models`, `python_dsp`);
   a real `import libspeech` session resolves `Audio`/`Resample`/`Denoiser`
   to their new module paths correctly.
+
+## Cross-platform home directory (fixed a Windows crash) + docs
+
+- [x] Fixed `getenv("HOME")` used directly as a default parameter value in
+  `BaseModel`/`ONNXModel` constructors -- `HOME` is essentially never set
+  on Windows, so this returned `nullptr` there, and constructing a
+  `std::filesystem::path` from a null pointer is undefined behavior
+  (crashes in practice). New `speech::utils::getDefaultModelCacheDir()`
+  checks `HOME`, then `USERPROFILE`, then `HOMEDRIVE`+`HOMEPATH`, falling
+  back to the system temp directory (with a logged warning) instead of
+  crashing if none are set.
+- [x] 4 new TDD tests (`tests/models/test_default_model_cache_dir.cpp`)
+  covering every fallback path, including simulating each Windows scenario
+  via scoped environment-variable overrides. Verified manually too: built
+  a standalone test binary and ran it under 4 different simulated
+  environments (normal, Windows USERPROFILE-only, older-Windows
+  HOMEDRIVE+HOMEPATH-only, nothing set) -- all four produced a sane path,
+  none crashed.
+- [x] Found + fixed an unrelated real bug while writing the README's Quick
+  Start example (ran it for real, not just wrote it): `Audio`'s copy
+  constructor and copy-assignment operator copied `audioData`/`sampleRate`/
+  `channels` but forgot to copy the internal `loaded` flag (default
+  `false`). Since `resample()` returns a new `Audio` by value through two
+  differently-named return statements (not eligible for guaranteed NRVO),
+  and `to_mono()` explicitly copy-constructs, any copy silently lost the
+  "loaded" status even with fully valid data -- `save()`/`play()` then
+  refused to do anything (`"No audio loaded to save!"`), while e.g.
+  `MFCC::compute()` on the same data worked fine since it doesn't check
+  that flag. 2 new regression tests
+  (`test_resample_result_can_still_be_saved`,
+  `test_to_mono_result_can_still_be_saved`) added to
+  `tests/python/test_audio.py`.
+- [x] `README.md` rewritten: removed the fictional `AudioProcessor`/
+  `extract_features`/`remove_noise` Quick Start (never existed in the
+  actual API) and the broken `docs/cpp/README.md`/`docs/python/README.md`
+  links; replaced with real, verified-by-actually-running Python and C++
+  examples using the real API (`Audio`, `MFCC`, `Denoiser`, `SileroVad`),
+  accurate build/submodule instructions, the test-target tree, and an
+  architecture table linking namespace/CMake target/Python module names.
+- [x] New `CONTRIBUTING.md`: submodule setup (including Mbed TLS's nested
+  `framework` submodule), build/test instructions, the module/naming
+  table, the vendoring workflow (and the security-critical-code exception
+  for git submodules), TDD-with-real-behavior testing philosophy, style
+  notes (flat DSP vs. interfaces for models, logging conventions), and
+  `version.py` usage.
+- [x] Verified end-to-end: full regression (`ctest` 5/5, `speech_test`
+  cpp+python) still passes after both bug fixes; the README's exact
+  Python Quick Start code was run for real (not just written) end to end,
+  including creating and round-tripping a real WAV file.
+
+## Performance: enabled dormant OpenMP path in STFT (unverified speedup)
+
+- [x] Enabled AudioFlux's existing-but-dormant `HAVE_OMP` parallel-frame
+  path for STFT (each frame's FFT is independent, so this is safe) via
+  `find_package(OpenMP)` in `cmake/AudioFlux.cmake`. Zero-cost if OpenMP
+  isn't found (falls back to single-threaded with a status message).
+- [x] Verified correctness: all 37 `speech::dsp` C++ tests still pass with
+  `HAVE_OMP` enabled.
+- [ ] **Could not verify an actual speedup**: this sandbox has exactly 1
+  CPU core (`nproc` = 1), so `omp_get_max_threads()` returns 1 and OpenMP
+  has no parallelism to exploit here by construction. An initial quick
+  benchmark seemed to show ~24% improvement (82ms -> 62ms), but a more
+  careful re-run (20 reps, warm-up excluded) showed the before/after times
+  are statistically indistinguishable (62.84ms vs. 61.78ms) -- the initial
+  result was cold-start/measurement noise, not a real effect. **Needs
+  re-benchmarking on an actual multi-core machine** to confirm the
+  expected real-world speedup before this can be claimed anywhere.
+- Other identified-but-not-yet-pursued speed opportunities (same
+  benchmark-first discipline applies before acting on any of these):
+  flat/contiguous buffers instead of `vector<vector<float>>` for
+  STFT/MFCC matrix outputs (API ergonomics vs. cache-locality trade-off),
+  `-march=native`/LTO (not currently set), SIMD for the MFCC mel-filterbank
+  and dctII inner loops.

@@ -106,6 +106,42 @@ def test_save_and_load_wav_round_trip(tmp_path):
     assert reloaded.duration == pytest.approx(audio.duration, abs=1e-3)
 
 
+def test_resample_result_can_still_be_saved(tmp_path):
+    # Regression test: Audio's copy constructor/assignment used to forget
+    # to copy the internal "loaded" flag (defaulting to False), even though
+    # the actual audio data was copied correctly. Since resample() returns
+    # a new Audio by value through two different return statements (not
+    # eligible for guaranteed NRVO), this silently broke save() on the
+    # result -- data was valid, but save() refused to write anything.
+    sample_rate = 44100
+    samples = make_sine(sample_rate, 440.0, sample_rate)
+
+    audio = libspeech.Audio()
+    audio.load([samples], sample_rate)
+
+    resampled = audio.resample(16000)
+    out_path = tmp_path / "resampled.wav"
+    assert resampled.save(str(out_path)) is True
+    assert out_path.exists()
+    assert out_path.stat().st_size > 0
+
+
+def test_to_mono_result_can_still_be_saved(tmp_path):
+    # Same regression, via to_mono() instead of resample().
+    sample_rate = 16000
+    left = make_sine(sample_rate, 440.0, sample_rate)
+    right = make_sine(sample_rate, 440.0, sample_rate)
+
+    audio = libspeech.Audio()
+    audio.load([left, right], sample_rate)
+
+    mono = audio.to_mono()
+    out_path = tmp_path / "mono.wav"
+    assert mono.save(str(out_path)) is True
+    assert out_path.exists()
+    assert out_path.stat().st_size > 0
+
+
 def test_repr_reports_correct_channel_count():
     # Regression test: __repr__ used to report len(audio) (sample count) as
     # the channel count. It should report len(audio.data()) instead.

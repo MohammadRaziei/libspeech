@@ -9,6 +9,7 @@
 #include <string>
 #include <filesystem>
 #include <iostream>
+#include "libspeech/utils/utils.h"
 
 
 namespace speech::models {
@@ -19,7 +20,7 @@ class BaseModel {
     std::filesystem::path model_path;
 
    public:
-    BaseModel(const std::string& url, const std::filesystem::path& base_dir = std::filesystem::path(getenv("HOME")) / ".libspeech");
+    BaseModel(const std::string& url, const std::filesystem::path& base_dir = speech::utils::getDefaultModelCacheDir());
     virtual ~BaseModel() = default;
 
    protected:

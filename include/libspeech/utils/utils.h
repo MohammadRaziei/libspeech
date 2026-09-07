@@ -30,5 +30,14 @@ std::filesystem::path downloadFile(const std::string& url,
 
 // Function to get the system's temporary directory as a filesystem::path
 std::filesystem::path getTempDirectory();
+
+// Cross-platform default cache directory for downloaded model weights
+// (<home>/.libspeech). Checks HOME (Unix/macOS), then USERPROFILE and
+// HOMEDRIVE+HOMEPATH (Windows), falling back to the system temp directory
+// (with a logged warning) if none of those are set -- raw `getenv("HOME")`
+// returns nullptr on essentially all Windows systems (HOME isn't a
+// standard Windows env var), and constructing a std::filesystem::path from
+// a null pointer is undefined behavior.
+std::filesystem::path getDefaultModelCacheDir();
 }
 #endif  // LIBSPEECH_UTILS_H

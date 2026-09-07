@@ -333,6 +333,7 @@ speech::io::Audio::Audio(const Audio& other) {
     pImpl->audioData = other.pImpl->audioData;
     pImpl->sampleRate = other.pImpl->sampleRate;
     pImpl->channels = other.pImpl->channels;
+    pImpl->loaded = other.pImpl->loaded;
 }
 
 speech::io::Audio::~Audio() = default;
@@ -435,5 +436,6 @@ speech::io::Audio &speech::io::Audio::operator=(const speech::io::Audio &other) 
     pImpl->audioData = other.pImpl->audioData;
     pImpl->sampleRate = other.pImpl->sampleRate;
     pImpl->channels = other.pImpl->channels;
+    pImpl->loaded = other.pImpl->loaded;
     return *this;
 }
