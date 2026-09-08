@@ -151,6 +151,39 @@ the project (what's done, what's in progress, known issues), and
 found in AudioFlux while vendoring it (with repro steps and fixes, in case
 they're useful upstream).
 
+## 📊 Benchmarking
+
+`benchmarks/` is a **fully standalone** CMake project (no relationship to
+the repository root) that fetches libspeech from GitHub via
+`FetchContent`, exactly like it would fetch any competitor library --
+libspeech is never a special case in there. Mirrors the layout of
+`tests/`: one folder per language.
+
+```bash
+cd benchmarks
+cmake -S . -B build-bench -DCMAKE_BUILD_TYPE=Release
+cmake --build build-bench --target libspeech_benchmarks
+```
+
+`benchmarks/cpp/bench_stft.cpp` measures `speech::dsp::STFT`, specifically
+to A/B test whether enabling OpenMP's parallel-frame path
+(`LIBSPEECH_ENABLE_OPENMP`, on by default) actually helps -- STFT frames
+are independent so this *should* scale with core count, but this couldn't
+be verified in this project's own single-core development sandbox (see
+`checklist.md`). If you have a multi-core machine, please run this and
+report back:
+
+```bash
+cmake -S . -B build-bench -DCMAKE_BUILD_TYPE=Release -DLIBSPEECH_ENABLE_OPENMP=ON
+cmake --build build-bench --target bench_stft && ./build-bench/cpp/bench_stft
+
+cmake -S . -B build-bench -DLIBSPEECH_ENABLE_OPENMP=OFF
+cmake --build build-bench --target bench_stft && ./build-bench/cpp/bench_stft
+```
+
+Compare the two `avg=...ms` numbers -- that's the real effect of enabling
+OpenMP on your hardware.
+
 ## 🤝 Contributing
 
 We welcome contributions! Please see [`CONTRIBUTING.md`](CONTRIBUTING.md).

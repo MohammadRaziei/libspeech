@@ -499,3 +499,34 @@ Previously: `speech_dsp`/`speech_io`/`speech_models` (C++ static libs) but
   STFT/MFCC matrix outputs (API ergonomics vs. cache-locality trade-off),
   `-march=native`/LTO (not currently set), SIMD for the MFCC mel-filterbank
   and dctII inner loops.
+- [x] Restructured to match ctoon's convention: `benchmarks/` is a fully
+  standalone CMake project (own `project()`, no relationship to the repo
+  root) that fetches libspeech from GitHub via `FetchContent` -- exactly
+  like it would fetch any competitor library, never a special case.
+  Replaced the earlier in-tree `-DBUILD_BENCHMARKS=ON` approach entirely.
+  `benchmarks/cpp/CMakeLists.txt` pulls in `speech::dsp` this way (with
+  `BUILD_MODELS`/`BUILD_TESTS` forced off in the fetched copy to keep it
+  fast); `benchmarks/cpp/bench_stft.cpp` is unchanged in content.
+- [x] **Found + fixed a real, systemic bug this restructure surfaced**:
+  `cmake/AudioFlux.cmake` and `cmake/ONNXRuntime.cmake` used
+  `CMAKE_SOURCE_DIR` (always the *outermost* project's source dir) instead
+  of `PROJECT_SOURCE_DIR` (the nearest enclosing `project()` call's source
+  dir) to locate `src/vendor/audioflux` and `src/third_party/onnxruntime`.
+  This is invisible when libspeech is the top-level project (the two
+  variables happen to be equal then) but breaks the moment libspeech is
+  consumed via `FetchContent`/`add_subdirectory` from another project
+  (exactly the benchmarks setup, and exactly what any real downstream
+  consumer would do) -- `CMAKE_SOURCE_DIR` resolves to the *consumer's*
+  source tree, not libspeech's, and the vendored sources aren't there.
+  Reproduced immediately (`No SOURCES given to target: audioflux`) and
+  fixed by switching both files to `PROJECT_SOURCE_DIR`. Also deleted
+  `cmake/Conan.cmake`, a stale leftover no longer `include()`'d anywhere.
+- [x] Verified end-to-end: configured+built the standalone
+  `benchmarks/cpp` project against a local copy of libspeech (temporarily,
+  via `FetchContent_Declare(... SOURCE_DIR ...)`, since these changes
+  aren't pushed to the real GitHub repo yet) -- full fetch-and-build
+  pipeline worked, `bench_stft` ran successfully. Re-verified the main
+  project's own build/tests still pass after the `PROJECT_SOURCE_DIR` fix.
+  **Note:** `benchmarks/cpp/CMakeLists.txt` points at the real
+  `https://github.com/MohammadRaziei/libspeech.git` (`master` branch) for
+  actual use -- it will only succeed once these changes are pushed there.

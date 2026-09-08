@@ -41,7 +41,7 @@ endif()
 set(ONNXRUNTIME_URL "https://github.com/microsoft/onnxruntime/releases/download/v${onnx_version}/onnxruntime-${OS_PREFIX}-${ARCH_SUFFIX}${BUILD_TYPE}-${onnx_version}${FILE_EXT}")
 
 # Define the target directory for ONNX Runtime
-set(ONNXRUNTIME_DIR "${CMAKE_SOURCE_DIR}/src/third_party/onnxruntime")
+set(ONNXRUNTIME_DIR "${PROJECT_SOURCE_DIR}/src/third_party/onnxruntime")
 
 # Check if ONNX Runtime is already downloaded and valid
 if(EXISTS "${ONNXRUNTIME_DIR}")
@@ -64,7 +64,7 @@ if(NOT EXISTS "${ONNXRUNTIME_DIR}")
     message(STATUS "ONNX Runtime not found in '${ONNXRUNTIME_DIR}'. Downloading from '${ONNXRUNTIME_URL}'...")
 
     # Download the file directly into the parent directory
-    file(DOWNLOAD ${ONNXRUNTIME_URL} "${CMAKE_SOURCE_DIR}/src/third_party/onnxruntime${FILE_EXT}"
+    file(DOWNLOAD ${ONNXRUNTIME_URL} "${PROJECT_SOURCE_DIR}/src/third_party/onnxruntime${FILE_EXT}"
             SHOW_PROGRESS
             STATUS DOWNLOAD_STATUS)
 
@@ -77,18 +77,18 @@ if(NOT EXISTS "${ONNXRUNTIME_DIR}")
     # Extract the downloaded archive into the parent directory
     if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
         execute_process(
-                COMMAND powershell -Command "Expand-Archive -Path \"${CMAKE_SOURCE_DIR}/src/third_party/onnxruntime${FILE_EXT}\" -DestinationPath \"${CMAKE_SOURCE_DIR}/src/third_party\""
-                WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/third_party"
+                COMMAND powershell -Command "Expand-Archive -Path \"${PROJECT_SOURCE_DIR}/src/third_party/onnxruntime${FILE_EXT}\" -DestinationPath \"${PROJECT_SOURCE_DIR}/src/third_party\""
+                WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}/src/third_party"
         )
     else()
         execute_process(
-                COMMAND ${CMAKE_COMMAND} -E tar xzf "${CMAKE_SOURCE_DIR}/src/third_party/onnxruntime${FILE_EXT}"
-                WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/third_party"
+                COMMAND ${CMAKE_COMMAND} -E tar xzf "${PROJECT_SOURCE_DIR}/src/third_party/onnxruntime${FILE_EXT}"
+                WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}/src/third_party"
         )
     endif()
 
     # Rename the extracted folder to 'onnxruntime'
-    file(GLOB EXTRACTED_DIR "${CMAKE_SOURCE_DIR}/src/third_party/onnxruntime-*")
+    file(GLOB EXTRACTED_DIR "${PROJECT_SOURCE_DIR}/src/third_party/onnxruntime-*")
     if(EXISTS "${EXTRACTED_DIR}" AND IS_DIRECTORY "${EXTRACTED_DIR}")
         file(RENAME "${EXTRACTED_DIR}" "${ONNXRUNTIME_DIR}")
     else()
@@ -96,7 +96,7 @@ if(NOT EXISTS "${ONNXRUNTIME_DIR}")
     endif()
 
     # Remove the downloaded archive after extraction
-    file(REMOVE "${CMAKE_SOURCE_DIR}/src/third_party/onnxruntime${FILE_EXT}")
+    file(REMOVE "${PROJECT_SOURCE_DIR}/src/third_party/onnxruntime${FILE_EXT}")
 else()
     message(STATUS "ONNX Runtime already exists in '${ONNXRUNTIME_DIR}'. Skipping download.")
 endif()
