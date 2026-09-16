@@ -1,40 +1,52 @@
-name: CPP_BUILD_TEST_DOC
+name: cmake stuff
+
 on:
   workflow_dispatch:
+  workflow_call:
   pull_request:
-  push:
-    branches:
-     - master
-  release:
-    types:
-      - published
-
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+    branches: [ master ]
 
 jobs:
-  build-project:
-    name: Build Project
-    runs-on: ubuntu-latest
+  build-and-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    runs-on: ${{ matrix.os }}
+
     steps:
-      - name: Checkout the repository
-        uses: actions/checkout@v4
-        with:
-          submodules: true
+    - name: Checkout repository
+      uses: actions/checkout@v6
+      with:
+        submodules: true
 
-      - name: Configure the project
-        uses: threeal/cmake-action@v1.3.0
-        with:
-          options: BUILD_PYTHON=on
+    - name: Set up Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: "3.11"
+        cache: "pip"
 
-      - name: Build the project
-        run: cmake --build build
+    # speech::models (BUILD_MODELS=ON, the default) needs httpp on the
+    # CMAKE_PREFIX_PATH via find_package(httpp) -- see the "Model
+    # downloading" comment block in the top-level CMakeLists.txt. This has
+    # to happen before the configure step below, since CMake shells out to
+    # `python -c "import httpp; ..."` at configure time to locate it.
+    - name: Install httpp
+      run: pip install httpp
 
-      - name: Test the project
-        run: ctest --test-dir build -V
+    - name: Build Project
+      uses: threeal/cmake-action@v2.1.0
+      with:
+        build-dir: build
+        options: |
+          CMAKE_BUILD_TYPE=Release
+          BUILD_MODELS=ON
+          BUILD_TESTS=ON
+          BUILD_PYTHON=OFF
 
-#      - uses: actions/upload-artifact@v4
-#        with:
-#          path: build/*speech*
+    - name: Build
+      run: cmake --build build --config Release
+
+    - name: Run tests
+      run: ctest --test-dir build --output-on-failure --build-config Release

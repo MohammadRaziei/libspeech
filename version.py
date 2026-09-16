@@ -17,10 +17,12 @@ License:
 Run:
     python version.py --help
 """
-import re
-import sys
+from __future__ import annotations
+
 import argparse
+import re
 import subprocess
+import sys
 from pathlib import Path
 
 HEADER_PATH = "include/libspeech/version.h"
@@ -84,7 +86,7 @@ def bump(version, part):
 def cmd_show(args):
     version, _ = read_version()
     part = getattr(args, 'part', None)
-    
+
     if part:
         print(version[part.upper()])
     else:
@@ -93,10 +95,10 @@ def cmd_show(args):
 def cmd_bump_or_set(args):
     version, text = read_version()
     part = args.part.upper()  # MAJOR, MINOR, or PATCH
-    
+
     if args.value:
         val_str = args.value
-        
+
         # Handle other offsets (+1, -5, etc)
         if val_str.startswith(('+', '-')):
             try:
@@ -115,7 +117,7 @@ def cmd_bump_or_set(args):
                 version[part] = int(val_str)
             except ValueError:
                 sys.exit(f"Invalid value for {part}: {val_str}")
-        
+
         write_version(version, text)
         print(f"Version updated to {version_str(version)}")
     else:
@@ -164,7 +166,7 @@ def cmd_tag(args):
             if len(parts) != 3 or not all(p.isdigit() for p in parts):
                 sys.exit("Invalid version format")
             version["MAJOR"], version["MINOR"], version["PATCH"] = map(int, parts)
-        
+
         write_version(version, text)
         new_version = version_str(version)
         tag_name = f"v{new_version}"
@@ -209,9 +211,9 @@ Examples:
       Set version, commit and tag
 """
     )
-    
+
     subparsers = parser.add_subparsers(dest="command")
-    
+
     # Default show (if no command provided)
     parser.set_defaults(func=cmd_show)
 
@@ -228,18 +230,18 @@ Examples:
     # tag command
     tag_parser = subparsers.add_parser("tag", help="Manage git tags")
     tag_sub = tag_parser.add_subparsers(dest="subcommand")
-    
+
     tag_parser.set_defaults(func=cmd_tag)
-    
+
     tag_sub.add_parser("set", help="Set version from latest tag")
-    
+
     create_parser = tag_sub.add_parser("create", help="Create release tag")
     create_parser.add_argument(
         "value",
         nargs="?",
         help="major | minor | patch | X.Y.Z"
     )
-    
+
     args = parser.parse_args()
     if hasattr(args, "func"):
         args.func(args)

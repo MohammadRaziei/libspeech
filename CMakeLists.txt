@@ -277,11 +277,23 @@ if(DEFINED PYTHON_PROJECT_NAME)
                 CONFIGURATIONS Release
                 LIBRARY DESTINATION ${PYTHON_PROJECT_NAME})
 
-        install (FILES ${ONNXRUNTIME_LIB_FILE}
+        # ONNXRuntime and httpp both ship as a shared library that the
+        # compiled extension modules dlopen symbols from at import time
+        # (see __init__.py's cdll.LoadLibrary() calls), so -- just like
+        # ONNXRUNTIME_LIB_FILE below -- each has to be copied into the
+        # wheel next to those extensions rather than relied upon via
+        # RPATH: RPATH would only point back at wherever `pip install
+        # httpp` happened to put it on the *build* machine, which has no
+        # reason to exist (or even be the same path) on whatever machine
+        # later installs this wheel.
+        install (FILES ${ONNXRUNTIME_LIB_FILE} "$<TARGET_FILE:httpp::httpp_core>"
                 DESTINATION ${SKBUILD_PROJECT_NAME})
     else()
         file(COPY ${PROJECT_SOURCE_DIR}/src/${PROJECT_NAME} DESTINATION ${PYTHON_PROJECT_NAME})
         file(COPY ${ONNXRUNTIME_LIB_FILE} DESTINATION ${PYTHON_PROJECT_NAME}/${PROJECT_NAME})
+        add_custom_command(TARGET speech POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E make_directory "${PYTHON_PROJECT_NAME}/${PROJECT_NAME}"
+                COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:httpp::httpp_core>" "${PYTHON_PROJECT_NAME}/${PROJECT_NAME}/")
 
         foreach(_core IN LISTS PYTHON_BIND_MODULES)
             set_target_properties(${_core} PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${PYTHON_PROJECT_NAME}/${PROJECT_NAME})

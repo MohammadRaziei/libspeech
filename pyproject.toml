@@ -1,6 +1,5 @@
 [build-system]
-#requires = ["scikit-build-core>=0.3.3", "nanobind==1.4.0"]
-requires = ["scikit-build-core==0.4.6", "nanobind==1.4.0"]
+requires = ["scikit-build-core>=0.8.0", "nanobind>=1.4.0"]
 build-backend = "scikit_build_core.build"
 
 
@@ -59,7 +58,7 @@ test-skip = ["*universal2:arm64"]
 
 [tool.scikit-build]
 #wheel.expand-macos-universal-tags = true
-cmake.verbose = true
+build.verbose = true
 
 [tool.scikit-build.metadata.version]
 provider = "scikit_build_core.metadata.regex"
@@ -125,9 +124,11 @@ isort.required-imports = ["from __future__ import annotations"]
 exclude = ["third_party"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["F841", "ARG001", "PT004"]
+"tests/**" = ["F841", "ARG001", "PT004", "RUF059", "PT011"]
 "src/**/__main__.py" = ["T20"]
 "src/**/core.py" = ["ARG001", "F401"]
+"version.py" = ["T20"]  # CLI script -- printing is the point
+"src/libspeech/__init__.py" = ["F403", "F405", "E402"]  # `from ctypes import *`, and shared libs must load before the compiled extensions are imported below them
 
 
 
