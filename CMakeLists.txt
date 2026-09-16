@@ -101,21 +101,19 @@ find_package(httpp REQUIRED CONFIG PATHS "${HTTPP_CMAKE_DIR}" NO_DEFAULT_PATH)
 #
 # Separate from speech::dsp (no shared code) and from the main `speech`
 # library (no audio-file-I/O dependency): models take raw float buffers in
-# and out, and only need ONNXRuntime plus the download/progress-bar utility
-# code (base_model.cpp downloads .onnx weights on first use).
+# and out, and only need ONNXRuntime plus the download utility code
+# (base_model.cpp downloads .onnx weights on first use, via httpp).
 # ---------------------------------------------------------------------------
 file(GLOB SPEECH_MODELS_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/models/*.cpp")
 add_library(speech_models STATIC
         ${SPEECH_MODELS_SOURCES}
         src/utils/utils.cpp
-        src/utils/progressbar.cpp
 )
 add_library(speech::models ALIAS speech_models)
 
 target_include_directories(speech_models
         PUBLIC ${PROJECT_SOURCE_DIR}/include
         PUBLIC src/vendor/aixlog/include
-        PRIVATE ${PROJECT_SOURCE_DIR}/src   # for utils/progressbar.h
 )
 target_link_libraries(speech_models
         PUBLIC onnxruntime_interface
@@ -137,7 +135,6 @@ add_library(speech::io ALIAS speech_io)
 
 target_include_directories(speech_io
         PUBLIC ${PROJECT_SOURCE_DIR}/include
-        PRIVATE ${PROJECT_SOURCE_DIR}/src
         PRIVATE src/third_party/dr_libs
         PRIVATE src/vendor/aixlog/include
 )

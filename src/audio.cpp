@@ -10,7 +10,7 @@
 #include <chrono>
 
 
-#include "utils/progressbar.h"
+#include <httpp/progress.hpp>
 // Include `dr_wav`, `dr_mp3`, and `dr_flac`
 #define DR_WAV_IMPLEMENTATION
 #include "dr_wav.h"
@@ -203,7 +203,7 @@ void audioCallback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uin
 
 void simulateWorkWithProgressBar(double durationInSeconds) {
     // Create a progress bar
-    auto progressBar = speech::utils::createProgressBar("Playing audio ");
+    auto progressBar = std::make_shared<httpp::progress::bar>(100, "Playing audio ");
     // Divide the total duration into n small intervals
     const size_t n = 50;
     const double intervalDuration = durationInSeconds / n;
