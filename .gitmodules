@@ -8,13 +8,3 @@
 	url = https://github.com/mackron/dr_libs.git
 	shallow = true
 
-[submodule "src/third_party/indicators"]
-	path = src/third_party/indicators
-	url = https://github.com/p-ranav/indicators
-	shallow = true
-
-[submodule "src/third_party/mbedtls"]
-	path = src/third_party/mbedtls
-	url = https://github.com/Mbed-TLS/mbedtls.git
-	shallow = true
-	branch = v3.6.2
