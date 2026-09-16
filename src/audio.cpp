@@ -203,7 +203,7 @@ void audioCallback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uin
 
 void simulateWorkWithProgressBar(double durationInSeconds) {
     // Create a progress bar
-    auto progressBar = speech::utils::createProgressBar("Playing audio ", indicators::Color::blue);
+    auto progressBar = speech::utils::createProgressBar("Playing audio ");
     // Divide the total duration into n small intervals
     const size_t n = 50;
     const double intervalDuration = durationInSeconds / n;

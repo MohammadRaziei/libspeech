@@ -3,25 +3,10 @@
 //
 #include "utils/progressbar.h"
 
-
-std::shared_ptr<indicators::ProgressBar> speech::utils::createProgressBar(
-    const std::string& text, indicators::Color color) {
-
-    // Create a shared_ptr to manage the ProgressBar object
-    auto progressBar = std::make_shared<indicators::ProgressBar>(
-        indicators::option::BarWidth{50},
-        indicators::option::Start{"["},
-        indicators::option::Fill{"="},
-        indicators::option::Lead{">"},
-        indicators::option::Remainder{" "},
-        indicators::option::End{"]"},
-        indicators::option::ForegroundColor{color},
-        indicators::option::ShowPercentage{true},
-        indicators::option::ShowElapsedTime{true},
-        indicators::option::ShowRemainingTime{true},
-        indicators::option::PrefixText{text},
-        indicators::option::FontStyles{std::vector<indicators::FontStyle>{indicators::FontStyle::bold}}
-    );
-
-    return progressBar; // Return the shared_ptr
+std::shared_ptr<httpp::progress::bar> speech::utils::createProgressBar(
+    const std::string& text) {
+    // httpp::progress::bar is percent-based here (total = 100), matching
+    // the set_progress(0..100) call sites in this codebase (downloadFile,
+    // audio playback simulation, ...).
+    return std::make_shared<httpp::progress::bar>(100, text);
 }

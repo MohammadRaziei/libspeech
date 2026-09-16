@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.19)
 
 option(BUILD_PYTHON "export python module" off)
-option(BUILD_TESTS "build unit tests (speech::dsp only, no ONNXRuntime/httplib needed)" on)
-option(BUILD_MODELS "build speech::models + the speech library (needs ONNXRuntime download + mbedtls build); off configures speech::dsp + tests only" on)
+option(BUILD_TESTS "build unit tests (speech::dsp only, no ONNXRuntime/httpp needed)" on)
+option(BUILD_MODELS "build speech::models + the speech library (needs ONNXRuntime download + the httpp package); off configures speech::dsp + tests only" on)
 
 set(CMAKE_C_STANDARD 99 CACHE STRING "C version selection")
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -38,7 +38,7 @@ include(AudioFlux)
 # ---------------------------------------------------------------------------
 # speech::dsp -- resample, window, FFT, STFT, MFCC, ...
 #
-# Deliberately independent of ONNXRuntime/httplib/miniaudio: this lets DSP
+# Deliberately independent of ONNXRuntime/httpp/miniaudio: this lets DSP
 # unit tests (tests/CMakeLists.txt) build and run without pulling in the
 # model/audio-I/O stack, matching the project's "minimal dependencies" goal
 # and keeping DSP iteration fast. See BUILD_MODELS below.
@@ -67,7 +67,6 @@ endif()
 include(ONNXRuntime)
 
 add_subdirectory(src/third_party/miniaudio)
-add_subdirectory(src/third_party/indicators)
 
 # ---------------------------------------------------------------------------
 # Model downloading (speech::utils::downloadFile) used to link the SYSTEM
@@ -75,16 +74,27 @@ add_subdirectory(src/third_party/indicators)
 # -- a real system dependency the "pip install and you're done" story
 # doesn't want, and one this project's own build has hit in practice (a
 # sandboxed CI environment without apt access to security.ubuntu.com failed
-# here). Replaced with httplib.h (single header, vendored under
-# src/vendor/httplib/) + Mbed TLS (a git submodule, NOT vendored/patched
-# like AudioFlux -- crypto code should stay pristine and upstream-
-# updatable) built from source, so no system TLS/HTTP library needs to be
-# pre-installed.
+# here). Replaced with `httpp` (https://github.com/mohammadraziei/httpp,
+# `pip install httpp`): it ships its own HTTP(S) client, URL parser, and
+# terminal progress bar prebuilt as a shared library + CMake config, so
+# neither Mbed TLS nor `indicators` needs to be a submodule/build target of
+# this project anymore -- `find_package(httpp)` is enough.
 # ---------------------------------------------------------------------------
-set(ENABLE_PROGRAMS OFF CACHE BOOL "" FORCE)
-set(ENABLE_TESTING OFF CACHE BOOL "" FORCE)
-set(DISABLE_PACKAGE_CONFIG_AND_INSTALL ON CACHE BOOL "" FORCE)
-add_subdirectory(src/third_party/mbedtls)
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+execute_process(
+        COMMAND "${Python3_EXECUTABLE}" -c "import httpp; print(httpp.get_cmake_dir())"
+        OUTPUT_VARIABLE HTTPP_CMAKE_DIR
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        RESULT_VARIABLE HTTPP_CMAKE_DIR_RESULT
+)
+if(NOT HTTPP_CMAKE_DIR_RESULT EQUAL 0 OR NOT HTTPP_CMAKE_DIR)
+    message(FATAL_ERROR
+            "Could not locate the `httpp` CMake config via Python (`import httpp; "
+            "httpp.get_cmake_dir()`). Install it with `pip install httpp` into the "
+            "Python environment CMake is using (${Python3_EXECUTABLE}).")
+endif()
+message(STATUS "Using httpp CMake package config from: ${HTTPP_CMAKE_DIR}")
+find_package(httpp REQUIRED CONFIG PATHS "${HTTPP_CMAKE_DIR}" NO_DEFAULT_PATH)
 
 # ---------------------------------------------------------------------------
 # speech::models -- BaseModel/ONNXModel and the VAD/denoiser backends.
@@ -106,13 +116,10 @@ target_include_directories(speech_models
         PUBLIC ${PROJECT_SOURCE_DIR}/include
         PUBLIC src/vendor/aixlog/include
         PRIVATE ${PROJECT_SOURCE_DIR}/src   # for utils/progressbar.h
-        PRIVATE src/vendor/httplib
 )
-target_compile_definitions(speech_models PRIVATE CPPHTTPLIB_MBEDTLS_SUPPORT)
 target_link_libraries(speech_models
         PUBLIC onnxruntime_interface
-        PUBLIC indicators
-        PRIVATE mbedtls mbedx509 mbedcrypto
+        PUBLIC httpp::httpp_core
 )
 
 if(BUILD_TESTS)
@@ -136,7 +143,7 @@ target_include_directories(speech_io
 )
 target_link_libraries(speech_io
         PRIVATE miniaudio
-        PRIVATE indicators
+        PRIVATE httpp::httpp_core
         PUBLIC speech::dsp
 )
 

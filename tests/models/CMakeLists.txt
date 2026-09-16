@@ -1,7 +1,7 @@
 # speech::models C++ unit tests -- see tests/CMakeLists.txt for the full
 # speech_test_<language>_<module> naming scheme this fits into. Kept
 # separate from speech_test_cpp_dsp since these do need the full
-# ONNXRuntime/httplib/mbedtls stack.
+# ONNXRuntime/httpp stack.
 
 file(GLOB SPEECH_MODELS_TEST_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp
