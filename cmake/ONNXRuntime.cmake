@@ -15,7 +15,14 @@ endif()
 
 # Determine the architecture
 if(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
-    set(ARCH_SUFFIX "aarch64")
+    if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+        # Microsoft's ONNX Runtime release assets use "arm64" for macOS
+        # (e.g. onnxruntime-osx-arm64-<ver>.tgz), unlike Linux which uses
+        # "aarch64" (e.g. onnxruntime-linux-aarch64-<ver>.tgz).
+        set(ARCH_SUFFIX "arm64")
+    else()
+        set(ARCH_SUFFIX "aarch64")
+    endif()
 elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "AMD64")
     set(ARCH_SUFFIX "x64")
 elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "i386" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "i686")
