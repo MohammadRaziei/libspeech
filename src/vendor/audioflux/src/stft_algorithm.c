@@ -138,8 +138,9 @@ int stftObj_new(STFTObj *stftObj,int radix2Exp,WindowType *windowType,int *slide
 	addDataArr=__vnew(fftLength, NULL);
 	fftObj_new(&fftObj, radix2Exp);
 
+    int i;
     #pragma omp parallel for
-	for(int i=0;i<__kernelNum;i++){
+	for(i=0;i<__kernelNum;i++){
 		fftObj_new(fftObjArr+i, radix2Exp);
 	}
 
@@ -445,8 +446,9 @@ void stftObj_free(STFTObj stftObj){
 
 	fftObj_free(fftObj);
 
+    int i;
     #pragma omp parallel for
-	for(int i=0;i<__kernelNum;i++){
+	for(i=0;i<__kernelNum;i++){
 		fftObj_free(fftObjArr[i]);
 	}
 	free(fftObjArr);
@@ -770,15 +772,17 @@ static void __stftObj_stft(STFTObj stftObj,float *dataArr, float *mRealArr,float
     }else if(timeLength<__kernelNum){
         omp_set_num_threads(timeLength);
 
+        int i;
         #pragma omp parallel for
-        for(int i=0;i<timeLength;i++){
+        for(i=0;i<timeLength;i++){
             __fft(stftObj,fftObjArr[i],1,_arr+i*slideLength,mRealArr+i*fftLength,mImageArr+i*fftLength);
         }
     }else{
         omp_set_num_threads(__kernelNum);
 
+        int i;
         #pragma omp parallel for
-        for(int i=0;i<k;i++){
+        for(i=0;i<k;i++){
             __fft(stftObj,fftObjArr[i],block,_arr+i*block*slideLength,mRealArr+i*block*fftLength,mImageArr+i*block*fftLength);
         }
 

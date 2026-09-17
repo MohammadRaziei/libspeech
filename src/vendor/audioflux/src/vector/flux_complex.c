@@ -573,8 +573,9 @@ void __mcsquare2(float *mRealArr,float *mImageArr,int nLength,int mLength,int mL
             mArr2[j]=mRealArr[j]*mRealArr[j]+mImageArr[j]*mImageArr[j];
         }
     }else{
+        int i;
         #pragma omp parallel for
-        for(int i=0;i<nLength;i++){
+        for(i=0;i<nLength;i++){
             for(int j=0;j<mLength2;j++){
                 mArr2[i*mLength2+j]=mRealArr[i*mLength+j]*mRealArr[i*mLength+j]+
                                             mImageArr[i*mLength+j]*mImageArr[i*mLength+j];

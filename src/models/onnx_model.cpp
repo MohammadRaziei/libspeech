@@ -31,7 +31,13 @@ void ONNXModel::init_onnx_model() {
     if (!std::filesystem::exists(model_path)) {
         throw std::runtime_error("Model file does not exist: " + model_path.string());
     }
-    session = std::make_shared<Ort::Session>(env, model_path.string().c_str(), session_options);
+    // ONNX Runtime's Session constructor takes a `const ORTCHAR_T*` path,
+    // which is `wchar_t*` on Windows and `char*` everywhere else.
+    // std::filesystem::path::c_str() already returns a pointer in exactly
+    // that native character type, so use it directly instead of going
+    // through path::string().c_str() (always `char*`), which fails to
+    // compile against the wchar_t-only overload MSVC/onnxruntime expects.
+    session = std::make_shared<Ort::Session>(env, model_path.c_str(), session_options);
 
     // Validate input/output names.
     const Ort::AllocatedStringPtr input_names = session->GetInputNameAllocated(0, allocator);
