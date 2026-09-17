@@ -3,6 +3,17 @@
 #include <cstdlib>
 #include <string>
 
+#ifdef _WIN32
+// MSVC's CRT has no POSIX setenv()/unsetenv() ("identifier not found" at
+// link/compile time) -- _putenv_s() is the closest equivalent, and per its
+// documentation, calling it with an empty value string removes the
+// variable entirely, which is exactly unsetenv()'s behavior.
+namespace {
+void setenv(const char* name, const char* value, int /*overwrite*/) { _putenv_s(name, value); }
+void unsetenv(const char* name) { _putenv_s(name, ""); }
+}  // namespace
+#endif
+
 #include "libspeech/utils/utils.h"
 
 // Regression tests for a real bug: BaseModel/ONNXModel used to default

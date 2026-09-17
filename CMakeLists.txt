@@ -31,6 +31,24 @@ endif()
 
 project(libspeech LANGUAGES C CXX VERSION ${PROJECT_VERSION})
 
+# Several dependencies -- miniaudio, httpp, and the vendored utest.h test
+# framework -- transitively #include <Windows.h> on Windows. Without
+# NOMINMAX, that header defines `min`/`max` function-like macros that
+# silently rewrite every `std::min(...)`/`std::max(...)` call in the same
+# translation unit (e.g. src/audio.cpp, tests/dsp/test_stft.cpp) into
+# invalid syntax -- MSVC reports this as the rather cryptic
+# "C2589: '(': illegal token on right side of '::'". WIN32_LEAN_AND_MEAN
+# additionally trims <Windows.h> itself down to the common subset, avoiding
+# a class of unrelated symbol clashes (e.g. with winsock).
+# MSVC's own <math.h>/<cmath> also don't define M_PI unless
+# _USE_MATH_DEFINES is set beforehand, which vendored AudioFlux code and
+# several DSP tests rely on unconditionally.
+# All three are applied project-wide (every target, main lib and tests
+# alike) since any of them can pull in the offending headers.
+if(WIN32)
+    add_compile_definitions(NOMINMAX WIN32_LEAN_AND_MEAN _USE_MATH_DEFINES)
+endif()
+
 message(STATUS "Project: ${PROJECT_NAME}@v${PROJECT_VERSION}")
 
 include(AudioFlux)

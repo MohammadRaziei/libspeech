@@ -21,12 +21,9 @@ target_include_directories(audioflux
 
 # -w/-fPIC are GCC/Clang-only flags; MSVC doesn't understand them (it just
 # warns D9025/D9002 and continues), so only pass them on non-MSVC compilers.
-# MSVC also doesn't define M_PI in <math.h> unless _USE_MATH_DEFINES is set
-# before the header is included -- vendored AudioFlux code relies on M_PI
-# being available unconditionally, so define it here for MSVC.
-if(MSVC)
-    target_compile_definitions(audioflux PRIVATE _USE_MATH_DEFINES)
-else()
+# (NOMINMAX/_USE_MATH_DEFINES for MSVC are set project-wide in the top-level
+# CMakeLists.txt, since they're needed by more than just this target.)
+if(NOT MSVC)
     target_compile_options(audioflux PRIVATE "-w" "-fPIC")
 endif()
 
