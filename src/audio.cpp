@@ -10,7 +10,9 @@
 #include <chrono>
 
 
+#ifdef LIBSPEECH_HAVE_HTTPP
 #include <httpp/progress.hpp>
+#endif
 // Include `dr_wav`, `dr_mp3`, and `dr_flac`
 #define DR_WAV_IMPLEMENTATION
 #include "dr_wav.h"
@@ -202,18 +204,30 @@ void audioCallback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uin
 }
 
 void simulateWorkWithProgressBar(double durationInSeconds) {
+#ifdef LIBSPEECH_HAVE_HTTPP
     // Create a progress bar
     auto progressBar = std::make_shared<httpp::progress::bar>(100, "Playing audio ");
-    // Divide the total duration into n small intervals
+#endif
+    // Divide the total duration into n small intervals -- this loop is the
+    // actual wait that makes play() block for the audio's duration; the
+    // progress bar above is a purely cosmetic overlay on top of it, so
+    // without LIBSPEECH_HAVE_HTTPP playback still waits the correct amount
+    // of time, it just doesn't print a bar while doing so.
     const size_t n = 50;
     const double intervalDuration = durationInSeconds / n;
     const double intervalStep = 100.0 / n;
     for (int i = 0; i < n; ++i ) {
         // Update the progress bar
+#ifdef LIBSPEECH_HAVE_HTTPP
         progressBar->set_progress(int(i * intervalStep));
+#else
+        (void)intervalStep;
+#endif
         std::this_thread::sleep_for(std::chrono::duration<double>(intervalDuration));
     }
+#ifdef LIBSPEECH_HAVE_HTTPP
     progressBar->set_progress(100);
+#endif
 }
 
 void speech::io::AudioImpl::play(){

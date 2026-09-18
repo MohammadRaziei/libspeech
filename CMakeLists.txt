@@ -2,7 +2,32 @@ cmake_minimum_required(VERSION 3.19)
 
 option(BUILD_PYTHON "export python module" off)
 option(BUILD_TESTS "build unit tests (speech::dsp only, no ONNXRuntime/httpp needed)" on)
-option(BUILD_MODELS "build speech::models + the speech library (needs ONNXRuntime download + the httpp package); off configures speech::dsp + tests only" on)
+option(BUILD_MODELS "build speech::models + the speech library (needs ONNXRuntime download; httpp is optional, see LIBSPEECH_ENABLE_HTTPP)" on)
+
+# httpp (https://github.com/mohammadraziei/httpp) provides the actual model
+# download (speech::utils::downloadFile) and a terminal progress bar for
+# Audio::play(); see the longer comment above find_package(httpp) below for
+# why it's a `pip install httpp` Python package rather than a submodule.
+#
+# `pip install .` / a local dev build has httpp available (it's declared as
+# a normal Python dependency), so it defaults ON there. A wheel build
+# (`python -m build`, cibuildwheel) is different: scikit-build-core runs
+# CMake configure inside a *build-isolation* venv that only has whatever's
+# listed under [build-system] requires in pyproject.toml -- and httpp is
+# deliberately not there, because it's a *runtime* dependency of the
+# compiled extension (imported by the resulting wheel), not something the
+# build itself needs. Requiring `import httpp` to succeed in that throwaway
+# venv is what broke the wheel build (`ModuleNotFoundError: No module named
+# 'httpp'`). Defaulting this OFF whenever scikit-build-core is driving the
+# build (SKBUILD is defined) avoids ever needing httpp at configure/link
+# time for wheels: src/libspeech/_download.py downloads model weights in
+# pure Python instead (see #ifdef LIBSPEECH_HAVE_HTTPP below), and
+# Audio::play() just skips the (purely cosmetic) progress bar.
+if(DEFINED SKBUILD)
+    option(LIBSPEECH_ENABLE_HTTPP "Compile httpp-based model downloading + playback progress bar into libspeech" OFF)
+else()
+    option(LIBSPEECH_ENABLE_HTTPP "Compile httpp-based model downloading + playback progress bar into libspeech" ON)
+endif()
 
 set(CMAKE_C_STANDARD 99 CACHE STRING "C version selection")
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -103,22 +128,38 @@ add_subdirectory(src/third_party/miniaudio)
 # terminal progress bar prebuilt as a shared library + CMake config, so
 # neither Mbed TLS nor `indicators` needs to be a submodule/build target of
 # this project anymore -- `find_package(httpp)` is enough.
+#
+# See the LIBSPEECH_ENABLE_HTTPP comment above: this whole block (and the
+# httpp::httpp_core link below) is skipped for wheel builds, where httpp
+# isn't guaranteed to be importable at CMake-configure time.
 # ---------------------------------------------------------------------------
-find_package(Python3 REQUIRED COMPONENTS Interpreter)
-execute_process(
-        COMMAND "${Python3_EXECUTABLE}" -c "import httpp; print(httpp.get_cmake_dir())"
-        OUTPUT_VARIABLE HTTPP_CMAKE_DIR
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-        RESULT_VARIABLE HTTPP_CMAKE_DIR_RESULT
-)
-if(NOT HTTPP_CMAKE_DIR_RESULT EQUAL 0 OR NOT HTTPP_CMAKE_DIR)
-    message(FATAL_ERROR
-            "Could not locate the `httpp` CMake config via Python (`import httpp; "
-            "httpp.get_cmake_dir()`). Install it with `pip install httpp` into the "
-            "Python environment CMake is using (${Python3_EXECUTABLE}).")
+if(LIBSPEECH_ENABLE_HTTPP)
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    execute_process(
+            COMMAND "${Python3_EXECUTABLE}" -c "import httpp; print(httpp.get_cmake_dir())"
+            OUTPUT_VARIABLE HTTPP_CMAKE_DIR
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            RESULT_VARIABLE HTTPP_CMAKE_DIR_RESULT
+    )
+    if(NOT HTTPP_CMAKE_DIR_RESULT EQUAL 0 OR NOT HTTPP_CMAKE_DIR)
+        message(FATAL_ERROR
+                "Could not locate the `httpp` CMake config via Python (`import httpp; "
+                "httpp.get_cmake_dir()`). Install it with `pip install httpp` into the "
+                "Python environment CMake is using (${Python3_EXECUTABLE}), or configure "
+                "with -DLIBSPEECH_ENABLE_HTTPP=OFF to skip httpp-based download/progress-bar "
+                "support entirely.")
+    endif()
+    message(STATUS "Using httpp CMake package config from: ${HTTPP_CMAKE_DIR}")
+    find_package(httpp REQUIRED CONFIG PATHS "${HTTPP_CMAKE_DIR}" NO_DEFAULT_PATH)
+
+    # Compiled into speech_models/speech_io below (utils.cpp, audio.cpp) to
+    # select the httpp-backed code paths at compile time.
+    add_compile_definitions(LIBSPEECH_HAVE_HTTPP)
+else()
+    message(STATUS "LIBSPEECH_ENABLE_HTTPP=OFF -- model downloading and the playback "
+                    "progress bar will be compiled out; download models in Python instead "
+                    "(see src/libspeech/_download.py).")
 endif()
-message(STATUS "Using httpp CMake package config from: ${HTTPP_CMAKE_DIR}")
-find_package(httpp REQUIRED CONFIG PATHS "${HTTPP_CMAKE_DIR}" NO_DEFAULT_PATH)
 
 # ---------------------------------------------------------------------------
 # speech::models -- BaseModel/ONNXModel and the VAD/denoiser backends.
@@ -141,8 +182,10 @@ target_include_directories(speech_models
 )
 target_link_libraries(speech_models
         PUBLIC onnxruntime_interface
-        PUBLIC httpp::httpp_core
 )
+if(LIBSPEECH_ENABLE_HTTPP)
+    target_link_libraries(speech_models PUBLIC httpp::httpp_core)
+endif()
 
 # See include/libspeech/export.h. No-op on non-Windows.
 target_compile_definitions(speech_models PRIVATE SPEECH_BUILDING_SHARED)
@@ -167,9 +210,11 @@ target_include_directories(speech_io
 )
 target_link_libraries(speech_io
         PRIVATE miniaudio
-        PRIVATE httpp::httpp_core
         PUBLIC speech::dsp
 )
+if(LIBSPEECH_ENABLE_HTTPP)
+    target_link_libraries(speech_io PRIVATE httpp::httpp_core)
+endif()
 
 # See include/libspeech/export.h. No-op on non-Windows.
 target_compile_definitions(speech_io PRIVATE SPEECH_BUILDING_SHARED)
@@ -327,23 +372,32 @@ if(DEFINED PYTHON_PROJECT_NAME)
                 CONFIGURATIONS Release
                 LIBRARY DESTINATION ${PYTHON_PROJECT_NAME})
 
-        # ONNXRuntime and httpp both ship as a shared library that the
-        # compiled extension modules dlopen symbols from at import time
-        # (see __init__.py's cdll.LoadLibrary() calls), so -- just like
-        # ONNXRUNTIME_LIB_FILE below -- each has to be copied into the
-        # wheel next to those extensions rather than relied upon via
-        # RPATH: RPATH would only point back at wherever `pip install
-        # httpp` happened to put it on the *build* machine, which has no
-        # reason to exist (or even be the same path) on whatever machine
-        # later installs this wheel.
-        install (FILES ${ONNXRUNTIME_LIB_FILE} "$<TARGET_FILE:httpp::httpp_core>"
+        # ONNXRuntime always ships as a shared library the compiled
+        # extension modules dlopen at import time (see __init__.py's
+        # cdll.LoadLibrary() calls), so it has to be copied into the wheel
+        # next to those extensions rather than relied upon via RPATH:
+        # RPATH would only point back at wherever the ONNXRuntime download
+        # happened to land on the *build* machine, which has no reason to
+        # exist (or even be the same path) on whatever machine later
+        # installs this wheel. httpp is the same story, but only applies
+        # when LIBSPEECH_ENABLE_HTTPP actually linked it in -- wheel builds
+        # default that OFF (see the option's comment above), in which case
+        # there's no httpp::httpp_core target to reference at all.
+        set(_LIBSPEECH_RUNTIME_LIBS "${ONNXRUNTIME_LIB_FILE}")
+        if(LIBSPEECH_ENABLE_HTTPP)
+            list(APPEND _LIBSPEECH_RUNTIME_LIBS "$<TARGET_FILE:httpp::httpp_core>")
+        endif()
+        install (FILES ${_LIBSPEECH_RUNTIME_LIBS}
                 DESTINATION ${SKBUILD_PROJECT_NAME})
     else()
         file(COPY ${PROJECT_SOURCE_DIR}/src/${PROJECT_NAME} DESTINATION ${PYTHON_PROJECT_NAME})
         file(COPY ${ONNXRUNTIME_LIB_FILE} DESTINATION ${PYTHON_PROJECT_NAME}/${PROJECT_NAME})
         add_custom_command(TARGET speech POST_BUILD
-                COMMAND ${CMAKE_COMMAND} -E make_directory "${PYTHON_PROJECT_NAME}/${PROJECT_NAME}"
-                COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:httpp::httpp_core>" "${PYTHON_PROJECT_NAME}/${PROJECT_NAME}/")
+                COMMAND ${CMAKE_COMMAND} -E make_directory "${PYTHON_PROJECT_NAME}/${PROJECT_NAME}")
+        if(LIBSPEECH_ENABLE_HTTPP)
+            add_custom_command(TARGET speech POST_BUILD
+                    COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:httpp::httpp_core>" "${PYTHON_PROJECT_NAME}/${PROJECT_NAME}/")
+        endif()
 
         foreach(_core IN LISTS PYTHON_BIND_MODULES)
             set_target_properties(${_core} PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${PYTHON_PROJECT_NAME}/${PROJECT_NAME})
