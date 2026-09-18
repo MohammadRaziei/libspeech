@@ -218,6 +218,40 @@ set_target_properties(speech PROPERTIES LINKER_LANGUAGE CXX)
 # gets that define automatically, without speech.dll's own build seeing it.
 target_compile_definitions(speech INTERFACE SPEECH_SHARED)
 
+# SPEECH_API alone (above) turned out not to be sufficient on MSVC, and the
+# reason is a separate, more fundamental linker behavior than "symbols
+# aren't marked dllexport": a static library (.lib) is an *archive* --
+# fundamentally different from a plain set of object files. When linking
+# a static archive into another target, the linker only pulls in whichever
+# .obj members are actually needed to resolve some already-pending
+# undefined-symbol reference; every unreferenced member is left out of the
+# link entirely. speech_umbrella_placeholder.cpp -- this DLL's only own
+# source -- calls into nothing, so nothing in speech_dsp.lib/speech_io.lib/
+# speech_models.lib is "needed" from the DLL's own perspective, and MSVC's
+# linker never even looks inside them, dllexport annotations and all: an
+# annotation on a symbol the linker never pulled into the link in the first
+# place has nothing to export. (Non-Windows shared libraries don't have
+# this problem here only because every *downstream* consumer -- `example`,
+# the Python bindings -- happens to also transitively re-link these same
+# static archives directly via speech_dsp/io/models being PUBLIC link
+# dependencies of `speech`, and those consumers' own code does reference
+# FFT/Audio/etc. symbols, which pulls the right .obj members in on their
+# own link line, independent of whatever speech.dll/.so itself exports.)
+#
+# /WHOLEARCHIVE (MSVC's linker flag) fixes this the targeted way, matching
+# in spirit -- not blanket-exporting -- what SPEECH_API is trying to do: it
+# forces every object file inside the named static archive into the link
+# unconditionally, so the exports our SPEECH_API annotations already
+# specify actually end up in the DLL for the linker to see and put in the
+# generated speech.lib. It's a no-op define on non-MSVC compilers/linkers.
+if(MSVC)
+    target_link_options(speech PRIVATE
+            "/WHOLEARCHIVE:$<TARGET_FILE_NAME:speech_dsp>"
+            "/WHOLEARCHIVE:$<TARGET_FILE_NAME:speech_io>"
+            "/WHOLEARCHIVE:$<TARGET_FILE_NAME:speech_models>"
+    )
+endif()
+
 target_include_directories(speech
         PUBLIC ${PROJECT_SOURCE_DIR}/include          # public headers live under include/libspeech/*
 )
