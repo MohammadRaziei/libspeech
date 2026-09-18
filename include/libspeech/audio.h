@@ -6,13 +6,15 @@
 #include <vector>
 #include <filesystem>
 
+#include "libspeech/export.h"
+
 
 // Forward declaration for the implementation class
 namespace speech::io{
 
 class AudioImpl;
 
-class Audio {
+class SPEECH_API Audio {
    public:
     Audio();
     Audio(const Audio& other);

@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "flux_base.h"  // Vendored AudioFlux header (src/vendor/audioflux): WindowType enum.
+#include "libspeech/export.h"
 
 // Opaque handle to AudioFlux's underlying C resample object (declared in the
 // global namespace because AudioFlux's own `ResampleObj` typedef points here).
@@ -20,7 +21,7 @@ namespace speech::dsp {
  * Resample: sample-rate conversion (e.g. 44100Hz -> 16000Hz) backed by
  * AudioFlux's polyphase/bandlimited resampler.
  */
-class Resample {
+class SPEECH_API Resample {
    public:
     // Creates a resampler with AudioFlux's default (best-quality) settings.
     // Amplitude-preserving: does not apply AudioFlux's optional sqrt(ratio)

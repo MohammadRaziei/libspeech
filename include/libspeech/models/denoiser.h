@@ -9,13 +9,15 @@
 #include <string>
 #include <vector>
 
+#include "libspeech/export.h"
+
 namespace speech::models {
 
 /**
  * Denoiser: shared interface every denoising backend implements.
  * Lets callers swap backends without caring which one is loaded.
  */
-class Denoiser {
+class SPEECH_API Denoiser {
    public:
     virtual ~Denoiser() = default;
 

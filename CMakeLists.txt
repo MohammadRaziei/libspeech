@@ -72,6 +72,12 @@ target_include_directories(speech_dsp
 )
 target_link_libraries(speech_dsp PUBLIC audioflux)
 
+# See include/libspeech/export.h -- this makes SPEECH_API expand to
+# __declspec(dllexport) for FFT/STFT/MFCC/Resample when compiled here (as
+# part of a static lib that may end up bundled into the speech.dll umbrella
+# target below). No-op on non-Windows.
+target_compile_definitions(speech_dsp PRIVATE SPEECH_BUILDING_SHARED)
+
 if(BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
@@ -138,6 +144,9 @@ target_link_libraries(speech_models
         PUBLIC httpp::httpp_core
 )
 
+# See include/libspeech/export.h. No-op on non-Windows.
+target_compile_definitions(speech_models PRIVATE SPEECH_BUILDING_SHARED)
+
 if(BUILD_TESTS)
     add_subdirectory(tests/models)
 endif()
@@ -162,6 +171,9 @@ target_link_libraries(speech_io
         PUBLIC speech::dsp
 )
 
+# See include/libspeech/export.h. No-op on non-Windows.
+target_compile_definitions(speech_io PRIVATE SPEECH_BUILDING_SHARED)
+
 # ---------------------------------------------------------------------------
 # speech -- the umbrella library: speech::io, speech::dsp, and
 # speech::models, all in one linkable/installable target for consumers (the
@@ -178,6 +190,26 @@ add_library(speech SHARED src/speech_umbrella_placeholder.cpp)
 add_library(speech::speech ALIAS speech)
 
 set_target_properties(speech PROPERTIES LINKER_LANGUAGE CXX)
+
+# On Linux/macOS, a shared library (.so/.dylib) exports every global symbol
+# by default, so bundling speech::io + speech::dsp + speech::models into
+# `speech` just works with no extra effort. Windows DLLs are the opposite:
+# MSVC exports *nothing* unless a symbol is explicitly marked dllexport (or
+# listed in a .def file) -- and with zero exported symbols, MSVC still
+# happily builds speech.dll, but never writes a companion speech.lib import
+# library at all, so anything linking against speech::speech fails with
+# LNK1104 ("cannot open file 'speech.lib'").
+#
+# Every class/function that's actually part of the public API (FFT, STFT,
+# Audio, BaseModel, Denoiser, ...) is annotated SPEECH_API in its header
+# (see include/libspeech/export.h) and compiled with SPEECH_BUILDING_SHARED
+# defined (set on speech_dsp/speech_io/speech_models above), which expands
+# that to __declspec(dllexport) on Windows. The other half of the same
+# macro needs SPEECH_SHARED defined when a *consumer* includes those
+# headers, so it sees __declspec(dllimport) instead -- INTERFACE here means
+# anyone who links speech::speech (the example executable, Python bindings)
+# gets that define automatically, without speech.dll's own build seeing it.
+target_compile_definitions(speech INTERFACE SPEECH_SHARED)
 
 target_include_directories(speech
         PUBLIC ${PROJECT_SOURCE_DIR}/include          # public headers live under include/libspeech/*

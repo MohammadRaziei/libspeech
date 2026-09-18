@@ -9,6 +9,7 @@
 #include "base_model.h"
 #include "onnxruntime_cxx_api.h"
 #include "libspeech/utils/utils.h"
+#include "libspeech/export.h"
 
 namespace speech::models {
 
@@ -16,7 +17,7 @@ namespace speech::models {
  * ONNXModel serves as a base class for models that use ONNX Runtime.
  * It provides functionality for initializing and managing ONNX sessions.
  */
-class ONNXModel : public BaseModel {
+class SPEECH_API ONNXModel : public BaseModel {
    protected:
     Ort::Env env;
     Ort::SessionOptions session_options;

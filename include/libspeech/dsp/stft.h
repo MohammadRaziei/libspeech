@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "flux_base.h"  // WindowType enum
+#include "libspeech/export.h"
 
 // Opaque handle to AudioFlux's underlying C STFT object (declared in the
 // global namespace because AudioFlux's own `STFTObj` typedef points here).
@@ -29,7 +30,7 @@ namespace speech::dsp {
  * spectrogram is represented as a matrix: outer vector = time frames, inner
  * vector = fftLength frequency-domain samples per frame.
  */
-class STFT {
+class SPEECH_API STFT {
    public:
     // radix2Exp: frame length = 2^radix2Exp.
     // windowType: analysis window applied to each frame (default: Hann,

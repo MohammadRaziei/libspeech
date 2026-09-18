@@ -25,6 +25,8 @@
 #include <memory>
 #include <vector>
 
+#include "libspeech/export.h"
+
 namespace speech::dsp {
 
 class STFT;  // fwd-declared to keep this header light; see stft.h
@@ -33,7 +35,7 @@ class STFT;  // fwd-declared to keep this header light; see stft.h
  * MFCC: log-mel-filterbank energies -> DCT-II -> cepstral coefficients,
  * the standard feature used across ASR/speaker/keyword-spotting models.
  */
-class MFCC {
+class SPEECH_API MFCC {
    public:
     struct Params {
         int sampleRate;

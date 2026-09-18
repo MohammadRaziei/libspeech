@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "flux_base.h"  // WindowType enum
+#include "libspeech/export.h"
 
 namespace speech::dsp::window {
 
@@ -27,7 +28,7 @@ namespace speech::dsp::window {
  * @param length Number of samples in the window. Must be > 0.
  * @throws std::invalid_argument if length <= 0.
  */
-std::vector<float> generate(WindowType type, int length);
+SPEECH_API std::vector<float> generate(WindowType type, int length);
 
 }  // namespace speech::dsp::window
 

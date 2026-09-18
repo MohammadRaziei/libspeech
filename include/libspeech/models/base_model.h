@@ -10,11 +10,12 @@
 #include <filesystem>
 #include <iostream>
 #include "libspeech/utils/utils.h"
+#include "libspeech/export.h"
 
 
 namespace speech::models {
 
-class BaseModel {
+class SPEECH_API BaseModel {
    protected:
     std::string url;
     std::filesystem::path model_path;

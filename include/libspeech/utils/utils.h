@@ -8,6 +8,8 @@
 
 #include <filesystem>
 
+#include "libspeech/export.h"
+
 
 namespace speech::utils {
 
@@ -23,13 +25,13 @@ template<typename... Args>
 }
 
 // Function to download a file from a given URL and save it in a specified folder
-std::filesystem::path downloadFile(const std::string& url,
+SPEECH_API std::filesystem::path downloadFile(const std::string& url,
                                    const std::filesystem::path& outputPath,
                                    bool force, bool quiet);
 
 
 // Function to get the system's temporary directory as a filesystem::path
-std::filesystem::path getTempDirectory();
+SPEECH_API std::filesystem::path getTempDirectory();
 
 // Cross-platform default cache directory for downloaded model weights
 // (<home>/.libspeech). Checks HOME (Unix/macOS), then USERPROFILE and
@@ -38,6 +40,6 @@ std::filesystem::path getTempDirectory();
 // returns nullptr on essentially all Windows systems (HOME isn't a
 // standard Windows env var), and constructing a std::filesystem::path from
 // a null pointer is undefined behavior.
-std::filesystem::path getDefaultModelCacheDir();
+SPEECH_API std::filesystem::path getDefaultModelCacheDir();
 }
 #endif  // LIBSPEECH_UTILS_H

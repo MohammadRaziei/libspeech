@@ -11,6 +11,7 @@
 #include <cmath>
 
 #include "libspeech/utils/utils.h"
+#include "libspeech/export.h"
 
 namespace speech::models {
 
@@ -52,7 +53,7 @@ class timestamp_t {
 
 
 
-class SileroVadModel : public ONNXModel {
+class SPEECH_API SileroVadModel : public ONNXModel {
 
    public:
     // Constructor: sets model path, sample rate, window size (ms), and other parameters.

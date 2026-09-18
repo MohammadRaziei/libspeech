@@ -15,6 +15,8 @@
 
 #include <vector>
 
+#include "libspeech/export.h"
+
 namespace speech::dsp {
 
 /**
@@ -29,7 +31,7 @@ namespace speech::dsp {
  *                     matches norm='ortho'); if false, the unnormalized
  *                     DCT-II (matches norm=None).
  */
-std::vector<float> dctII(const std::vector<float>& input, int numOutputs = -1,
+SPEECH_API std::vector<float> dctII(const std::vector<float>& input, int numOutputs = -1,
                           bool orthonormal = true);
 
 }  // namespace speech::dsp

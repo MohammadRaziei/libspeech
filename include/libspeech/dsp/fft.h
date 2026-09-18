@@ -14,6 +14,8 @@
 #include <utility>
 #include <vector>
 
+#include "libspeech/export.h"
+
 // Opaque handle to AudioFlux's underlying C FFT object (declared in the
 // global namespace because AudioFlux's own `FFTObj` typedef points here).
 struct OpaqueFFT;
@@ -29,7 +31,7 @@ namespace speech::dsp {
  * AudioFlux's own object model and avoids the cost of re-deriving the
  * transform's internal tables (twiddle factors, etc.) on every call.
  */
-class FFT {
+class SPEECH_API FFT {
    public:
     // radix2Exp in [1, 30] -> length = 2^radix2Exp (e.g. radix2Exp=10 -> 1024).
     explicit FFT(int radix2Exp);
