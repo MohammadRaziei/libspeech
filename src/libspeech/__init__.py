@@ -17,11 +17,9 @@ _here = Path(__file__).parent
 # copy by explicit path here works regardless of where/how this package
 # itself ends up installed.
 #
-# httpp is optional (see LIBSPEECH_ENABLE_HTTPP in CMakeLists.txt -- wheel
-# builds default it OFF and download model weights in Python instead, via
-# _download.py below), so there may be nothing to glob here; the loop
-# below already handles that (it simply does nothing) rather than
-# requiring the file to exist.
+# httpp's filename isn't version-suffixed (unlike ONNXRuntime's, see
+# below), but it does vary by platform (libhttpp_core.so / .dylib / .dll);
+# glob for whichever one is actually here rather than hardcoding one.
 for _httpp_lib in _here.glob("*httpp_core*"):
     cdll.LoadLibrary(_httpp_lib.as_posix())
     break
@@ -64,31 +62,7 @@ from .speech_dsp_py import (
 # names (speech_dsp/speech_io/speech_models -> speech_dsp_py/speech_io_py/
 # speech_models_py) so the two naming schemes stay in sync.
 from .speech_io_py import Audio
-from .speech_models_py import Denoiser as _Denoiser
-from .speech_models_py import SileroVad as _SileroVad
-from .speech_models_py import SpeechTimestamp
-
-from . import _download
-
-
-class SileroVad(_SileroVad):
-    """speech_models_py.SileroVad, with model-weight downloading handled in
-    Python (see _download.py) instead of relying on the compiled
-    extension's own (optional, see LIBSPEECH_ENABLE_HTTPP) HTTP client."""
-
-    def __init__(self, model_path: str = "silero_vad.onnx", *args, **kwargs):
-        model_path = _download.ensure_model(model_path)
-        super().__init__(model_path, *args, **kwargs)
-
-
-class Denoiser(_Denoiser):
-    """speech_models_py.Denoiser, with the same Python-side downloading as
-    SileroVad above, applied to the `create` factory."""
-
-    @staticmethod
-    def create(backend: str, model_path: str, sample_rate: int = 16000):
-        model_path = _download.ensure_model(model_path)
-        return _Denoiser.create(backend, model_path, sample_rate)
+from .speech_models_py import Denoiser, SileroVad, SpeechTimestamp
 
 __all__ = [
     "FFT",

@@ -1,5 +1,12 @@
 [build-system]
-requires = ["scikit-build-core>=0.8.0", "nanobind>=1.4.0"]
+# httpp is needed at CMake-configure time (find_package(httpp) in
+# CMakeLists.txt uses `python -c "import httpp; httpp.get_cmake_dir()"`),
+# not just at runtime -- without it here, scikit-build-core's isolated
+# build venv (used by `python -m build`/cibuildwheel) doesn't have it
+# installed and configure fails with "ModuleNotFoundError: No module named
+# 'httpp'", even though a normal `pip install .` / local dev environment
+# has it (declared under a normal dependency elsewhere) and never hits this.
+requires = ["scikit-build-core>=0.8.0", "nanobind>=1.4.0", "httpp"]
 build-backend = "scikit_build_core.build"
 
 

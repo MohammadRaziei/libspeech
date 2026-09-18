@@ -4,11 +4,8 @@
 #include <fstream>
 #include <iostream>
 #include <cstdlib>
-#include <stdexcept>
 
-#ifdef LIBSPEECH_HAVE_HTTPP
 #include <httpp/download.hpp>
-#endif
 
 #include "libspeech/utils/utils.h"
 
@@ -87,7 +84,6 @@ std::filesystem::path speech::utils::downloadFile(const std::string& url, const 
         }
     }
 
-#ifdef LIBSPEECH_HAVE_HTTPP
     // httpp::download replaces the old httplib.h (vendored) + Mbed TLS
     // (submodule) combination: URL parsing, the HTTP(S) client, TLS, and the
     // terminal progress bar are all implemented inside libhttpp_core and
@@ -118,22 +114,4 @@ std::filesystem::path speech::utils::downloadFile(const std::string& url, const 
     }
 
     return finalOutputPath;
-#else
-    // Built with LIBSPEECH_ENABLE_HTTPP=OFF (the default for Python wheel
-    // builds -- see the option's comment in CMakeLists.txt): this binary
-    // has no HTTP client compiled in at all, so it can only ever serve
-    // files that are already present at `finalOutputPath` -- which the
-    // exists-check above already handles. Reaching this point means the
-    // caller asked for a URL that isn't cached locally yet; the Python
-    // layer (src/libspeech/_download.py) is expected to have downloaded it
-    // before ever calling into this library, so surface that clearly
-    // instead of silently failing.
-    (void)quiet;
-    throw std::runtime_error(
-        "speech::utils::downloadFile: this build has no download support compiled in "
-        "(LIBSPEECH_ENABLE_HTTPP=OFF) and '" + finalOutputPath.string() + "' does not exist "
-        "locally yet. Download it first (e.g. via libspeech's Python layer, which fetches "
-        "model weights with `requests` before calling into the compiled extension), then "
-        "pass the local file path instead of a URL.");
-#endif
 }
