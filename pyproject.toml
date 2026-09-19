@@ -49,6 +49,20 @@ online = ["requests"]
 
 
 [tool.cibuildwheel]
+# ONNX Runtime's official releases (what cmake/ONNXRuntime.cmake downloads)
+# are only ever built against glibc -- there's no Microsoft-published musl/
+# Alpine binary at all (see e.g. microsoft/onnxruntime#2909, #6800, #9483).
+# Alpine's own package repo does carry an `onnxruntime` package, but only
+# because Alpine rebuilds it themselves from source against musl -- that's
+# a separate build, not something this project can just download. Linking
+# our own code against the glibc build inside a musllinux (Alpine-based)
+# cibuildwheel container therefore always fails: musl doesn't even have
+# glibc's versioned-symbol scheme (the many
+# "undefined reference to ...@GLIBC_x.y"/"@GLIBCXX_x.y" errors), nor
+# separate libdl/librt/libpthread .so files (musl folds all three into
+# libc itself). Skip musllinux entirely rather than let every build fail
+# here the same way.
+skip = ["*-musllinux_*"]
 test-command = "pytest {project}/tests"
 test-extras = ["test"]
 test-skip = ["*universal2:arm64"]
