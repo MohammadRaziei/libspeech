@@ -456,6 +456,16 @@ endif()
 add_executable(example examples/main.cpp)
 target_link_libraries(example PRIVATE speech::speech)
 
+# See the matching comment in tests/models/CMakeLists.txt (the same DLL-
+# placement gap, applied to the C++ speech::speech example instead of the
+# models test executable).
+if(WIN32)
+    add_custom_command(TARGET example POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${ONNXRUNTIME_LIB_FILE}" "$<TARGET_FILE:httpp::httpp_core>"
+                    "$<TARGET_FILE_DIR:example>")
+endif()
+
 install(TARGETS speech
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib
