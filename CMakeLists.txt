@@ -49,6 +49,31 @@ if(WIN32)
     add_compile_definitions(NOMINMAX WIN32_LEAN_AND_MEAN _USE_MATH_DEFINES)
 endif()
 
+# Every target that dlopens/links libonnxruntime.so.1 or libhttpp_core.so
+# (speech, and every Python extension module below, since each one
+# independently links against them too -- see the CMakeLists.txt comment
+# near `add_library(speech SHARED ...)` for why) ends up installed into the
+# exact same site-packages/libspeech/ directory as those bundled runtime
+# libraries. CMake's install step strips build-tree RPATH down to empty by
+# default, and that directory is on no standard search path, so without an
+# explicit RPATH pointing back at "wherever this .so itself ended up",
+# nothing can find them at runtime -- and since auditwheel's repair step
+# does the same ELF dependency walk a real dynamic link would, it fails
+# identically ("required library ... could not be located") even though
+# the file is right there in the wheel. $ORIGIN (Linux) / @loader_path
+# (macOS) mean exactly "the directory containing this .so", correct
+# regardless of where the wheel ultimately gets installed -- unlike an
+# absolute path, which would only be valid on this build machine. Windows
+# needs no equivalent call at all: its default DLL search order already
+# includes the loading module's own directory first.
+function(libspeech_set_origin_rpath target)
+    if(APPLE)
+        set_target_properties(${target} PROPERTIES INSTALL_RPATH "@loader_path")
+    elseif(NOT WIN32)
+        set_target_properties(${target} PROPERTIES INSTALL_RPATH "$ORIGIN")
+    endif()
+endfunction()
+
 message(STATUS "Project: ${PROJECT_NAME}@v${PROJECT_VERSION}")
 
 include(AudioFlux)
@@ -198,6 +223,10 @@ add_library(speech::speech ALIAS speech)
 
 set_target_properties(speech PROPERTIES LINKER_LANGUAGE CXX)
 
+# See libspeech_set_origin_rpath's definition/comment near the top of this
+# file for why this is needed.
+libspeech_set_origin_rpath(speech)
+
 # On Linux/macOS, a shared library (.so/.dylib) exports every global symbol
 # by default, so bundling speech::io + speech::dsp + speech::models into
 # `speech` just works with no extra effort. Windows DLLs are the opposite:
@@ -316,6 +345,7 @@ if(DEFINED PYTHON_PROJECT_NAME)
 
     set(NB_MODULE _about)
     nanobind_add_module(${NB_MODULE} STABLE_ABI NB_STATIC ${PROJECT_SOURCE_DIR}/src/binding/about/about.cpp)
+    libspeech_set_origin_rpath(${NB_MODULE})
     target_compile_definitions(${NB_MODULE} PRIVATE
             VERSION_INFO=${PROJECT_VERSION}
             NB_MODULE_NAME=${NB_MODULE})
@@ -361,6 +391,7 @@ if(DEFINED PYTHON_PROJECT_NAME)
         target_include_directories(${NB_MODULE} PRIVATE include src)
         target_compile_definitions(${NB_MODULE} PRIVATE NB_MODULE_NAME=${NB_MODULE})
         target_link_libraries(${NB_MODULE} PRIVATE speech::speech)
+        libspeech_set_origin_rpath(${NB_MODULE})
     endforeach()
 
     if(DEFINED SKBUILD)
@@ -377,11 +408,24 @@ if(DEFINED PYTHON_PROJECT_NAME)
         # httpp` happened to put it on the *build* machine, which has no
         # reason to exist (or even be the same path) on whatever machine
         # later installs this wheel.
-        install (FILES ${ONNXRUNTIME_LIB_FILE} "$<TARGET_FILE:httpp::httpp_core>"
+        #
+        # ONNXRUNTIME_SONAME_FILE (see cmake/ONNXRuntime.cmake) additionally
+        # ships a copy under onnxruntime's actual SONAME (libonnxruntime.so.1)
+        # on Linux/macOS -- every compiled .so's DT_NEEDED entry references
+        # that name, not the fully-versioned ONNXRUNTIME_LIB_FILE one, and
+        # without it `auditwheel repair` fails to find/bundle it at all.
+        set(_LIBSPEECH_RUNTIME_LIBS "${ONNXRUNTIME_LIB_FILE}" "$<TARGET_FILE:httpp::httpp_core>")
+        if(ONNXRUNTIME_SONAME_FILE)
+            list(APPEND _LIBSPEECH_RUNTIME_LIBS "${ONNXRUNTIME_SONAME_FILE}")
+        endif()
+        install (FILES ${_LIBSPEECH_RUNTIME_LIBS}
                 DESTINATION ${SKBUILD_PROJECT_NAME})
     else()
         file(COPY ${PROJECT_SOURCE_DIR}/src/${PROJECT_NAME} DESTINATION ${PYTHON_PROJECT_NAME})
         file(COPY ${ONNXRUNTIME_LIB_FILE} DESTINATION ${PYTHON_PROJECT_NAME}/${PROJECT_NAME})
+        if(ONNXRUNTIME_SONAME_FILE)
+            file(COPY ${ONNXRUNTIME_SONAME_FILE} DESTINATION ${PYTHON_PROJECT_NAME}/${PROJECT_NAME})
+        endif()
         add_custom_command(TARGET speech POST_BUILD
                 COMMAND ${CMAKE_COMMAND} -E make_directory "${PYTHON_PROJECT_NAME}/${PROJECT_NAME}"
                 COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:httpp::httpp_core>" "${PYTHON_PROJECT_NAME}/${PROJECT_NAME}/")

@@ -120,6 +120,25 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
     set(ONNXRUNTIME_LIB_FILE "${ONNXRUNTIME_DIR}/lib/onnxruntime.dll")
 else()
     set(ONNXRUNTIME_LIB_FILE "${ONNXRUNTIME_DIR}/lib/libonnxruntime.so.${onnx_version}")
+
+    # The official Linux/macOS release tarballs extract a symlink chain:
+    # libonnxruntime.so -> libonnxruntime.so.1 -> libonnxruntime.so.1.21.0
+    # (the last being ONNXRUNTIME_LIB_FILE above). Everything we build
+    # links against "-lonnxruntime", which the linker resolves via that
+    # chain at build time -- but only the fully-versioned real file
+    # (ONNXRUNTIME_LIB_FILE) was ever installed/copied into the wheel /
+    # local package dir, never the middle symlink. That middle name is the
+    # one that actually matters at runtime: it's the library's SONAME
+    # (embedded in the .so itself, confirmed via `readelf -d
+    # libonnxruntime.so.1.21.0 | grep SONAME` -> "libonnxruntime.so.1"),
+    # i.e. the exact name every consumer .so's DT_NEEDED entry references
+    # and the name the dynamic linker (or auditwheel, when it verifies a
+    # wheel bundles everything it needs) looks for -- not the fully-
+    # versioned filename. Without shipping a file by this exact name,
+    # `auditwheel repair` fails with 'required library
+    # "libonnxruntime.so.1" could not be located', even though the actual
+    # library bytes are right there under a different name.
+    set(ONNXRUNTIME_SONAME_FILE "${ONNXRUNTIME_DIR}/lib/libonnxruntime.so.1")
 endif()
 
 # Create a .gitignore file in the ONNX Runtime directory
