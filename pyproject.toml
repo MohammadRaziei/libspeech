@@ -62,7 +62,18 @@ online = ["requests"]
 # separate libdl/librt/libpthread .so files (musl folds all three into
 # libc itself). Skip musllinux entirely rather than let every build fail
 # here the same way.
-skip = ["*-musllinux_*"]
+#
+# cp*-win32 (32-bit Windows) is skipped for the same class of reason:
+# Microsoft stopped publishing 32-bit Windows (win-x86) ONNX Runtime
+# binaries somewhere around v1.17.3 -- the version this project downloads
+# (see cmake/ONNXRuntime.cmake's onnx_version) has no win-x86 release
+# asset, only win-x64/win-arm64, so cmake always falls back to the x64
+# build regardless of the actual 32-bit target, producing an
+# x64-vs-x86 machine-type mismatch at link time
+# ("_OrtGetApiBase" unresolved, "library machine type 'x64' conflicts
+# with target machine type 'x86'"). There's no download to correct this
+# to -- skip the target instead.
+skip = ["*-musllinux_*", "cp*-win32"]
 test-command = "pytest {project}/tests"
 test-extras = ["test"]
 test-skip = ["*universal2:arm64"]

@@ -14,7 +14,19 @@ else()
 endif()
 
 # Determine the architecture
-if(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
+# A macOS universal2 build (cibuildwheel sets CMAKE_OSX_ARCHITECTURES to
+# "arm64;x86_64" for these) compiles both architectures into one binary
+# via -arch arm64 -arch x86_64, regardless of what CMAKE_SYSTEM_PROCESSOR
+# says about the build host itself (e.g. an Apple Silicon runner reports
+# "arm64" there even while cross-compiling the x86_64 slice too). Linking
+# a single-arch ONNX Runtime download against that leaves one slice with
+# no ONNX Runtime symbols at all ("Undefined symbols for architecture
+# x86_64: _OrtGetApiBase") -- Microsoft does publish a matching
+# onnxruntime-osx-universal2-<ver>.tgz release asset for exactly this
+# case, so use that instead whenever both architectures are requested.
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND "arm64" IN_LIST CMAKE_OSX_ARCHITECTURES AND "x86_64" IN_LIST CMAKE_OSX_ARCHITECTURES)
+    set(ARCH_SUFFIX "universal2")
+elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
     if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
         # Microsoft's ONNX Runtime release assets use "arm64" for macOS
         # (e.g. onnxruntime-osx-arm64-<ver>.tgz), unlike Linux which uses
@@ -55,6 +67,12 @@ if(EXISTS "${ONNXRUNTIME_DIR}")
     # Check if the required library file exists based on the current OS
     if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
         set(ONNXRUNTIME_LIB_FILE "${ONNXRUNTIME_DIR}/lib/onnxruntime.dll")
+    elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+        # macOS ships libonnxruntime.<ver>.dylib (version before the
+        # extension), not libonnxruntime.so.<ver> -- confirmed directly
+        # against the real release tarball, and matching the exact
+        # install name a link failure log showed: '@rpath/libonnxruntime.1.21.0.dylib'.
+        set(ONNXRUNTIME_LIB_FILE "${ONNXRUNTIME_DIR}/lib/libonnxruntime.${onnx_version}.dylib")
     else()
         set(ONNXRUNTIME_LIB_FILE "${ONNXRUNTIME_DIR}/lib/libonnxruntime.so.${onnx_version}")
     endif()
@@ -118,10 +136,21 @@ endif()
 # miss hits.
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
     set(ONNXRUNTIME_LIB_FILE "${ONNXRUNTIME_DIR}/lib/onnxruntime.dll")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    # macOS ships libonnxruntime.<ver>.dylib (version before the extension)
+    # plus a libonnxruntime.dylib -> libonnxruntime.<ver>.dylib symlink --
+    # no separate Linux-style SONAME-vs-fully-versioned-name split here:
+    # the dylib's own install name (LC_ID_DYLIB, what a consumer's
+    # @rpath/... reference actually resolves against) already *is* this
+    # fully-versioned name, confirmed directly both against the real
+    # release tarball and against a link failure log showing exactly
+    # '@rpath/libonnxruntime.1.21.0.dylib'. So, unlike Linux below, no
+    # ONNXRUNTIME_SONAME_FILE is needed on this platform.
+    set(ONNXRUNTIME_LIB_FILE "${ONNXRUNTIME_DIR}/lib/libonnxruntime.${onnx_version}.dylib")
 else()
     set(ONNXRUNTIME_LIB_FILE "${ONNXRUNTIME_DIR}/lib/libonnxruntime.so.${onnx_version}")
 
-    # The official Linux/macOS release tarballs extract a symlink chain:
+    # The official Linux release tarball extracts a symlink chain:
     # libonnxruntime.so -> libonnxruntime.so.1 -> libonnxruntime.so.1.21.0
     # (the last being ONNXRUNTIME_LIB_FILE above). Everything we build
     # links against "-lonnxruntime", which the linker resolves via that
