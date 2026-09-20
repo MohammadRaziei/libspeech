@@ -59,7 +59,19 @@ jobs:
     - name: Build wheels
       uses: pypa/cibuildwheel@v3.4.1
       env:
-        MACOSX_DEPLOYMENT_TARGET: "10.15"
+        # ONNX Runtime's own v1.21.0 release notes state outright: "All
+        # macOS packages now require macOS version >= 13.3." Without this,
+        # delocate-wheel's final compatibility check correctly refuses to
+        # ship the wheel: it would claim 10.15 compatibility while
+        # bundling a dylib (libonnxruntime.1.21.0.dylib) whose own
+        # embedded LC_VERSION_MIN load command says 13.3 -- a real,
+        # unavoidable constraint from upstream, not something buildable
+        # around. (This must be set here, not in pyproject.toml's
+        # [tool.cibuildwheel.macos] environment table -- cibuildwheel env
+        # vars set directly in the workflow always take precedence over
+        # the pyproject.toml equivalent, they don't merge, so setting it
+        # in both places just leaves this one silently winning anyway.)
+        MACOSX_DEPLOYMENT_TARGET: "13.3"
         CIBW_ARCHS_MACOS: universal2
         # httpp needs to be importable by the *build-time* Python that
         # scikit-build-core invokes CMake's configure step with (see the
@@ -75,8 +87,15 @@ jobs:
         # cp38 wheel here would require httpp built from source instead.
         CIBW_BUILD: "cp39-* cp310-* cp311-* cp312-*"
         CIBW_ENVIRONMENT_CP312: "SKBUILD_WHEEL_PY_API=cp312"
-        # Disable building PyPy wheels on all platforms
-        CIBW_SKIP: pp*
+        # Disable building PyPy wheels on all platforms. Also skip
+        # musllinux (Alpine/musl has no official ONNX Runtime build --
+        # only glibc-linked releases exist, which fail to link against
+        # musl with pages of "undefined reference to ...@GLIBC_x.y"
+        # errors) and 32-bit Windows (win32 -- Microsoft stopped
+        # publishing 32-bit Windows ONNX Runtime binaries around v1.17.3,
+        # so the version this project downloads has no win-x86 asset,
+        # only win-x64/win-arm64).
+        CIBW_SKIP: "pp* *-musllinux_* cp*-win32"
 
     - uses: actions/upload-artifact@v7
       with:

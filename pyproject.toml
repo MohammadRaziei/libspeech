@@ -49,46 +49,17 @@ online = ["requests"]
 
 
 [tool.cibuildwheel]
-# ONNX Runtime's official releases (what cmake/ONNXRuntime.cmake downloads)
-# are only ever built against glibc -- there's no Microsoft-published musl/
-# Alpine binary at all (see e.g. microsoft/onnxruntime#2909, #6800, #9483).
-# Alpine's own package repo does carry an `onnxruntime` package, but only
-# because Alpine rebuilds it themselves from source against musl -- that's
-# a separate build, not something this project can just download. Linking
-# our own code against the glibc build inside a musllinux (Alpine-based)
-# cibuildwheel container therefore always fails: musl doesn't even have
-# glibc's versioned-symbol scheme (the many
-# "undefined reference to ...@GLIBC_x.y"/"@GLIBCXX_x.y" errors), nor
-# separate libdl/librt/libpthread .so files (musl folds all three into
-# libc itself). Skip musllinux entirely rather than let every build fail
-# here the same way.
-#
-# cp*-win32 (32-bit Windows) is skipped for the same class of reason:
-# Microsoft stopped publishing 32-bit Windows (win-x86) ONNX Runtime
-# binaries somewhere around v1.17.3 -- the version this project downloads
-# (see cmake/ONNXRuntime.cmake's onnx_version) has no win-x86 release
-# asset, only win-x64/win-arm64, so cmake always falls back to the x64
-# build regardless of the actual 32-bit target, producing an
-# x64-vs-x86 machine-type mismatch at link time
-# ("_OrtGetApiBase" unresolved, "library machine type 'x64' conflicts
-# with target machine type 'x86'"). There's no download to correct this
-# to -- skip the target instead.
-skip = ["*musllinux*", "*win32*"]
+# musllinux and 32-bit Windows (win32) skips, and MACOSX_DEPLOYMENT_TARGET,
+# live in .github/workflows/wheels.yml's cibuildwheel step (as CIBW_SKIP /
+# MACOSX_DEPLOYMENT_TARGET env vars) instead of here: cibuildwheel env
+# vars set directly in a workflow always take precedence over the
+# equivalent pyproject.toml setting -- they don't merge -- so setting
+# them here too was dead configuration that the workflow silently
+# overrode anyway.
 test-command = "pytest {project}/tests"
 test-extras = ["test"]
 test-skip = ["*universal2:arm64"]
 #build-verbosity = 1
-
-[tool.cibuildwheel.macos]
-# ONNX Runtime's own v1.21.0 release notes state outright: "All macOS
-# packages now require macOS version >= 13.3." The default compile flags
-# here still target 10.15 (see -mmacosx-version-min=10.15 in build logs),
-# so without this, delocate-wheel's final compatibility check correctly
-# refuses to ship the wheel: it would claim 10.15 compatibility while
-# bundling a dylib (libonnxruntime.1.21.0.dylib) whose own embedded
-# LC_VERSION_MIN load command says 13.3, i.e. a real, unavoidable
-# constraint from upstream, not something buildable around.
-environment = { MACOSX_DEPLOYMENT_TARGET = "13.3" }
 
 
 #[tool.scikit-build.cmake.define]
