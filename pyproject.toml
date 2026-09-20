@@ -79,6 +79,17 @@ test-extras = ["test"]
 test-skip = ["*universal2:arm64"]
 #build-verbosity = 1
 
+[tool.cibuildwheel.macos]
+# ONNX Runtime's own v1.21.0 release notes state outright: "All macOS
+# packages now require macOS version >= 13.3." The default compile flags
+# here still target 10.15 (see -mmacosx-version-min=10.15 in build logs),
+# so without this, delocate-wheel's final compatibility check correctly
+# refuses to ship the wheel: it would claim 10.15 compatibility while
+# bundling a dylib (libonnxruntime.1.21.0.dylib) whose own embedded
+# LC_VERSION_MIN load command says 13.3, i.e. a real, unavoidable
+# constraint from upstream, not something buildable around.
+environment = { MACOSX_DEPLOYMENT_TARGET = "13.3" }
+
 
 #[tool.scikit-build.cmake.define]
 #SOME_DEFINE = "ON"
