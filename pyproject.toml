@@ -73,7 +73,7 @@ online = ["requests"]
 # ("_OrtGetApiBase" unresolved, "library machine type 'x64' conflicts
 # with target machine type 'x86'"). There's no download to correct this
 # to -- skip the target instead.
-skip = ["*-musllinux_*", "cp*-win32"]
+skip = ["*musllinux*", "*win32*"]
 test-command = "pytest {project}/tests"
 test-extras = ["test"]
 test-skip = ["*universal2:arm64"]
