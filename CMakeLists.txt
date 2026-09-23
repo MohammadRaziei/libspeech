@@ -439,9 +439,15 @@ if(DEFINED PYTHON_PROJECT_NAME)
         # on Linux/macOS -- every compiled .so's DT_NEEDED entry references
         # that name, not the fully-versioned ONNXRUNTIME_LIB_FILE one, and
         # without it `auditwheel repair` fails to find/bundle it at all.
+        # ONNXRUNTIME_PROVIDERS_SHARED_FILE (Windows only) is the companion
+        # onnxruntime_providers_shared.dll upstream ships alongside
+        # onnxruntime.dll -- see cmake/ONNXRuntime.cmake for why.
         set(_LIBSPEECH_RUNTIME_LIBS "${ONNXRUNTIME_LIB_FILE}")
         if(ONNXRUNTIME_SONAME_FILE)
             list(APPEND _LIBSPEECH_RUNTIME_LIBS "${ONNXRUNTIME_SONAME_FILE}")
+        endif()
+        if(ONNXRUNTIME_PROVIDERS_SHARED_FILE)
+            list(APPEND _LIBSPEECH_RUNTIME_LIBS "${ONNXRUNTIME_PROVIDERS_SHARED_FILE}")
         endif()
         install (FILES ${_LIBSPEECH_RUNTIME_LIBS}
                 DESTINATION ${SKBUILD_PROJECT_NAME})
@@ -450,6 +456,9 @@ if(DEFINED PYTHON_PROJECT_NAME)
         file(COPY ${ONNXRUNTIME_LIB_FILE} DESTINATION ${PYTHON_PROJECT_NAME}/${PROJECT_NAME})
         if(ONNXRUNTIME_SONAME_FILE)
             file(COPY ${ONNXRUNTIME_SONAME_FILE} DESTINATION ${PYTHON_PROJECT_NAME}/${PROJECT_NAME})
+        endif()
+        if(ONNXRUNTIME_PROVIDERS_SHARED_FILE)
+            file(COPY ${ONNXRUNTIME_PROVIDERS_SHARED_FILE} DESTINATION ${PYTHON_PROJECT_NAME}/${PROJECT_NAME})
         endif()
 
         foreach(_core IN LISTS PYTHON_BIND_MODULES)

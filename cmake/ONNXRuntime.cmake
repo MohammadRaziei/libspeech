@@ -136,6 +136,17 @@ endif()
 # miss hits.
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
     set(ONNXRUNTIME_LIB_FILE "${ONNXRUNTIME_DIR}/lib/onnxruntime.dll")
+
+    # The official Windows release ships a second DLL, onnxruntime_providers_shared.dll,
+    # alongside onnxruntime.dll (confirmed directly against the real
+    # onnxruntime-win-x64-1.21.0.zip release asset) -- execution providers
+    # are loaded through it, so its absence wouldn't fail loading
+    # onnxruntime.dll itself (nothing imports from it at that point) but
+    # would surface later, the first time a provider actually gets used.
+    # Bundle it right alongside onnxruntime.dll so libspeech ships exactly
+    # what upstream ships, not just the one DLL that happens to be enough
+    # to satisfy the linker.
+    set(ONNXRUNTIME_PROVIDERS_SHARED_FILE "${ONNXRUNTIME_DIR}/lib/onnxruntime_providers_shared.dll")
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     # macOS ships libonnxruntime.<ver>.dylib (version before the extension)
     # plus a libonnxruntime.dylib -> libonnxruntime.<ver>.dylib symlink --

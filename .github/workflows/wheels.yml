@@ -96,6 +96,20 @@ jobs:
         # so the version this project downloads has no win-x86 asset,
         # only win-x64/win-arm64).
         CIBW_SKIP: "pp* *-musllinux_* cp*-win32"
+        # httpp is a genuine runtime dependency (pip install httpp, see
+        # `dependencies` in pyproject.toml) that libspeech intentionally
+        # does NOT bundle a copy of -- __init__.py loads libhttpp_core.so
+        # straight from wherever the separately-installed httpp package
+        # puts it (via httpp.get_lib_dir()). auditwheel's default repair
+        # doesn't know that: it walks every .so's DT_NEEDED entries and
+        # tries to vendor each one it can locate, which would re-bundle a
+        # copy of libhttpp_core.so right back into the wheel, defeating
+        # the whole point. --exclude tells it this one's intentionally
+        # external and to leave it alone (the standard auditwheel escape
+        # hatch for a dependency that's expected to be provided at
+        # runtime, same as how projects exclude e.g. system CUDA libs).
+        CIBW_REPAIR_WHEEL_COMMAND_LINUX: >-
+          auditwheel repair --exclude libhttpp_core.so -w {dest_dir} {wheel}
 
     - uses: actions/upload-artifact@v7
       with:

@@ -1,9 +1,26 @@
 from __future__ import annotations
 
+import os
+import sys
 from ctypes import *
 from pathlib import Path
 
 _here = Path(__file__).parent
+
+# On Windows, loading one DLL (e.g. speech.dll) that itself implicitly
+# needs another (httpp_core.dll, onnxruntime.dll) only searches a fixed
+# set of directories for that dependency -- the loading DLL's own
+# directory, System32, PATH, etc -- which does NOT include wherever we
+# explicitly cdll.LoadLibrary() a dependency FROM if that happens to be
+# some other, unrelated directory (httpp's own install dir is nowhere
+# near libspeech's). os.add_dll_directory() (the mechanism Python 3.8+
+# itself introduced to replace the old implicit-PATH/CWD search it
+# removed for security reasons) adds a directory to that search list for
+# the rest of the process, so speech.dll's own implicit dependency
+# resolution can actually find libhttpp_core.so/httpp_core.dll wherever
+# httpp really lives, not just next to speech.dll itself.
+if sys.platform == "win32":
+    os.add_dll_directory(str(_here))
 
 # ONNXRuntime and speech itself each ship as a separate shared library we
 # load explicitly before importing the compiled extensions (they dlopen
@@ -44,9 +61,13 @@ except ImportError as e:
         "libspeech requires the 'httpp' package. Install it with: pip install httpp"
     ) from e
 
+_httpp_lib_dir = Path(httpp.get_lib_dir())
+if sys.platform == "win32":
+    os.add_dll_directory(str(_httpp_lib_dir))
+
 # HTTPP_LIB_PATH is only the filename (computed by CMake, see above);
 # httpp.get_lib_dir() is httpp's own answer for where that filename lives.
-cdll.LoadLibrary(str(Path(httpp.get_lib_dir()) / HTTPP_LIB_PATH))
+cdll.LoadLibrary(str(_httpp_lib_dir / HTTPP_LIB_PATH))
 
 cdll.LoadLibrary(_here.joinpath(ONNXRUNTIME_LIB_PATH).as_posix())
 

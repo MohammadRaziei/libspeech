@@ -34,7 +34,14 @@ classifiers = [
   "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
-  "httpp"
+  # "filelock"
+  # A genuine runtime dependency, not just a build-time one (see
+  # [build-system] requires above for why it's listed there too):
+  # __init__.py loads libhttpp_core.so straight from this package via
+  # httpp.get_lib_dir() rather than bundling a copy, so libspeech won't
+  # import at all without it actually installed. >=0.6.0 because that's
+  # the first version confirmed to ship get_lib_dir().
+  "httpp>=0.6.0",
 ]
 
 [project.optional-dependencies]
