@@ -346,9 +346,33 @@ if(DEFINED PYTHON_PROJECT_NAME)
     set(NB_MODULE _about)
     nanobind_add_module(${NB_MODULE} STABLE_ABI NB_STATIC ${PROJECT_SOURCE_DIR}/src/binding/about/about.cpp)
     libspeech_set_origin_rpath(${NB_MODULE})
+
+    # __init__.py's cdll.LoadLibrary() calls need the *exact* on-disk
+    # filename of each preloaded runtime library (speech itself, httpp,
+    # ONNXRuntime) -- these vary by platform (libspeech.so / speech.dll /
+    # libspeech.dylib, etc.) and, for ONNXRuntime, by version too. RPATH
+    # (see libspeech_set_origin_rpath above) can't help with any of this:
+    # it only lets the OS loader resolve a DT_NEEDED entry when one
+    # already-loaded .so pulls in another at normal link time. ctypes'
+    # cdll.LoadLibrary() is a direct, explicit dlopen()/LoadLibrary() call
+    # from Python itself, entirely bypassing that mechanism -- it needs the
+    # literal filename handed to it, RPATH or not.
+    #
+    # Rather than have __init__.py guess that filename per-platform (with
+    # if/else branches or fragile globs), compute it once, here, where
+    # CMake already knows it precisely, and bake it into _about (already a
+    # tiny, dependency-free nanobind module that __init__.py imports first,
+    # for __version__) as extra module attributes -- alongside __version__,
+    # the same way this file already bakes VERSION_INFO in below.
+    # $<TARGET_FILE_NAME:...> is a generator expression, resolved once CMake
+    # knows the real output name of each target.
+    get_filename_component(_ONNXRUNTIME_LIB_FILENAME "${ONNXRUNTIME_LIB_FILE}" NAME)
     target_compile_definitions(${NB_MODULE} PRIVATE
             VERSION_INFO=${PROJECT_VERSION}
-            NB_MODULE_NAME=${NB_MODULE})
+            NB_MODULE_NAME=${NB_MODULE}
+            LIB_PATH=$<TARGET_FILE_NAME:speech>
+            HTTPP_LIB_PATH=$<TARGET_FILE_NAME:httpp::httpp_core>
+            ONNXRUNTIME_LIB_PATH=${_ONNXRUNTIME_LIB_FILENAME})
 
     # CONFIGURE_DEPENDS: best-effort auto-detection of new bind_* directories
     # without a manual reconfigure. This is NOT guaranteed by CMake to work
@@ -399,22 +423,23 @@ if(DEFINED PYTHON_PROJECT_NAME)
                 CONFIGURATIONS Release
                 LIBRARY DESTINATION ${PYTHON_PROJECT_NAME})
 
-        # ONNXRuntime and httpp both ship as a shared library that the
-        # compiled extension modules dlopen symbols from at import time
-        # (see __init__.py's cdll.LoadLibrary() calls), so -- just like
-        # ONNXRUNTIME_LIB_FILE below -- each has to be copied into the
-        # wheel next to those extensions rather than relied upon via
-        # RPATH: RPATH would only point back at wherever `pip install
-        # httpp` happened to put it on the *build* machine, which has no
-        # reason to exist (or even be the same path) on whatever machine
-        # later installs this wheel.
+        # ONNXRuntime ships as a shared library that the compiled extension
+        # modules dlopen symbols from at import time (see __init__.py's
+        # cdll.LoadLibrary() calls), so it has to be copied into the wheel
+        # next to those extensions rather than relied upon via RPATH:
+        # RPATH would only point back at wherever it got downloaded to on
+        # the *build* machine, which has no reason to exist on whatever
+        # machine later installs this wheel.
+        #
+        # httpp is NOT bundled here -- __init__.py loads it from the
+        # separately pip-installed httpp package instead (see __init__.py).
         #
         # ONNXRUNTIME_SONAME_FILE (see cmake/ONNXRuntime.cmake) additionally
         # ships a copy under onnxruntime's actual SONAME (libonnxruntime.so.1)
         # on Linux/macOS -- every compiled .so's DT_NEEDED entry references
         # that name, not the fully-versioned ONNXRUNTIME_LIB_FILE one, and
         # without it `auditwheel repair` fails to find/bundle it at all.
-        set(_LIBSPEECH_RUNTIME_LIBS "${ONNXRUNTIME_LIB_FILE}" "$<TARGET_FILE:httpp::httpp_core>")
+        set(_LIBSPEECH_RUNTIME_LIBS "${ONNXRUNTIME_LIB_FILE}")
         if(ONNXRUNTIME_SONAME_FILE)
             list(APPEND _LIBSPEECH_RUNTIME_LIBS "${ONNXRUNTIME_SONAME_FILE}")
         endif()
@@ -426,16 +451,13 @@ if(DEFINED PYTHON_PROJECT_NAME)
         if(ONNXRUNTIME_SONAME_FILE)
             file(COPY ${ONNXRUNTIME_SONAME_FILE} DESTINATION ${PYTHON_PROJECT_NAME}/${PROJECT_NAME})
         endif()
-        add_custom_command(TARGET speech POST_BUILD
-                COMMAND ${CMAKE_COMMAND} -E make_directory "${PYTHON_PROJECT_NAME}/${PROJECT_NAME}"
-                COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:httpp::httpp_core>" "${PYTHON_PROJECT_NAME}/${PROJECT_NAME}/")
 
         foreach(_core IN LISTS PYTHON_BIND_MODULES)
             set_target_properties(${_core} PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${PYTHON_PROJECT_NAME}/${PROJECT_NAME})
         endforeach()
 
-        # libspeech.so itself must land inside the package directory too --
-        # __init__.py's `cdll.LoadLibrary(_here / "libspeech.so")` looks for
+        # speech itself must land inside the package directory too --
+        # __init__.py's `cdll.LoadLibrary(_here / LIB_PATH)` looks for
         # it right next to _audio.abi3.so/_about.abi3.so, not in the
         # top-level build directory (where it would otherwise default to).
         set_target_properties(speech PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${PYTHON_PROJECT_NAME}/${PROJECT_NAME})
