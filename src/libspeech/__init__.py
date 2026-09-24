@@ -57,9 +57,8 @@ from ._about import HTTPP_LIB_PATH, LIB_PATH, ONNXRUNTIME_LIB_PATH, __version__
 try:
     import httpp
 except ImportError as e:
-    raise ImportError(
-        "libspeech requires the 'httpp' package. Install it with: pip install httpp"
-    ) from e
+    msg = "libspeech requires the 'httpp' package. Install it with: pip install httpp"
+    raise ImportError(msg) from e
 
 _httpp_lib_dir = Path(httpp.get_lib_dir())
 if sys.platform == "win32":
