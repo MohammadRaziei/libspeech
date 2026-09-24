@@ -1,11 +1,85 @@
 from __future__ import annotations
 
 import os
+import struct
 import sys
 from ctypes import *
 from pathlib import Path
 
 _here = Path(__file__).parent
+
+
+def _pe_direct_imports(path: Path) -> list[str]:
+    """The list of DLL names a Windows PE file (.dll/.exe) directly imports.
+
+    A tiny, dependency-free reimplementation of the one thing we actually
+    need from a full PE-parsing library: the direct import table.
+    Cross-checked against `pefile`'s own output on real DLLs (httpp_core.dll,
+    onnxruntime.dll) and it matches exactly -- not worth a third-party
+    dependency (even a Windows/test-only one) for ~30 lines of struct
+    unpacking against a format (PE/COFF) that's been stable since Win95.
+    """
+    data = path.read_bytes()
+    if data[:2] != b"MZ":
+        msg = "not a PE file (missing MZ header)"
+        raise ValueError(msg)
+    e_lfanew = struct.unpack_from("<I", data, 0x3C)[0]
+    if data[e_lfanew : e_lfanew + 4] != b"PE\0\0":
+        msg = "not a PE file (missing PE signature)"
+        raise ValueError(msg)
+
+    coff_off = e_lfanew + 4
+    (num_sections,) = struct.unpack_from("<H", data, coff_off + 2)
+    (size_opt_hdr,) = struct.unpack_from("<H", data, coff_off + 16)
+    opt_off = coff_off + 20
+
+    (magic,) = struct.unpack_from("<H", data, opt_off)
+    # DataDirectory[] sits right after the standard+Windows-specific
+    # optional header fields, whose total size differs between PE32 (32-bit
+    # fields for image/stack/heap sizes) and PE32+ (64-bit) -- everything
+    # else about walking the import table is identical either way.
+    if magic == 0x10B:  # PE32
+        data_dir_off = opt_off + 96
+    elif magic == 0x20B:  # PE32+
+        data_dir_off = opt_off + 112
+    else:
+        msg = f"unknown optional header magic {magic:#x}"
+        raise ValueError(msg)
+
+    # DataDirectory[1] is always the Import Table {RVA, Size}, PE32 or PE32+.
+    import_rva, _import_size = struct.unpack_from("<II", data, data_dir_off + 8)
+    if import_rva == 0:
+        return []
+
+    sections = []
+    section_off = opt_off + size_opt_hdr
+    for i in range(num_sections):
+        off = section_off + i * 40
+        vsize, vaddr = struct.unpack_from("<II", data, off + 8)
+        raw_size, raw_ptr = struct.unpack_from("<II", data, off + 16)
+        sections.append((vaddr, vsize, raw_ptr, raw_size))
+
+    def rva_to_offset(rva: int) -> int:
+        for vaddr, vsize, raw_ptr, raw_size in sections:
+            if vaddr <= rva < vaddr + max(vsize, raw_size):
+                return raw_ptr + (rva - vaddr)
+        msg = f"RVA {rva:#x} not in any section"
+        raise ValueError(msg)
+
+    names = []
+    descriptor_off = rva_to_offset(import_rva)
+    while True:
+        # IMAGE_IMPORT_DESCRIPTOR: OriginalFirstThunk, TimeDateStamp,
+        # ForwarderChain, Name (RVA), FirstThunk -- 5 x uint32, and the
+        # array ends with one all-zero entry.
+        name_rva = struct.unpack_from("<5I", data, descriptor_off)[3]
+        if name_rva == 0:
+            break
+        name_off = rva_to_offset(name_rva)
+        end = data.index(b"\0", name_off)
+        names.append(data[name_off:end].decode("ascii"))
+        descriptor_off += 20
+    return names
 
 
 def _load_library(path: Path) -> None:
@@ -14,12 +88,17 @@ def _load_library(path: Path) -> None:
     Windows' LoadLibrary gives no way to ask *which* dependency of `path`
     is unresolvable -- "Could not find module ... (or one of its
     dependencies)" is the whole message, every time, whether it's `path`
-    itself or something three levels down its import table. Rather than
-    keep guessing blind from that one sentence, use pefile (pure Python,
-    no compiler/Windows-SDK needed) to read `path`'s own direct import
-    table and report by name exactly which of those aren't resolvable
-    anywhere on the search path -- turning a CI failure into an actual
-    answer instead of another round of speculation.
+    itself or something three levels down its import table. This isn't
+    something CMake or our own C++ could tell us instead: it's not about
+    what *we* linked `path` against (we already know and preload that,
+    see below) -- it's about the compiler-injected C/C++ runtime imports
+    (e.g. VCRUNTIME140_1.dll, MSVCP140_1.dll) that MSVC adds on its own
+    based on which standard library features got used, whose actual
+    presence depends entirely on the *installing* machine's VC++
+    Redistributable version -- something no build-time tool can see,
+    since it isn't known until this exact line runs, on that machine.
+    Reading `path`'s own import table (see _pe_direct_imports above) is
+    the only way to name the real culprit instead of guessing again.
     """
     try:
         cdll.LoadLibrary(str(path))
@@ -27,28 +106,13 @@ def _load_library(path: Path) -> None:
         if sys.platform != "win32":
             raise
         try:
-            import pefile  # noqa: PLC0415 -- optional, Windows-only diagnostic dependency; a top-level import would make it a hard dependency for every platform/success path instead of a lazy one only paid for when this exact failure happens
-
-            pe = pefile.PE(str(path), fast_load=True)
-            pe.parse_data_directories(
-                directories=[pefile.DIRECTORY_ENTRY["IMAGE_DIRECTORY_ENTRY_IMPORT"]]
-            )
-            search_dirs = [path.parent, Path(os.environ.get("SYSTEMROOT", "C:/Windows")) / "System32"]
-            search_dirs += [Path(p) for p in os.environ.get("PATH", "").split(os.pathsep) if p]
-            missing = sorted(
-                {
-                    entry.dll.decode("ascii", "replace")
-                    for entry in pe.DIRECTORY_ENTRY_IMPORT
-                    if not any((d / entry.dll.decode("ascii", "replace")).is_file() for d in search_dirs)
-                }
-            )
+            imports = _pe_direct_imports(path)
         except Exception:
-            msg = (
-                f"Failed to load {path} (or one of its dependencies), and "
-                "could not inspect it for more detail -- install 'pefile' "
-                "(pip install pefile) and retry for a specific answer."
-            )
+            msg = f"Failed to load {path} (or one of its dependencies), and could not inspect it for more detail."
             raise ImportError(msg) from e
+        search_dirs = [path.parent, Path(os.environ.get("SYSTEMROOT", "C:/Windows")) / "System32"]
+        search_dirs += [Path(p) for p in os.environ.get("PATH", "").split(os.pathsep) if p]
+        missing = sorted({name for name in imports if not any((d / name).is_file() for d in search_dirs)})
         if not missing:
             # Every direct import resolves by our own (best-effort) search
             # -- Windows still refused to load it, so the real problem is
