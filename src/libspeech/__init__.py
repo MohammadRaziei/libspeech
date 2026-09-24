@@ -7,6 +7,65 @@ from pathlib import Path
 
 _here = Path(__file__).parent
 
+
+def _load_library(path: Path) -> None:
+    """cdll.LoadLibrary(), with actionable diagnostics on Windows.
+
+    Windows' LoadLibrary gives no way to ask *which* dependency of `path`
+    is unresolvable -- "Could not find module ... (or one of its
+    dependencies)" is the whole message, every time, whether it's `path`
+    itself or something three levels down its import table. Rather than
+    keep guessing blind from that one sentence, use pefile (pure Python,
+    no compiler/Windows-SDK needed) to read `path`'s own direct import
+    table and report by name exactly which of those aren't resolvable
+    anywhere on the search path -- turning a CI failure into an actual
+    answer instead of another round of speculation.
+    """
+    try:
+        cdll.LoadLibrary(str(path))
+    except FileNotFoundError as e:
+        if sys.platform != "win32":
+            raise
+        try:
+            import pefile  # noqa: PLC0415 -- optional, Windows-only diagnostic dependency; a top-level import would make it a hard dependency for every platform/success path instead of a lazy one only paid for when this exact failure happens
+
+            pe = pefile.PE(str(path), fast_load=True)
+            pe.parse_data_directories(
+                directories=[pefile.DIRECTORY_ENTRY["IMAGE_DIRECTORY_ENTRY_IMPORT"]]
+            )
+            search_dirs = [path.parent, Path(os.environ.get("SYSTEMROOT", "C:/Windows")) / "System32"]
+            search_dirs += [Path(p) for p in os.environ.get("PATH", "").split(os.pathsep) if p]
+            missing = sorted(
+                {
+                    entry.dll.decode("ascii", "replace")
+                    for entry in pe.DIRECTORY_ENTRY_IMPORT
+                    if not any((d / entry.dll.decode("ascii", "replace")).is_file() for d in search_dirs)
+                }
+            )
+        except Exception:
+            msg = (
+                f"Failed to load {path} (or one of its dependencies), and "
+                "could not inspect it for more detail -- install 'pefile' "
+                "(pip install pefile) and retry for a specific answer."
+            )
+            raise ImportError(msg) from e
+        if not missing:
+            # Every direct import resolves by our own (best-effort) search
+            # -- Windows still refused to load it, so the real problem is
+            # something our simple existence check can't see (architecture
+            # mismatch, a transitive dependency two levels down, etc).
+            msg = (
+                f"Failed to load {path}, but all of its direct dependencies "
+                "were found on disk -- the actual problem is likely an "
+                "architecture mismatch or a transitive (indirect) "
+                "dependency; re-run with Dependencies.exe or dumpbin "
+                "/dependents for the full picture."
+            )
+            raise ImportError(msg) from e
+        msg = f"Failed to load {path}: could not resolve dependencies: {', '.join(missing)}"
+        raise ImportError(msg) from e
+
+
 # On Windows, loading one DLL (e.g. speech.dll) that itself implicitly
 # needs another (httpp_core.dll, onnxruntime.dll) only searches a fixed
 # set of directories for that dependency -- the loading DLL's own
@@ -66,16 +125,16 @@ if sys.platform == "win32":
 
 # HTTPP_LIB_PATH is only the filename (computed by CMake, see above);
 # httpp.get_lib_dir() is httpp's own answer for where that filename lives.
-cdll.LoadLibrary(str(_httpp_lib_dir / HTTPP_LIB_PATH))
+_load_library(_httpp_lib_dir / HTTPP_LIB_PATH)
 
-cdll.LoadLibrary(_here.joinpath(ONNXRUNTIME_LIB_PATH).as_posix())
+_load_library(_here / ONNXRUNTIME_LIB_PATH)
 
 # NOTE: AudioFlux is statically linked into libspeech.so itself (see
 # CMakeLists.txt: speech_dsp/speech_models are STATIC libraries), so there
 # is no separate libaudioflux.so to preload here -- only libspeech.so
 # itself needs an explicit load (httpp and ONNXRuntime, both dynamically
 # linked, were already preloaded above).
-cdll.LoadLibrary(_here.joinpath(LIB_PATH).as_posix())
+_load_library(_here / LIB_PATH)
 from .speech_dsp_py import (
     FFT,
     MFCC,

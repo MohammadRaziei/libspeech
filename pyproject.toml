@@ -45,7 +45,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = ["pytest-xdist", "requests"]
+test = ["pytest-xdist", "requests", "pefile; sys_platform == 'win32'"]
 online = ["requests"]
 
 
