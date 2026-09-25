@@ -103,7 +103,7 @@ testpaths = ["tests/python"]
 
 [tool.ruff]
 target-version = "py38"
-src = ["src"]
+src = ["src", "src/bindings/python"]
 
 
 [tool.ruff.lint]
@@ -148,7 +148,7 @@ exclude = ["third_party"]
 "src/**/__main__.py" = ["T20"]
 "src/**/core.py" = ["ARG001", "F401"]
 "version.py" = ["T20"]  # CLI script -- printing is the point
-"src/libspeech/__init__.py" = ["F403", "F405", "E402"]  # `from ctypes import *`, and shared libs must load before the compiled extensions are imported below them
+"src/bindings/python/libspeech/__init__.py" = ["F403", "F405", "E402"]  # `from ctypes import *`, and shared libs must load before the compiled extensions are imported below them
 
 
 

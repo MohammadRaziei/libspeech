@@ -344,7 +344,7 @@ if(DEFINED PYTHON_PROJECT_NAME)
     find_package(nanobind CONFIG REQUIRED)
 
     set(NB_MODULE _about)
-    nanobind_add_module(${NB_MODULE} STABLE_ABI NB_STATIC ${PROJECT_SOURCE_DIR}/src/binding/about/about.cpp)
+    nanobind_add_module(${NB_MODULE} STABLE_ABI NB_STATIC ${PROJECT_SOURCE_DIR}/src/bindings/python/about.cpp)
     libspeech_set_origin_rpath(${NB_MODULE})
 
     # __init__.py's cdll.LoadLibrary() calls need the *exact* on-disk
@@ -374,19 +374,18 @@ if(DEFINED PYTHON_PROJECT_NAME)
             HTTPP_LIB_PATH=$<TARGET_FILE_NAME:httpp::httpp_core>
             ONNXRUNTIME_LIB_PATH=${_ONNXRUNTIME_LIB_FILENAME})
 
-    # CONFIGURE_DEPENDS: best-effort auto-detection of new bind_* directories
+    # CONFIGURE_DEPENDS: best-effort auto-detection of new bind_*.cpp files
     # without a manual reconfigure. This is NOT guaranteed by CMake to work
     # on every generator/environment (e.g. observed unreliable with the Unix
     # Makefiles generator in some setups) -- if a newly added binding module
     # doesn't show up after `cmake --build`, run `cmake ..` (or delete and
     # recreate the build directory) once to force a fresh configure.
-    file(GLOB PYTHON_BIND_MODULES_PATH CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/src/binding/bind_*)
+    file(GLOB PYTHON_BIND_MODULES_PATH CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/src/bindings/python/bind_*.cpp)
     set(PYTHON_BIND_MODULES "${NB_MODULE}")
-    foreach(NB_MODULE_PATH IN LISTS PYTHON_BIND_MODULES_PATH)
-        get_filename_component(NB_MODULE ${NB_MODULE_PATH} NAME)
+    foreach(NB_MODULE_SOURCE IN LISTS PYTHON_BIND_MODULES_PATH)
+        get_filename_component(NB_MODULE ${NB_MODULE_SOURCE} NAME_WE)
         string(REGEX REPLACE "bind_(.*)" "speech_\\1_py" NB_MODULE ${NB_MODULE})
         list(APPEND PYTHON_BIND_MODULES ${NB_MODULE})
-        file(GLOB NB_MODULE_SOURCES CONFIGURE_DEPENDS ${NB_MODULE_PATH}/*.cpp)
 
         message(STATUS "Found module: ${NB_MODULE}")
 
@@ -408,8 +407,11 @@ if(DEFINED PYTHON_PROJECT_NAME)
                 # reusing a shared libnanobind across libraries
                 NB_STATIC
 
-                # Source code goes here
-                ${NB_MODULE_SOURCES}
+                # Source code goes here -- one file per module (ctoon's
+                # convention: src/bindings/python/bind_X.cpp -> speech_X_py),
+                # unlike _about above which is a single nanobind_add_module
+                # call named directly rather than discovered by this glob.
+                ${NB_MODULE_SOURCE}
         )
 
         target_include_directories(${NB_MODULE} PRIVATE include src)
@@ -441,6 +443,23 @@ if(DEFINED PYTHON_PROJECT_NAME)
                 LIBRARY DESTINATION ${PYTHON_PROJECT_NAME}
                 RUNTIME DESTINATION ${PYTHON_PROJECT_NAME})
 
+        # The pure-Python files (__init__.py, __main__.py, core.py) need
+        # their own explicit install rule -- scikit-build-core's automatic
+        # Python-package discovery only looks for an immediate src/<name>
+        # layout, so now that the package lives nested under
+        # src/bindings/python/${PROJECT_NAME} (ctoon's own convention,
+        # matched here on request), it no longer finds it on its own: the
+        # compiled extensions above still land in the wheel fine (that
+        # goes through install(TARGETS), unrelated to this discovery), but
+        # without this, the wheel would ship no __init__.py at all --
+        # `import libspeech` would "succeed" only as an empty implicit
+        # namespace package, silently missing everything real. Same
+        # pattern ctoon itself uses for exactly this reason (see its
+        # src/bindings/python/CMakeLists.txt).
+        install(DIRECTORY ${PROJECT_SOURCE_DIR}/src/bindings/python/${PROJECT_NAME}/
+                DESTINATION ${SKBUILD_PROJECT_NAME}
+                FILES_MATCHING PATTERN "*.py")
+
         # ONNXRuntime ships as a shared library that the compiled extension
         # modules dlopen symbols from at import time (see __init__.py's
         # cdll.LoadLibrary() calls), so it has to be copied into the wheel
@@ -470,7 +489,7 @@ if(DEFINED PYTHON_PROJECT_NAME)
         install (FILES ${_LIBSPEECH_RUNTIME_LIBS}
                 DESTINATION ${SKBUILD_PROJECT_NAME})
     else()
-        file(COPY ${PROJECT_SOURCE_DIR}/src/${PROJECT_NAME} DESTINATION ${PYTHON_PROJECT_NAME})
+        file(COPY ${PROJECT_SOURCE_DIR}/src/bindings/python/${PROJECT_NAME} DESTINATION ${PYTHON_PROJECT_NAME})
         file(COPY ${ONNXRUNTIME_LIB_FILE} DESTINATION ${PYTHON_PROJECT_NAME}/${PROJECT_NAME})
         if(ONNXRUNTIME_SONAME_FILE)
             file(COPY ${ONNXRUNTIME_SONAME_FILE} DESTINATION ${PYTHON_PROJECT_NAME}/${PROJECT_NAME})
