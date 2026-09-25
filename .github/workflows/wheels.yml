@@ -110,16 +110,24 @@ jobs:
         # runtime, same as how projects exclude e.g. system CUDA libs).
         CIBW_REPAIR_WHEEL_COMMAND_LINUX: >-
           auditwheel repair --exclude libhttpp_core.so -w {dest_dir} {wheel}
-        # Same reasoning as CIBW_REPAIR_WHEEL_COMMAND_LINUX above, just
-        # delocate-wheel's own --exclude flag (its docstring: "Exclude any
-        # libraries where path includes the given string") instead of
-        # auditwheel's. This replicates cibuildwheel's own default macOS
-        # repair command (--require-archs {delocate_archs} -w {dest_dir}
-        # -v {wheel}) with only the --exclude added -- overriding this
-        # env var replaces the whole command, it doesn't layer on top of
-        # the default.
+        # Same reasoning as CIBW_REPAIR_WHEEL_COMMAND_LINUX above, but
+        # delocate-wheel's own -e/--exclude flag turned out not to be the
+        # right tool here: it only skips copying a library that WAS found,
+        # it doesn't stop delocate from erroring out while just building
+        # its dependency tree, which is what actually happens here --
+        # httpp isn't a file delocate can find anywhere on this machine at
+        # all (it's meant to be resolved separately, at the *end user's*
+        # install time, not here), so tree-building itself fails before
+        # --exclude ever gets a chance to apply. --ignore-missing-
+        # dependencies is delocate's actual flag for "some of these are
+        # expected to be unresolvable here, skip them and delocate the
+        # rest" (its own help text: "Skip dependencies which couldn't be
+        # found and delocate as much as possible") -- the real macOS
+        # equivalent of auditwheel's --exclude. This replicates
+        # cibuildwheel's own default macOS repair command (--require-archs
+        # {delocate_archs} -w {dest_dir} -v {wheel}) with only this added.
         CIBW_REPAIR_WHEEL_COMMAND_MACOS: >-
-          delocate-wheel --require-archs {delocate_archs} --exclude libhttpp_core.dylib -w {dest_dir} -v {wheel}
+          delocate-wheel --require-archs {delocate_archs} --ignore-missing-dependencies -w {dest_dir} -v {wheel}
 
     - uses: actions/upload-artifact@v7
       with:

@@ -419,9 +419,27 @@ if(DEFINED PYTHON_PROJECT_NAME)
     endforeach()
 
     if(DEFINED SKBUILD)
+        # `speech` (line ~221: add_library(speech SHARED ...)) is a real
+        # SHARED library, not a MODULE (unlike ${PYTHON_BIND_MODULES}, the
+        # nanobind extension .pyd/.so files, which install fine under
+        # LIBRARY alone on every platform). CMake's install(TARGETS) docs
+        # spell out the platform split this causes: "For DLL platforms
+        # (Windows) the DLL part of a shared library is treated as a
+        # RUNTIME target, while the corresponding import library is
+        # treated as an ARCHIVE target. On non-DLL platforms shared
+        # libraries are treated as LIBRARY targets." LIBRARY DESTINATION
+        # alone is therefore complete on Linux/macOS but, on Windows,
+        # speech.dll itself belongs to a target kind (RUNTIME) this rule
+        # never mentions -- so it silently isn't installed at all: no
+        # error, no warning, just a wheel with every OTHER file in place
+        # and speech.dll simply missing, which is indistinguishable at
+        # runtime from "installed but failed to load one of its
+        # dependencies" (identical ctypes error either way) until you
+        # actually go looking for the file.
         install (TARGETS ${PYTHON_BIND_MODULES} speech
                 CONFIGURATIONS Release
-                LIBRARY DESTINATION ${PYTHON_PROJECT_NAME})
+                LIBRARY DESTINATION ${PYTHON_PROJECT_NAME}
+                RUNTIME DESTINATION ${PYTHON_PROJECT_NAME})
 
         # ONNXRuntime ships as a shared library that the compiled extension
         # modules dlopen symbols from at import time (see __init__.py's
@@ -466,10 +484,21 @@ if(DEFINED PYTHON_PROJECT_NAME)
         endforeach()
 
         # speech itself must land inside the package directory too --
-        # __init__.py's `cdll.LoadLibrary(_here / LIB_PATH)` looks for
-        # it right next to _audio.abi3.so/_about.abi3.so, not in the
+        # __init__.py's `cdll.LoadLibrary(_here / LIB_PATH)` looks for it
+        # right next to _audio.abi3.so/_about.abi3.so, not in the
         # top-level build directory (where it would otherwise default to).
-        set_target_properties(speech PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${PYTHON_PROJECT_NAME}/${PROJECT_NAME})
+        # Both output-directory properties are needed for the same DLL-
+        # platform-split reason as the SKBUILD install(TARGETS) rule above:
+        # LIBRARY_OUTPUT_DIRECTORY alone places the .dll correctly on
+        # Linux/macOS but is silently ignored for it on Windows, where a
+        # SHARED library's DLL is governed by RUNTIME_OUTPUT_DIRECTORY
+        # instead (LIBRARY_OUTPUT_DIRECTORY only affects its .lib import
+        # library there) -- so on Windows the .dll would otherwise default
+        # to landing directly under ${PYTHON_PROJECT_NAME} instead of
+        # ${PYTHON_PROJECT_NAME}/${PROJECT_NAME}, right alongside it.
+        set_target_properties(speech PROPERTIES
+                LIBRARY_OUTPUT_DIRECTORY ${PYTHON_PROJECT_NAME}/${PROJECT_NAME}
+                RUNTIME_OUTPUT_DIRECTORY ${PYTHON_PROJECT_NAME}/${PROJECT_NAME})
     endif()
 endif()
 

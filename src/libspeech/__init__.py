@@ -105,10 +105,21 @@ def _load_library(path: Path) -> None:
     except FileNotFoundError as e:
         if sys.platform != "win32":
             raise
+        if not path.is_file():
+            # Windows' error message is identical either way ("could not
+            # find module X (or one of its dependencies)"), so check the
+            # simpler explanation first: X itself was never actually
+            # there, rather than assuming it's a real dependency and
+            # going straight to PE-parsing to find out which one.
+            msg = f"Failed to load {path}: that file doesn't exist (this is a packaging bug, not a missing dependency)"
+            raise ImportError(msg) from e
         try:
             imports = _pe_direct_imports(path)
-        except Exception:
-            msg = f"Failed to load {path} (or one of its dependencies), and could not inspect it for more detail."
+        except Exception as parse_exc:
+            msg = (
+                f"Failed to load {path} (or one of its dependencies); additionally failed to inspect "
+                f"its import table: {parse_exc!r}"
+            )
             raise ImportError(msg) from e
         search_dirs = [path.parent, Path(os.environ.get("SYSTEMROOT", "C:/Windows")) / "System32"]
         search_dirs += [Path(p) for p in os.environ.get("PATH", "").split(os.pathsep) if p]
