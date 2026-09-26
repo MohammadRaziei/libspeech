@@ -366,7 +366,25 @@ if(DEFINED PYTHON_PROJECT_NAME)
     # the same way this file already bakes VERSION_INFO in below.
     # $<TARGET_FILE_NAME:...> is a generator expression, resolved once CMake
     # knows the real output name of each target.
-    get_filename_component(_ONNXRUNTIME_LIB_FILENAME "${ONNXRUNTIME_LIB_FILE}" NAME)
+    # On Linux, ship (and load) the library under its SONAME
+    # (libonnxruntime.so.1) rather than the fully-versioned filename
+    # (libonnxruntime.so.1.21.0): both names used to be installed as full
+    # ~20MB copies (the SONAME file is a symlink on the upstream release
+    # tarball, but CMake's install(FILES ...)/file(COPY ...) dereference
+    # symlinks, and it turns out the wheel-building step also flattens an
+    # install-time symlink back into a second real copy when zipping -- so
+    # there is no way to keep both names *and* avoid shipping the bytes
+    # twice). Since the SONAME is the one name every consumer .so's
+    # DT_NEEDED entry actually requires at runtime, standardize the
+    # explicit ctypes preload in __init__.py on that same name too and
+    # stop installing the fully-versioned name altogether -- one file,
+    # one name, used both places. Windows/macOS have no such SONAME split
+    # (see cmake/ONNXRuntime.cmake) so they keep using ONNXRUNTIME_LIB_FILE.
+    if(ONNXRUNTIME_SONAME_FILE)
+        get_filename_component(_ONNXRUNTIME_LIB_FILENAME "${ONNXRUNTIME_SONAME_FILE}" NAME)
+    else()
+        get_filename_component(_ONNXRUNTIME_LIB_FILENAME "${ONNXRUNTIME_LIB_FILE}" NAME)
+    endif()
     target_compile_definitions(${NB_MODULE} PRIVATE
             VERSION_INFO=${PROJECT_VERSION}
             NB_MODULE_NAME=${NB_MODULE}
@@ -471,28 +489,53 @@ if(DEFINED PYTHON_PROJECT_NAME)
         # httpp is NOT bundled here -- __init__.py loads it from the
         # separately pip-installed httpp package instead (see __init__.py).
         #
-        # ONNXRUNTIME_SONAME_FILE (see cmake/ONNXRuntime.cmake) additionally
-        # ships a copy under onnxruntime's actual SONAME (libonnxruntime.so.1)
-        # on Linux/macOS -- every compiled .so's DT_NEEDED entry references
-        # that name, not the fully-versioned ONNXRUNTIME_LIB_FILE one, and
-        # without it `auditwheel repair` fails to find/bundle it at all.
+        # ONNXRUNTIME_SONAME_FILE (see cmake/ONNXRuntime.cmake) is the name
+        # every compiled .so's DT_NEEDED entry actually requires at
+        # runtime (libonnxruntime.so.1 on Linux), not the fully-versioned
+        # ONNXRUNTIME_LIB_FILE one -- without a file by that exact name,
+        # `auditwheel repair` fails to find/bundle it at all.
+        #
+        # On disk (in the upstream release tarball) that name is a
+        # symlink to ONNXRUNTIME_LIB_FILE, which is why it used to look
+        # free to ship both: but CMake's install(FILES ...) dereferences
+        # symlinks, AND the wheel-building step separately flattens an
+        # install-time symlink back into a real copy when zipping -- so
+        # shipping *both* names always costs a full second ~20MB copy no
+        # matter which way the symlink is recreated. Since the SONAME is
+        # the only name anything actually needs to dlopen/link against at
+        # runtime (see the ONNXRUNTIME_LIB_PATH comment above), install
+        # the real bytes under that name ONLY and drop the fully-versioned
+        # name from the wheel entirely -- one ~20MB file instead of two.
         # ONNXRUNTIME_PROVIDERS_SHARED_FILE (Windows only) is the companion
         # onnxruntime_providers_shared.dll upstream ships alongside
         # onnxruntime.dll -- see cmake/ONNXRuntime.cmake for why.
-        set(_LIBSPEECH_RUNTIME_LIBS "${ONNXRUNTIME_LIB_FILE}")
         if(ONNXRUNTIME_SONAME_FILE)
-            list(APPEND _LIBSPEECH_RUNTIME_LIBS "${ONNXRUNTIME_SONAME_FILE}")
+            get_filename_component(_ONNXRUNTIME_SONAME_FILENAME "${ONNXRUNTIME_SONAME_FILE}" NAME)
+            # RENAME so only one copy of the (large) file is ever written
+            # -- under the SONAME, not the fully-versioned name.
+            install(FILES "${ONNXRUNTIME_LIB_FILE}"
+                    DESTINATION ${SKBUILD_PROJECT_NAME}
+                    RENAME "${_ONNXRUNTIME_SONAME_FILENAME}")
+        else()
+            install(FILES "${ONNXRUNTIME_LIB_FILE}"
+                    DESTINATION ${SKBUILD_PROJECT_NAME})
         endif()
         if(ONNXRUNTIME_PROVIDERS_SHARED_FILE)
-            list(APPEND _LIBSPEECH_RUNTIME_LIBS "${ONNXRUNTIME_PROVIDERS_SHARED_FILE}")
+            install(FILES "${ONNXRUNTIME_PROVIDERS_SHARED_FILE}"
+                    DESTINATION ${SKBUILD_PROJECT_NAME})
         endif()
-        install (FILES ${_LIBSPEECH_RUNTIME_LIBS}
-                DESTINATION ${SKBUILD_PROJECT_NAME})
     else()
         file(COPY ${PROJECT_SOURCE_DIR}/src/bindings/python/${PROJECT_NAME} DESTINATION ${PYTHON_PROJECT_NAME})
-        file(COPY ${ONNXRUNTIME_LIB_FILE} DESTINATION ${PYTHON_PROJECT_NAME}/${PROJECT_NAME})
         if(ONNXRUNTIME_SONAME_FILE)
-            file(COPY ${ONNXRUNTIME_SONAME_FILE} DESTINATION ${PYTHON_PROJECT_NAME}/${PROJECT_NAME})
+            # Same fix as the scikit-build install(FILES ...) branch above:
+            # ship the real bytes under the SONAME only (one ~20MB file,
+            # not the fully-versioned name too), since that's the only
+            # name anything actually dlopens/links against at runtime.
+            get_filename_component(_ONNXRUNTIME_SONAME_FILENAME "${ONNXRUNTIME_SONAME_FILE}" NAME)
+            file(COPY_FILE "${ONNXRUNTIME_LIB_FILE}"
+                 "${PYTHON_PROJECT_NAME}/${PROJECT_NAME}/${_ONNXRUNTIME_SONAME_FILENAME}")
+        else()
+            file(COPY ${ONNXRUNTIME_LIB_FILE} DESTINATION ${PYTHON_PROJECT_NAME}/${PROJECT_NAME})
         endif()
         if(ONNXRUNTIME_PROVIDERS_SHARED_FILE)
             file(COPY ${ONNXRUNTIME_PROVIDERS_SHARED_FILE} DESTINATION ${PYTHON_PROJECT_NAME}/${PROJECT_NAME})
