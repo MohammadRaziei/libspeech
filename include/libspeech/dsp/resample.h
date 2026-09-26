@@ -8,7 +8,7 @@
 
 #include <vector>
 
-#include "flux_base.h"  // Vendored AudioFlux header (src/vendor/audioflux): WindowType enum.
+#include "flux_base.h"  // Vendored AudioFlux header (src/third_party/audioflux): WindowType enum.
 #include "libspeech/export.h"
 
 // Opaque handle to AudioFlux's underlying C resample object (declared in the

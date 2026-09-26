@@ -2,11 +2,11 @@
 #
 # libspeech no longer depends on the full AudioFlux submodule. Only the
 # specific C files needed by speech::dsp::* wrappers are vendored under
-# src/vendor/audioflux (copied one DSP operator at a time as each is
-# ported and test-covered -- see src/vendor/audioflux/README.md and
+# src/third_party/audioflux (copied one DSP operator at a time as each is
+# ported and test-covered -- see src/third_party/audioflux/README.md and
 # UPSTREAM_PATCHES.md for what's there and why).
 
-set(AUDIOFLUX_VENDOR_DIR "${PROJECT_SOURCE_DIR}/src/vendor/audioflux")
+set(AUDIOFLUX_VENDOR_DIR "${PROJECT_SOURCE_DIR}/src/third_party/audioflux")
 
 file(GLOB_RECURSE AUDIOFLUX_SOURCES
         "${AUDIOFLUX_VENDOR_DIR}/src/*.c"

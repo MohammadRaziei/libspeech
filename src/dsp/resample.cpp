@@ -3,7 +3,7 @@
 #include <stdexcept>
 
 #include "aixlog.hpp"
-#include "dsp/resample_algorithm.h"  // Vendored AudioFlux C header (src/vendor/audioflux)
+#include "dsp/resample_algorithm.h"  // Vendored AudioFlux C header (src/third_party/audioflux)
 
 namespace speech::dsp {
 

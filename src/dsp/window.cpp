@@ -4,7 +4,7 @@
 #include <cstdlib>
 
 #include "aixlog.hpp"
-#include "dsp/flux_window.h"  // Vendored AudioFlux C header (src/vendor/audioflux)
+#include "dsp/flux_window.h"  // Vendored AudioFlux C header (src/third_party/audioflux)
 
 namespace speech::dsp::window {
 

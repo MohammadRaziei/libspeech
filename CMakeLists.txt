@@ -92,8 +92,8 @@ add_library(speech::dsp ALIAS speech_dsp)
 
 target_include_directories(speech_dsp
         PUBLIC ${PROJECT_SOURCE_DIR}/include
-        PUBLIC src/vendor/aixlog/include
-        PRIVATE src/vendor/audioflux/src   # private AudioFlux headers (fft_algorithm.h, stft_algorithm.h, ...)
+        PUBLIC src/third_party/aixlog/include
+        PRIVATE src/third_party/audioflux/src   # private AudioFlux headers (fft_algorithm.h, stft_algorithm.h, ...)
 )
 target_link_libraries(speech_dsp PUBLIC audioflux)
 
@@ -169,7 +169,7 @@ add_library(speech::models ALIAS speech_models)
 
 target_include_directories(speech_models
         PUBLIC ${PROJECT_SOURCE_DIR}/include
-        PUBLIC src/vendor/aixlog/include
+        PUBLIC src/third_party/aixlog/include
 )
 target_link_libraries(speech_models
         PUBLIC onnxruntime_interface
@@ -195,7 +195,7 @@ add_library(speech::io ALIAS speech_io)
 target_include_directories(speech_io
         PUBLIC ${PROJECT_SOURCE_DIR}/include
         PRIVATE src/third_party/dr_libs
-        PRIVATE src/vendor/aixlog/include
+        PRIVATE src/third_party/aixlog/include
 )
 target_link_libraries(speech_io
         PRIVATE miniaudio

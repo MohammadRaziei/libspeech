@@ -18,8 +18,8 @@ its tests are green (see `AGENTS`/conversation ground rules).
 - [x] Remove `tests/third_party/googletest` submodule
 - [x] Vendor `aixlog.hpp` directly (single header), remove `src/third_party/aixlog` submodule
 - [x] Establish logging convention: `aixlog`, `DEBUG` for lifecycle/results/errors, `TRACE` only where it exposes internal computation worth debugging (not on every call)
-- [x] Establish AudioFlux vendoring workflow: copy only the `.c`/`.h` files a ported operator needs into `src/vendor/audioflux/`, patch in place if needed, log every patch in `/audioflux_issues.md`
-- [x] Remove `src/third_party/audioflux` submodule entirely (nothing in the build references it anymore — everything comes from `src/vendor/audioflux`)
+- [x] Establish AudioFlux vendoring workflow: copy only the `.c`/`.h` files a ported operator needs into `src/third_party/audioflux/`, patch in place if needed, log every patch in `/audioflux_issues.md`
+- [x] Remove `src/third_party/audioflux` submodule entirely (nothing in the build references it anymore — everything comes from `src/third_party/audioflux`)
 - [ ] Decide fate of `src/third_party/indicators`, `dr_libs`, `miniaudio` (still used by `Audio`/CLI progress bars — keep for now, revisit)
 
 > **Note for future DSP operators:** with the full AudioFlux submodule gone,
@@ -106,7 +106,7 @@ its tests are green (see `AGENTS`/conversation ground rules).
     needed), full build (`speech_dsp` → `speech_models` → `speech` →
     `example`, all link cleanly), and `ctest` (6/6 DSP tests still pass).
 - [x] Replace system `libcurl` (`find_package(CURL REQUIRED)`) with vendored
-  `httplib.h` (single header, `src/vendor/httplib/`) + Mbed TLS (git
+  `httplib.h` (single header, `src/third_party/httplib/`) + Mbed TLS (git
   submodule pinned to `v3.6.2`, built from source — NOT vendored/patched
   like AudioFlux, since crypto code should stay pristine and upstream-
   updatable). `speech::utils::downloadFile` rewritten around
@@ -122,7 +122,7 @@ its tests are green (see `AGENTS`/conversation ground rules).
 ## Documentation
 
 - [x] `/audioflux_issues.md` — running log of every AudioFlux bug/quirk found + fixed, PR-ready
-- [x] `src/vendor/audioflux/README.md` — explains why vendored instead of submoduled
+- [x] `src/third_party/audioflux/README.md` — explains why vendored instead of submoduled
 - [ ] Update root `README.md` Quick Start to match actual current API (it currently references classes/methods that don't exist yet — `AudioProcessor`, `extract_features`, etc.)
 - [ ] `CONTRIBUTING.md` (referenced by README but missing)
 - [ ] Doxygen-style comments on public headers (`Audio`, `BaseModel`, ...)
@@ -511,7 +511,7 @@ Previously: `speech_dsp`/`speech_io`/`speech_models` (C++ static libs) but
   `cmake/AudioFlux.cmake` and `cmake/ONNXRuntime.cmake` used
   `CMAKE_SOURCE_DIR` (always the *outermost* project's source dir) instead
   of `PROJECT_SOURCE_DIR` (the nearest enclosing `project()` call's source
-  dir) to locate `src/vendor/audioflux` and `src/third_party/onnxruntime`.
+  dir) to locate `src/third_party/audioflux` and `src/third_party/onnxruntime`.
   This is invisible when libspeech is the top-level project (the two
   variables happen to be equal then) but breaks the moment libspeech is
   consumed via `FetchContent`/`add_subdirectory` from another project

@@ -20,8 +20,10 @@ git submodule update --init src/third_party/mbedtls
 git submodule update --init --depth 1 src/third_party/mbedtls/framework
 ```
 
-`src/vendor/` (AudioFlux subset, aixlog, httplib) is **not** a submodule --
-those are copied directly into the repo. See `src/vendor/README.md` for why.
+A few entries under `src/third_party/` (AudioFlux subset, aixlog, httplib)
+are **not** submodules -- those are copied directly into the repo, alongside
+the actual submodules. See `src/third_party/README.md` for why and which
+ones.
 
 ## Building and testing
 
@@ -93,10 +95,10 @@ in `tests/utest/utest_main.cxx`.
 ## Vendoring third-party C code
 
 If a DSP operator needs more of AudioFlux (or another small C library) than
-what's already vendored under `src/vendor/`:
+what's already vendored under `src/third_party/`:
 
 1. Copy only the specific `.c`/`.h` files actually needed (not the whole
-   upstream project) into `src/vendor/<name>/`.
+   upstream project) into `src/third_party/<name>/`.
 2. If you need to patch the vendored code, document the patch --
    what/why/before-after -- in `audioflux_issues.md` (or a new file
    following that structure for a different vendored project), so it can
