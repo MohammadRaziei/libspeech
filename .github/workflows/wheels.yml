@@ -86,7 +86,20 @@ jobs:
         # ships wheels from cp39-abi3 up on PyPI, not cp38 -- building a
         # cp38 wheel here would require httpp built from source instead.
         CIBW_BUILD: "cp39-* cp310-* cp311-* cp312-*"
-        CIBW_ENVIRONMENT_CP312: "SKBUILD_WHEEL_PY_API=cp312"
+        # Per-Python-version env var overrides (SKBUILD_WHEEL_PY_API=cp312
+        # for the cp312 build only, so scikit-build-core tags it as a
+        # forward-compatible cp312-abi3 wheel instead of a version-locked
+        # cp312-cp312 one -- see the [tool.cibuildwheel.overrides] entry
+        # in pyproject.toml for *why* it has to live there instead of
+        # here) do NOT work as a "CIBW_<OPTION>_<IDENTIFIER>" env var like
+        # CIBW_ENVIRONMENT_CP312: cibuildwheel only recognizes that
+        # suffix pattern for CIBW_ENVIRONMENT_{LINUX,MACOS,WINDOWS} (i.e.
+        # by platform), not by Python-version identifier -- an env var
+        # like that is silently a no-op, not an error, which is exactly
+        # how this went unnoticed (confirmed: the wheel actually
+        # published to PyPI for 0.1.0 came out tagged cp312-cp312, not
+        # cp312-abi3, meaning SKBUILD_WHEEL_PY_API was never really set
+        # during that build despite this line being here).
         # Disable building PyPy wheels on all platforms. Also skip
         # musllinux (Alpine/musl has no official ONNX Runtime build --
         # only glibc-linked releases exist, which fail to link against

@@ -67,6 +67,39 @@ test-extras = ["test"]
 test-skip = ["*universal2:arm64"]
 #build-verbosity = 1
 
+[[tool.cibuildwheel.overrides]]
+# Only the cp312 build's nanobind extensions are actually compiled
+# against the Limited API (STABLE_ABI in CMakeLists.txt's
+# nanobind_add_module(... STABLE_ABI ...) calls resolves to
+# Py_LIMITED_API=0x030C0000, i.e. Python 3.12+, confirmed by inspecting
+# an actual local build's compile flags -- nanobind's own STABLE_ABI
+# option is a Python-3.12-floor feature, it silently does nothing on
+# older interpreters per nanobind's own docs, so the cp39/cp310/cp311
+# builds really are ordinary version-locked extensions and must keep
+# their default per-version wheel.py-api, or their wheel's tag would be
+# lying about what's actually inside).
+#
+# So only for cp312 do we want scikit-build-core to tag the wheel
+# cp312-abi3 (forward-compatible with 3.12, 3.13, 3.14, 3.15, ...)
+# instead of the default cp312-cp312 (that one Python version only) --
+# set via SKBUILD_WHEEL_PY_API, which is scikit-build-core's env-var
+# spelling of its `wheel.py-api` config option.
+#
+# This has to be an [[overrides]] table with its own `select`, not a
+# top-level `CIBW_ENVIRONMENT_CP312` env var in wheels.yml: cibuildwheel
+# only recognizes CIBW_ENVIRONMENT_{LINUX,MACOS,WINDOWS} as valid
+# per-selector *environment-variable name* suffixes (i.e. by platform),
+# not arbitrary identifiers like "CP312" -- an env var spelled that way
+# is silently ignored rather than erroring, which is exactly how this
+# was never actually applied to the wheels published for 0.1.0 (all
+# four came out version-locked, cp312 included -- confirmed by
+# inspecting the actual .dist-info/WHEEL of the published wheel).
+# `select` here is cibuildwheel's own, real mechanism for the same
+# per-build-identifier scoping that env var name was trying (and
+# failing) to achieve.
+select = "cp312-*"
+environment = { SKBUILD_WHEEL_PY_API = "cp312" }
+
 
 #[tool.scikit-build.cmake.define]
 #SOME_DEFINE = "ON"

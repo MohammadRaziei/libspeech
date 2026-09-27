@@ -117,6 +117,26 @@ include(ONNXRuntime)
 
 add_subdirectory(src/third_party/miniaudio)
 
+# miniaudio.h uses the C23 double-bracket attribute syntax for its
+# fallthrough marker (MA_FALLTHROUGH -> [[fallthrough]], see miniaudio.h)
+# even in the gnu99 translation unit miniaudio.c compiles as. GCC accepts
+# this quietly under gnu99, but (Apple) Clang's -Wc23-extensions flags it
+# -- three warnings, no errors, harmless either way.
+#
+# This is vendored, upstream code pulled in via a git submodule -- editing
+# miniaudio.h directly isn't an option (the fix would silently vanish on
+# the next `git submodule update`), and a project-wide -Wno-c23-extensions
+# would also mute the same warning if it ever showed up in code we
+# actually own. So silence only this one diagnostic, and only on the one
+# target it's known to come from (confirmed: only miniaudio.c itself hits
+# it, not the extra node .c files below, which don't compile the
+# MA_FALLTHROUGH-containing implementation). Safe to drop once upstream
+# miniaudio switches to __attribute__((fallthrough)) or the project moves
+# to a C standard where the warning no longer applies.
+if(CMAKE_C_COMPILER_ID MATCHES "Clang")
+    target_compile_options(miniaudio PRIVATE -Wno-c23-extensions)
+endif()
+
 # ---------------------------------------------------------------------------
 # Model downloading (speech::utils::downloadFile) used to link the SYSTEM
 # libcurl (find_package(CURL REQUIRED) + apt-installed libcurl4-openssl-dev)
