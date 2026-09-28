@@ -138,6 +138,24 @@ python version.py minor +            # bump the minor version
 python version.py tag create patch   # bump patch, commit, and tag a release
 ```
 
+## Docs and coverage
+
+`-DBUILD_DOCS=ON` gives you `speech_docs` (Doxygen, warnings-free -- keep it
+that way when you touch a public header). `-DBUILD_COVERAGE=ON` (needs
+`lcov`; add `-DBUILD_PYTHON=ON` and `pip install coverage` for the Python
+side) gives you `speech_coverage`, which runs every component's tests
+instrumented, merges them, and writes a dashboard to
+`build/coverage/index.html`. It mirrors ctoon's setup -- see the "Docs &
+coverage" table in `README.md`. A new C++ module with its own test target
+gets a coverage target by calling `speech_enable_coverage(<lib>)` and
+`speech_add_cpp_coverage_target(...)` next to its tests (see
+`tests/models/CMakeLists.txt` for a three-line example).
+
+Two lcov 2.0 quirks worth knowing before you debug them yourself: its
+`--list` output is wrong (use `--summary`, as the targets do), and an
+`--extract`/`--exclude` pattern that matches nothing is a hard error unless
+you pass `--ignore-errors unused`.
+
 ## Packaging / CI changes
 
 If you touch `CMakeLists.txt`'s install rules, `pyproject.toml`, or

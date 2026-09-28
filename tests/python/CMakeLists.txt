@@ -46,5 +46,72 @@ if(TARGET speech_io_py)
         add_python_test(audio)
         add_python_test(models)
         add_python_test(dsp)
+
+        # ---------------------------------------------------------------
+        # Python coverage (coverage.py -> lcov, same flow as ctoon's
+        # ctoon_coverage_python). Needs `pip install coverage` and
+        # -DBUILD_COVERAGE=ON; covers the Python package's own .py files
+        # (the compiled nanobind modules are covered on the C++ side).
+        # ---------------------------------------------------------------
+        if(SPEECH_COVERAGE_ENABLED)
+            execute_process(
+                COMMAND ${Python3_EXECUTABLE} -m coverage --version
+                OUTPUT_QUIET
+                ERROR_QUIET
+                RESULT_VARIABLE COVERAGE_CHECK_RESULT
+            )
+            if(COVERAGE_CHECK_RESULT EQUAL 0)
+                set(_py_cov_dir ${SPEECH_COVERAGE_BINARY_DIR}/python)
+                file(MAKE_DIRECTORY ${_py_cov_dir})
+
+                add_custom_target(speech_coverage_python
+                    # Clean previous coverage data (only html, keep index.html wrapper)
+                    COMMAND ${CMAKE_COMMAND} -E remove_directory ${_py_cov_dir}/html
+                    COMMAND ${CMAKE_COMMAND} -E make_directory ${_py_cov_dir}/html
+
+                    # Run the tests with coverage enabled, from the directory
+                    # the package was built into so `import libspeech` finds it.
+                    COMMAND ${CMAKE_COMMAND} -E echo "-- Capturing coverage..."
+                    COMMAND ${Python3_EXECUTABLE} -m coverage run
+                            --source=${PYTHON_PROJECT_NAME}/${PROJECT_NAME}
+                            --omit="*/tests/*"
+                            -m pytest ${CMAKE_CURRENT_SOURCE_DIR}
+
+                    COMMAND ${CMAKE_COMMAND} -E echo "-- Generating coverage.lcov file..."
+                    COMMAND ${Python3_EXECUTABLE} -m coverage lcov -o ${_py_cov_dir}/coverage.lcov
+                    # coverage.py writes paths relative to the build dir
+                    # (libspeech/__init__.py); map them onto the source tree.
+                    COMMAND ${CMAKE_COMMAND}
+                            -DCOV_FILE=${_py_cov_dir}/coverage.lcov
+                            -DPREFIX_PATH=src/bindings/python/
+                            -P ${PROJECT_SOURCE_DIR}/cmake/FixLCovPaths.cmake
+
+                    COMMAND ${CMAKE_COMMAND} -E echo "-- Generating HTML report..."
+                    COMMAND ${Python3_EXECUTABLE} -m coverage html -d ${_py_cov_dir}/html
+                    COMMAND ${CMAKE_COMMAND} -E echo "-- HTML entry point created here: ${_py_cov_dir}/html/index.html"
+                    COMMAND ${CMAKE_COMMAND} -E echo "-- Coverage summary:"
+                    COMMAND ${Python3_EXECUTABLE} -m coverage report
+
+                    WORKING_DIRECTORY ${PYTHON_PROJECT_NAME}
+                    USES_TERMINAL
+                )
+                add_dependencies(speech_coverage_python ${PYTHON_BIND_MODULES} speech)
+                add_dependencies(speech_coverage speech_coverage_python)
+
+                add_custom_command(TARGET speech_coverage_python POST_BUILD
+                    COMMAND ${CMAKE_COMMAND}
+                        -DIFRAME_SRC="html/index.html"
+                        -DSECTION_TITLE="Python-Bindings"
+                        -DLOGO_SVG="${PROJECT_SOURCE_DIR}/docs/logo/libspeech-logo.svg"
+                        -DPROJECT_NAME="${PROJECT_NAME}"
+                        -DOUTPUT_DIR="${_py_cov_dir}"
+                        -P "${PROJECT_SOURCE_DIR}/cmake/GenerateIframe.cmake"
+                    COMMENT "Generating iframe wrapper for Python coverage report"
+                    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+                )
+            else()
+                message(WARNING "coverage module is not installed. Python coverage target will be skipped. Install it with: pip install coverage")
+            endif()
+        endif()
     endif()
 endif()

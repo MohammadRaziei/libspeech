@@ -256,42 +256,46 @@ ctoon's `tests/python/CMakeLists.txt` pattern:
   all 37 DSP tests *and* all 8 Python tests in one command; `ctest` shows
   both `speech_dsp` and `speech_python` entries; `-DBUILD_MODELS=OFF`
   (DSP-only) still works correctly with no Python target present.
-- [x] Coverage reporting (lcov, `speech::dsp` only so far) -- added
-  `speech_coverage_cpp_dsp`/`speech_coverage` CMake targets (`tests/CMakeLists.txt`,
-  gated on `find_program(lcov)`/`find_program(genhtml)`, same pattern
-  ctoon uses) and a `build-coverage` CI job (`.github/workflows/cmake.yml`,
-  uploads to Codecov + as an artifact). Verified end-to-end: real run
-  produced 83.2% line / 90.3% function coverage for `speech::dsp` and an
-  actual HTML report. Deliberately scoped down from ctoon's multi-language
-  merged dashboard (C/C++/Python/Go/Rust/Julia) -- libspeech only has a
-  C++ test suite so far; extend once `speech::models`/Python get their own
-  tests. One rough edge found and fixed along the way: `speech_dsp` is a
-  real separately-built STATIC library, unlike `ctoon.c` (compiled
-  directly into ctoon's C++ test binary), so both the `--coverage` compile
-  flags *and* the `lcov --capture --directory` path had to cover the
-  library's own build directory, not just the test binary's -- easy to
-  silently get 0% real coverage by missing this. Branch coverage isn't
-  showing up ("no data found") despite `--rc branch_coverage=1` on the
-  capture step -- not chased down further, line/function numbers are the
-  main signal for now. **Second, more serious rough edge** (found by
-  actually building the whole project end-to-end afterwards, not just the
-  isolated coverage target): gating `--coverage` purely on
-  `find_program(lcov)` (matching ctoon's own pattern) broke the *normal*
-  build the moment lcov happened to be installed -- `--coverage` landed
-  on `speech_dsp` unconditionally, and every other consumer of it
-  (`example`, the `speech` umbrella library, Python bindings) then failed
-  to link with `undefined reference to '__gcov_init'` etc., since they
-  don't also link libgcov. ctoon avoids this because `ctoon.c` is compiled
-  directly into its C++ test binary rather than a shared library other
-  targets link; `speech_dsp` here is a real, separately-built STATIC
-  library with real other consumers, so that pattern doesn't transfer
-  as-is. Fixed with an explicit `BUILD_COVERAGE` option (default `OFF`) --
-  a normal build is unaffected regardless of what's installed on the
-  machine; verified both ways: full build (`BUILD_MODELS=ON
-  -DBUILD_TESTS=ON -DBUILD_DOCS=ON`, no `BUILD_COVERAGE`) links and
-  `ctest`s clean, and `-DBUILD_COVERAGE=ON` still produces the same 83.2%
-  report.
-
+- [x] Coverage reporting, modeled on ctoon's flow: a `speech_coverage_<component>`
+  target per component (`cpp_dsp`, `cpp_models`, `python`), a merged
+  `speech_coverage_total` (lcov `--add-tracefile`), a JSON-driven dashboard at
+  `build/coverage/index.html` (template, iframe wrapper, `genhtml.css` and the
+  `FixLCovPaths`/`GenerateIframe` scripts copied from ctoon and rebranded), a
+  `speech_coverage` umbrella, and a `build-coverage` CI job that runs the
+  umbrella and uploads `coverage/total/coverage.lcov` to Codecov. Verified by
+  actually running the whole umbrella locally (`BUILD_MODELS=ON BUILD_TESTS=ON
+  BUILD_PYTHON=ON BUILD_COVERAGE=ON`): all three components + merge + dashboard
+  build, dashboard data parses and lists total/cpp_dsp/cpp_models/py, and the
+  DSP-only configuration (`BUILD_MODELS=OFF`) and a normal coverage-off build
+  (5/5 ctest) still work. Numbers at the time: `speech::dsp` 82.7% lines /
+  89.7% functions / 38.4% branches, `speech::models` 21.3% / 22.6% / 25.5%
+  (only 7 C++ tests so far, and the denoiser/VAD paths need model weights),
+  Python package 37% (see the dead-code item below).
+  Differences from ctoon, all deliberate: (1) gated on an explicit
+  `BUILD_COVERAGE` option, not merely on lcov being installed -- `speech_dsp`/
+  `speech_models` are real STATIC libraries with other consumers (`example`,
+  `speech`, the bindings), and gating on `find_program(lcov)` alone broke the
+  *normal* build wherever lcov happened to be installed (`undefined reference
+  to '__gcov_init'`); the instrumented libraries now export `--coverage` as a
+  PUBLIC *link* option so consumers always link libgcov; (2) `lcov --summary`
+  instead of `--list`, because `--list` in lcov 2.0-1 (Ubuntu 24.04) prints
+  wrong columns (4.8% for a file whose record says LF:21 LH:21, function
+  "rates" of 7200%) while `--summary` matches the raw LF/LH/FNF/FNH counters;
+  (3) `--exclude '*/src/third_party/*' --ignore-errors unused` at capture time
+  (a vendored aixlog lambda triggers a gcov "mismatched end line" hard error
+  otherwise; and lcov 2.x treats a pattern that matches nothing as an error),
+  and `--rc branch_coverage=1`/`--branch-coverage` on *every* lcov/genhtml
+  call -- that missing flag on `--extract` is why branch coverage earlier
+  showed "no data found". No Go/Rust/Julia/MATLAB/Zig parts, since libspeech
+  has none of those bindings.
+- [ ] Dead Python code found by the new Python coverage report (both 0%):
+  `src/bindings/python/libspeech/core.py` does `from ._audio import Audio`
+  (module no longer exists since the `speech_io_py` rename -- `import
+  libspeech.core` raises `ModuleNotFoundError`), and `__main__.py` does
+  `from . import Host, Url, ...` (neither name exists in the package any
+  more -- `python -m libspeech` raises `ImportError`). Both look like leftovers
+  from the pre-split `speech`/`httpp` architecture. Not touched: decide whether
+  to delete them or rebuild a real CLI on the current API.
 ## Python bindings for speech::models
 
 - [x] New `bind_models` module (`_models`, re-exported as

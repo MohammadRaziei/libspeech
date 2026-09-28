@@ -46,3 +46,11 @@ add_custom_target(speech_test_cpp_models
 )
 add_dependencies(speech_test_cpp_models test_cpp_models)
 add_dependencies(speech_test_cpp speech_test_cpp_models)
+
+# Coverage (see tests/CMakeLists.txt; no-ops unless -DBUILD_COVERAGE=ON).
+# speech_models also carries the download/progress utilities (src/utils),
+# hence the extra patterns.
+speech_enable_coverage(speech_models)
+speech_add_cpp_coverage_target(cpp_models "libspeech C++ Models Coverage" speech_test_cpp_models
+    "*/src/models/*" "*/src/utils/*"
+    "*/include/libspeech/models/*" "*/include/libspeech/utils/*")

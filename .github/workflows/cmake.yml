@@ -91,29 +91,45 @@ jobs:
       with:
         submodules: true
 
+    - name: Set up Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: "3.11"
+        cache: "pip"
+
+    # httpp: needed at CMake-configure time (see build-and-test above).
+    # coverage: drives speech_coverage_python. The rest of the Python side
+    # (nanobind, pytest, ...) is installed by CMakeLists.txt itself when
+    # BUILD_PYTHON=ON.
+    - name: Install python dependencies
+      run: pip install httpp coverage
+
     - name: Install lcov
       run: |
         sudo apt-get update
         sudo apt-get install -y lcov
 
-    # speech::dsp only for now (the one C++ target with a real test
-    # suite) -- BUILD_MODELS=OFF here on purpose, both to keep this job
-    # fast/network-free and because speech::models has no C++ tests yet
-    # to instrument (see checklist.md).
-    - name: Configure CMake
+    # Same shape as ctoon's coverage job: every component (speech::dsp,
+    # speech::models C++ tests + the Python package's tests) is covered
+    # individually, then merged into coverage/total/ + a dashboard at
+    # coverage/index.html. BUILD_COVERAGE is an explicit opt-in (see the
+    # comment in tests/CMakeLists.txt for why it isn't implied by lcov
+    # merely being installed).
+    - name: Configure CMake with coverage
       run: |
         cmake -B build \
-          -DBUILD_MODELS=OFF \
+          -DBUILD_MODELS=ON \
           -DBUILD_TESTS=ON \
+          -DBUILD_PYTHON=ON \
           -DBUILD_COVERAGE=ON
 
     - name: Generate coverage report
-      run: cmake --build build --target speech_coverage_cpp_dsp
+      run: cmake --build build --target speech_coverage
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v5
       with:
-        files: build/coverage/cpp_dsp/coverage.lcov
+        files: build/coverage/total/coverage.lcov
         flags: unittests
         name: codecov-libspeech
         fail_ci_if_error: false

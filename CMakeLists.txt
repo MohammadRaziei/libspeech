@@ -116,6 +116,9 @@ endif()
 
 if(NOT BUILD_MODELS)
     message(STATUS "BUILD_MODELS=off: configuring speech::dsp + tests only, skipping ONNXRuntime/models/audio I/O.")
+    if(BUILD_TESTS)
+        speech_coverage_finalize()
+    endif()
     return()
 endif()
 
@@ -595,6 +598,13 @@ endif()
 # while scikit-build-core is driving an actual `pip install .` package build.
 if(BUILD_TESTS AND DEFINED PYTHON_PROJECT_NAME AND NOT DEFINED SKBUILD)
     add_subdirectory(tests/python)
+endif()
+
+# Merge every coverage component configured above into speech_coverage_total
+# + the dashboard (no-op unless -DBUILD_COVERAGE=ON). The BUILD_MODELS=OFF
+# early return above calls this too, since it never reaches this point.
+if(BUILD_TESTS)
+    speech_coverage_finalize()
 endif()
 
 if(DEFINED SKBUILD)

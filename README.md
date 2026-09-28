@@ -137,14 +137,30 @@ Run everything with `cmake --build build --target speech_test`, or just
 ### Docs & coverage
 
 ```bash
-cmake .. -DBUILD_DOCS=ON && cmake --build . --target speech_docs       # Doxygen HTML -> build/docs/out/html
-cmake .. -DBUILD_COVERAGE=ON && cmake --build . --target speech_coverage_cpp_dsp   # lcov HTML -> build/coverage/cpp_dsp/html
+cmake .. -DBUILD_DOCS=ON && cmake --build . --target speech_docs   # Doxygen HTML -> build/docs/out/html
 ```
 
-`BUILD_COVERAGE` is off by default (it instruments `speech_dsp` with
-`--coverage`, which would otherwise break linking anything else that
-depends on it) and needs `lcov`/`genhtml` on `PATH`; currently only covers
-`speech::dsp` (the one C++ module with a full test suite so far).
+Coverage follows the same layout as [ctoon](https://github.com/mohammadraziei/ctoon):
+one target per component, a merged total, and a dashboard tying the reports
+together.
+
+```bash
+cmake .. -DBUILD_PYTHON=ON -DBUILD_COVERAGE=ON   # + `pip install coverage`, lcov/genhtml on PATH
+cmake --build . --target speech_coverage         # everything below, then the merge + dashboard
+```
+
+| Target | Covers | Output (under `build/coverage/`) |
+|---|---|---|
+| `speech_coverage_cpp_dsp` | `speech::dsp` (utest.h suite) | `cpp_dsp/` |
+| `speech_coverage_cpp_models` | `speech::models` + download utils | `cpp_models/` |
+| `speech_coverage_python` | the Python package's `.py` files (coverage.py) | `python/` |
+| `speech_coverage_total` | lcov merge of all of the above | `total/` |
+
+Open `build/coverage/index.html` for the dashboard. Each component (and the
+total) also leaves a plain `coverage.lcov` next to its HTML, which is what CI
+uploads to Codecov. `BUILD_COVERAGE` is off by default: it instruments
+`speech_dsp`/`speech_models` with `--coverage`, which you don't want in a
+normal build. Without `BUILD_PYTHON` you just get the C++ components.
 
 ## 🔧 Architecture
 
