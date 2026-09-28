@@ -1,0 +1,32 @@
+PROJECT_NAME           = "libspeech"
+PROJECT_NUMBER         = @PROJECT_VERSION@
+PROJECT_BRIEF          = "Lightweight speech processing library"
+OUTPUT_DIRECTORY       = @DOXYGEN_OUTPUT_DIR@
+# The extra .md files are only here so README.md's relative links to them
+# resolve (Doxygen warns on links to files that aren't part of INPUT).
+INPUT                  = @PROJECT_SOURCE_DIR@/include \
+                         @PROJECT_SOURCE_DIR@/README.md \
+                         @PROJECT_SOURCE_DIR@/CONTRIBUTING.md \
+                         @PROJECT_SOURCE_DIR@/checklist.md \
+                         @PROJECT_SOURCE_DIR@/audioflux_issues.md
+RECURSIVE              = YES
+FILE_PATTERNS          = *.h *.hpp *.md
+
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+HTML_OUTPUT            = html
+
+EXTRACT_ALL            = YES
+EXTRACT_PRIVATE        = NO
+EXTRACT_STATIC         = NO
+
+HAVE_DOT               = @DOXYGEN_HAVE_DOT@
+CALL_GRAPH             = YES
+CALLER_GRAPH           = YES
+DOT_IMAGE_FORMAT       = svg
+
+QUIET                  = YES
+WARN_IF_UNDOCUMENTED   = YES
+WARN_LOGFILE           = @DOXYGEN_OUTPUT_DIR@/doxygen_warnings.log
+
+USE_MDFILE_AS_MAINPAGE = @PROJECT_SOURCE_DIR@/README.md

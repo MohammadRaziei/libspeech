@@ -12,16 +12,15 @@ git clone https://github.com/MohammadRaziei/libspeech.git
 cd libspeech
 
 # Small, lightweight submodules:
-git submodule update --init src/third_party/miniaudio src/third_party/dr_libs src/third_party/indicators
+git submodule update --init src/third_party/miniaudio src/third_party/dr_libs
 
-# Mbed TLS (pinned to v3.6.2, kept shallow -- see .gitmodules) has its own
-# nested submodule ("framework") that also needs initializing:
-git submodule update --init src/third_party/mbedtls
-git submodule update --init --depth 1 src/third_party/mbedtls/framework
+# speech::models (BUILD_MODELS=ON, the default) needs httpp on
+# CMAKE_PREFIX_PATH for model downloads (HTTPS client + progress bar):
+pip install httpp
 ```
 
-A few entries under `src/third_party/` (AudioFlux subset, aixlog, httplib)
-are **not** submodules -- those are copied directly into the repo, alongside
+A few entries under `src/third_party/` (AudioFlux subset, aixlog) are
+**not** submodules -- those are copied directly into the repo, alongside
 the actual submodules. See `src/third_party/README.md` for why and which
 ones.
 
@@ -103,9 +102,12 @@ what's already vendored under `src/third_party/`:
    what/why/before-after -- in `audioflux_issues.md` (or a new file
    following that structure for a different vendored project), so it can
    become an upstream PR later.
-3. Security-critical code (crypto, TLS) is the exception: keep those as
-   full git submodules (see Mbed TLS above), not cherry-picked/vendored,
-   so security patches stay easy to pull in.
+3. Security/network-critical code is a different story: `httpp`
+   (HTTPS client + progress bar for model downloads) is a genuine,
+   separately-`pip install`able runtime dependency, not something to vendor
+   or patch in-tree -- see the `find_package(httpp)` comment block in
+   `CMakeLists.txt` for why (this replaced an earlier vendored
+   cpp-httplib + Mbed TLS setup for exactly this reason).
 
 ## Style notes
 
@@ -135,6 +137,28 @@ python version.py                    # show the current version
 python version.py minor +            # bump the minor version
 python version.py tag create patch   # bump patch, commit, and tag a release
 ```
+
+## Packaging / CI changes
+
+If you touch `CMakeLists.txt`'s install rules, `pyproject.toml`, or
+`.github/workflows/wheels.yml`, actually build a wheel locally and inspect
+its *contents* before opening a PR -- don't just read the config and
+assume it's right:
+
+```bash
+python -m build --wheel -o /tmp/wheelcheck
+python -c "import zipfile; z = zipfile.ZipFile('/tmp/wheelcheck/<name>.whl'); [print(i.filename, i.file_size) for i in z.infolist()]"
+```
+
+This project has twice shipped a packaging bug invisible from reading the
+config alone -- a duplicated ~20MB ONNX Runtime binary (symlinks get
+dereferenced both by `install(FILES ...)` and by the wheel-zip step), and a
+wheel silently missing its intended `abi3` tag (`CIBW_ENVIRONMENT_CP312`
+looked like a real cibuildwheel option by analogy with
+`CIBW_ENVIRONMENT_LINUX`, but isn't -- cibuildwheel only recognizes
+platform suffixes there, not Python-version ones, and silently no-ops
+instead of erroring). Both only showed up by actually opening the built
+artifact.
 
 ## Current project status
 

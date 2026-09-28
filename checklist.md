@@ -20,7 +20,14 @@ its tests are green (see `AGENTS`/conversation ground rules).
 - [x] Establish logging convention: `aixlog`, `DEBUG` for lifecycle/results/errors, `TRACE` only where it exposes internal computation worth debugging (not on every call)
 - [x] Establish AudioFlux vendoring workflow: copy only the `.c`/`.h` files a ported operator needs into `src/third_party/audioflux/`, patch in place if needed, log every patch in `/audioflux_issues.md`
 - [x] Remove `src/third_party/audioflux` submodule entirely (nothing in the build references it anymore — everything comes from `src/third_party/audioflux`)
-- [ ] Decide fate of `src/third_party/indicators`, `dr_libs`, `miniaudio` (still used by `Audio`/CLI progress bars — keep for now, revisit)
+- [x] Decide fate of `src/third_party/indicators`, `dr_libs`, `miniaudio`:
+  `indicators` fully removed — `src/audio.cpp`'s progress bar now uses
+  `httpp::progress::bar` (`<httpp/progress.hpp>`) from the `httpp` package
+  itself, same as the download-progress bar in
+  `speech::utils::downloadFile` (`.enable_progress()`). `dr_libs`/
+  `miniaudio` stay: they're audio file I/O (decode/encode/playback), an
+  unrelated concern from progress bars, still the only thing providing
+  that.
 
 > **Note for future DSP operators:** with the full AudioFlux submodule gone,
 > the next time we need to vendor a new `.c`/`.h` file (e.g. for STFT/MFCC),
@@ -117,18 +124,48 @@ its tests are green (see `AGENTS`/conversation ground rules).
   system dependencies, only source builds.
 - [ ] Verify full `speech` library CMake build end-to-end on a machine with normal internet access (this sandbox's own egress restrictions, now unrelated to CURL, are the only remaining blocker here)
 - [ ] `pip install` end-to-end smoke test (core promise of the project: zero system deps)
-- [ ] CI update: drop googletest/aixlog submodule steps, add utest.h-based test target
+- [x] CI update: the googletest/aixlog-submodule cleanup itself turned out
+  to already be done (confirmed: no gtest/aixlog steps anywhere in
+  `.github/workflows/`, `.gitmodules` only lists `miniaudio`/`dr_libs`, and
+  `tests/CMakeLists.txt` already has a real `utest.h`-based `test_cpp_dsp`
+  target) -- this item was stale. What was actually still missing,
+  compared to `mohammadraziei/ctoon`'s CI structure: a `build-docs` job
+  (Doxygen) and a `build-coverage` job (lcov), both added to
+  `.github/workflows/cmake.yml` this session and verified by actually
+  building both locally first (see the Doxygen and Coverage entries
+  elsewhere in this file for what each surfaced). Deliberately not a full
+  copy of ctoon's job matrix -- no Rust/Go/Julia toolchain setup steps,
+  since libspeech doesn't have any of those bindings.
 
 ## Documentation
 
 - [x] `/audioflux_issues.md` — running log of every AudioFlux bug/quirk found + fixed, PR-ready
 - [x] `src/third_party/audioflux/README.md` — explains why vendored instead of submoduled
-- [ ] Update root `README.md` Quick Start to match actual current API (it currently references classes/methods that don't exist yet — `AudioProcessor`, `extract_features`, etc.)
-- [ ] `CONTRIBUTING.md` (referenced by README but missing)
-- [ ] Doxygen-style comments on public headers (`Audio`, `BaseModel`, ...)
-
-## Python bindings (nanobind)
-
+- [x] Update root `README.md` Quick Start to match actual current API —
+  the Quick Start itself was already fixed (real `Audio`/`MFCC`/`Denoiser`/
+  `SileroVad` API, not the old `AudioProcessor`/`extract_features`), but
+  the separate "From source" build steps and the "Zero system
+  dependencies" bullet were still stale (Mbed TLS/`indicators` submodule
+  init steps that no longer exist since the `httpp` migration) — fixed,
+  plus a broken CI badge link (`workflows/build.yml` doesn't exist;
+  pointed it at `workflows/cmake.yml`).
+- [x] `CONTRIBUTING.md` (referenced by README) — was already written
+  earlier (see below), just stale by the time of this check (still
+  mentioned Mbed TLS's nested submodule and `src/third_party/indicators`,
+  both removed since); refreshed to match current reality.
+- [x] Doxygen-style comments on public headers: the `speech_docs` target
+  (+ `build-docs` CI job) surfaced 13 concrete warnings, all now fixed and
+  verified -- `speech_docs` builds with **0** warnings. Real gaps closed:
+  missing/wrong `@param` docs on `FacebookDenoiser`/`SpeechBrainDenoiser`
+  constructors (documented `base_dir` for a parameter that doesn't exist,
+  omitted `sample_rate`), a stale `@param sample_rate` on both `process()`
+  methods (it takes only `input_audio`), the undocumented `sample_rate` on
+  `ONNXModel`'s constructor, and a copy-pasted "Destructor for
+  FacebookDenoiser" on `SpeechBrainDenoiser`. Also: README's relative links
+  to `checklist.md`/`audioflux_issues.md`/`CONTRIBUTING.md` only resolve if
+  those files are in Doxygen's `INPUT` (added), and Doxygen's markdown
+  parser choked on two multi-line `**bold**` spans and a `__repr__`-style
+  dunder name in `checklist.md` (reworded).
 - [x] Fixed `bind_audio` (the `_audio` module): it referenced a nonexistent
   `speech::Audio::sampleRate()` (the real method is `sample_rate()`) --
   this binding never actually compiled before.
@@ -219,8 +256,41 @@ ctoon's `tests/python/CMakeLists.txt` pattern:
   all 37 DSP tests *and* all 8 Python tests in one command; `ctest` shows
   both `speech_dsp` and `speech_python` entries; `-DBUILD_MODELS=OFF`
   (DSP-only) still works correctly with no Python target present.
-- [ ] Coverage reporting (lcov/coverage.py + merged dashboard) -- ctoon has
-  an elaborate version of this; not set up here yet, out of scope for now.
+- [x] Coverage reporting (lcov, `speech::dsp` only so far) -- added
+  `speech_coverage_cpp_dsp`/`speech_coverage` CMake targets (`tests/CMakeLists.txt`,
+  gated on `find_program(lcov)`/`find_program(genhtml)`, same pattern
+  ctoon uses) and a `build-coverage` CI job (`.github/workflows/cmake.yml`,
+  uploads to Codecov + as an artifact). Verified end-to-end: real run
+  produced 83.2% line / 90.3% function coverage for `speech::dsp` and an
+  actual HTML report. Deliberately scoped down from ctoon's multi-language
+  merged dashboard (C/C++/Python/Go/Rust/Julia) -- libspeech only has a
+  C++ test suite so far; extend once `speech::models`/Python get their own
+  tests. One rough edge found and fixed along the way: `speech_dsp` is a
+  real separately-built STATIC library, unlike `ctoon.c` (compiled
+  directly into ctoon's C++ test binary), so both the `--coverage` compile
+  flags *and* the `lcov --capture --directory` path had to cover the
+  library's own build directory, not just the test binary's -- easy to
+  silently get 0% real coverage by missing this. Branch coverage isn't
+  showing up ("no data found") despite `--rc branch_coverage=1` on the
+  capture step -- not chased down further, line/function numbers are the
+  main signal for now. **Second, more serious rough edge** (found by
+  actually building the whole project end-to-end afterwards, not just the
+  isolated coverage target): gating `--coverage` purely on
+  `find_program(lcov)` (matching ctoon's own pattern) broke the *normal*
+  build the moment lcov happened to be installed -- `--coverage` landed
+  on `speech_dsp` unconditionally, and every other consumer of it
+  (`example`, the `speech` umbrella library, Python bindings) then failed
+  to link with `undefined reference to '__gcov_init'` etc., since they
+  don't also link libgcov. ctoon avoids this because `ctoon.c` is compiled
+  directly into its C++ test binary rather than a shared library other
+  targets link; `speech_dsp` here is a real, separately-built STATIC
+  library with real other consumers, so that pattern doesn't transfer
+  as-is. Fixed with an explicit `BUILD_COVERAGE` option (default `OFF`) --
+  a normal build is unaffected regardless of what's installed on the
+  machine; verified both ways: full build (`BUILD_MODELS=ON
+  -DBUILD_TESTS=ON -DBUILD_DOCS=ON`, no `BUILD_COVERAGE`) links and
+  `ctest`s clean, and `-DBUILD_COVERAGE=ON` still produces the same 83.2%
+  report.
 
 ## Python bindings for speech::models
 
@@ -233,7 +303,7 @@ ctoon's `tests/python/CMakeLists.txt` pattern:
 - [x] `SileroVad`: full constructor (all tunable parameters), `.process()`,
   `.get_speech_timestamps()`, `.reset()`.
 - [x] `SpeechTimestamp`: `start`/`end` (samples), `start_s`/`end_s`
-  (seconds), `__repr__`, `__eq__`.
+  (seconds), plus the `repr`/`eq` dunder methods.
 - [x] Found + fixed a real, pre-existing bug while testing this binding:
   `timestamp_t::start_s()`/`end_s()` (`include/libspeech/models/silero_vad.h`)
   performed integer division (`start / sample_rate`, both `int`), always
@@ -490,9 +560,8 @@ Previously: `speech_dsp`/`speech_io`/`speech_models` (C++ static libs) but
   benchmark seemed to show ~24% improvement (82ms -> 62ms), but a more
   careful re-run (20 reps, warm-up excluded) showed the before/after times
   are statistically indistinguishable (62.84ms vs. 61.78ms) -- the initial
-  result was cold-start/measurement noise, not a real effect. **Needs
-  re-benchmarking on an actual multi-core machine** to confirm the
-  expected real-world speedup before this can be claimed anywhere.
+  result was cold-start/measurement noise, not a real effect. **Needs re-benchmarking on an actual multi-core machine**
+  to confirm the expected real-world speedup before this can be claimed anywhere.
 - Other identified-but-not-yet-pursued speed opportunities (same
   benchmark-first discipline applies before acting on any of these):
   flat/contiguous buffers instead of `vector<vector<float>>` for

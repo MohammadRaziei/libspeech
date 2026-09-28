@@ -59,3 +59,84 @@ add_custom_target(speech_test_cpp_dsp
 )
 add_dependencies(speech_test_cpp_dsp test_cpp_dsp)
 add_dependencies(speech_test_cpp speech_test_cpp_dsp)
+
+# ---------------------------------------------------------------------------
+# Coverage (speech::dsp only, for now -- this is the one C++ target with a
+# real test suite; extend to speech::models once tests/models/ exists).
+#
+# Gated on an explicit BUILD_COVERAGE option (default OFF), NOT purely on
+# finding lcov/genhtml the way ctoon's tests/cpp/CMakeLists.txt does --
+# ctoon.c is compiled directly into ctoon's C++ test binary for this exact
+# reason, so instrumenting it only affects that one binary. speech_dsp
+# here is a real, separately-built STATIC library that plenty of *other*
+# targets link too (the `example` executable, `speech` umbrella library,
+# the Python bindings) -- discovered the hard way: with only a
+# find_program(lcov) guard, `--coverage` silently landed on speech_dsp on
+# any machine that happens to have lcov installed, and every consumer that
+# doesn't also link libgcov (i.e. everything except test_cpp_dsp) failed
+# with "undefined reference to `__gcov_init'" et al. An explicit,
+# default-off option keeps a normal build unaffected regardless of what's
+# installed on the machine; the CI coverage job passes -DBUILD_COVERAGE=ON
+# explicitly.
+# ---------------------------------------------------------------------------
+find_program(LCOV_EXECUTABLE lcov)
+find_program(GENHTML_EXECUTABLE genhtml)
+
+if(BUILD_COVERAGE AND LCOV_EXECUTABLE AND GENHTML_EXECUTABLE)
+    target_compile_options(speech_dsp PRIVATE -O0 -g --coverage)
+    target_link_options(speech_dsp PRIVATE --coverage)
+    target_compile_options(test_cpp_dsp PRIVATE -O0 -g --coverage)
+    target_link_options(test_cpp_dsp PRIVATE --coverage)
+
+    set(SPEECH_COVERAGE_DIR ${CMAKE_BINARY_DIR}/coverage/cpp_dsp)
+
+    add_custom_target(speech_coverage_cpp_dsp
+        COMMAND ${CMAKE_COMMAND} -E remove_directory ${SPEECH_COVERAGE_DIR}
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${SPEECH_COVERAGE_DIR}
+
+        COMMAND ${CMAKE_COMMAND} -E echo "-- Running instrumented speech::dsp tests..."
+        COMMAND $<TARGET_FILE:test_cpp_dsp>
+
+        COMMAND ${CMAKE_COMMAND} -E echo "-- Capturing coverage..."
+        COMMAND ${LCOV_EXECUTABLE}
+                --capture
+                --base-directory ${PROJECT_SOURCE_DIR}
+                --directory ${CMAKE_BINARY_DIR}
+                --exclude "*/tests/*"
+                --no-external
+                --rc branch_coverage=1
+                --output-file ${SPEECH_COVERAGE_DIR}/coverage_temp.lcov
+
+        COMMAND ${CMAKE_COMMAND} -E echo "-- Filtering speech::dsp source files..."
+        COMMAND ${LCOV_EXECUTABLE}
+                --extract
+                ${SPEECH_COVERAGE_DIR}/coverage_temp.lcov
+                "*/src/dsp/*"
+                "*/include/libspeech/dsp/*"
+                --output-file ${SPEECH_COVERAGE_DIR}/coverage.lcov
+        COMMAND ${CMAKE_COMMAND} -E remove ${SPEECH_COVERAGE_DIR}/coverage_temp.lcov
+
+        COMMAND ${CMAKE_COMMAND} -E echo "-- Generating HTML report..."
+        COMMAND ${GENHTML_EXECUTABLE} --quiet
+                ${SPEECH_COVERAGE_DIR}/coverage.lcov
+                --output-directory ${SPEECH_COVERAGE_DIR}/html
+                --prefix ${PROJECT_SOURCE_DIR}
+                --title "libspeech speech::dsp Coverage"
+
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        USES_TERMINAL
+        COMMENT "Generating speech::dsp coverage report"
+    )
+    add_dependencies(speech_coverage_cpp_dsp test_cpp_dsp)
+
+    add_custom_target(speech_coverage
+        COMMAND ${CMAKE_COMMAND} -E echo "-- speech coverage: cpp_dsp only so far"
+    )
+    add_dependencies(speech_coverage speech_coverage_cpp_dsp)
+else()
+    if(NOT BUILD_COVERAGE)
+        message(STATUS "BUILD_COVERAGE=off - speech_coverage target not available (default; pass -DBUILD_COVERAGE=ON to enable)")
+    else()
+        message(STATUS "lcov/genhtml not found - speech_coverage target will not be available")
+    endif()
+endif()

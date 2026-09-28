@@ -50,3 +50,78 @@ jobs:
 
     - name: Run tests
       run: ctest --test-dir build --output-on-failure --build-config Release
+
+  build-docs:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v6
+
+    - name: Install Doxygen + graphviz
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y doxygen graphviz
+
+    - name: Configure CMake
+      run: |
+        cmake -B build \
+          -DBUILD_MODELS=OFF \
+          -DBUILD_TESTS=OFF \
+          -DBUILD_DOCS=ON
+
+    - name: Build documentation
+      run: cmake --build build --target speech_docs
+
+    - name: Upload documentation artifact
+      uses: actions/upload-artifact@v7
+      with:
+        name: cmake-documentation
+        path: build/docs/out/html
+        retention-days: 5
+
+  build-coverage:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v6
+      with:
+        submodules: true
+
+    - name: Install lcov
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y lcov
+
+    # speech::dsp only for now (the one C++ target with a real test
+    # suite) -- BUILD_MODELS=OFF here on purpose, both to keep this job
+    # fast/network-free and because speech::models has no C++ tests yet
+    # to instrument (see checklist.md).
+    - name: Configure CMake
+      run: |
+        cmake -B build \
+          -DBUILD_MODELS=OFF \
+          -DBUILD_TESTS=ON \
+          -DBUILD_COVERAGE=ON
+
+    - name: Generate coverage report
+      run: cmake --build build --target speech_coverage_cpp_dsp
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v5
+      with:
+        files: build/coverage/cpp_dsp/coverage.lcov
+        flags: unittests
+        name: codecov-libspeech
+        fail_ci_if_error: false
+        verbose: true
+
+    - name: Upload coverage artifact
+      uses: actions/upload-artifact@v7
+      with:
+        name: cmake-coverage-report
+        path: build/coverage/
+        retention-days: 5

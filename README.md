@@ -17,7 +17,7 @@
 [![Python Versions](https://img.shields.io/pypi/pyversions/libspeech)](https://pypi.org/project/libspeech/)
 [![C++ Standard](https://img.shields.io/badge/C++-17-blue)](https://en.cppreference.com/w/cpp/17)
 
-[![Build Status](https://github.com/mohammadraziei/libspeech/actions/workflows/build.yml/badge.svg)](https://github.com/mohammadraziei/libspeech/actions)
+[![Build Status](https://github.com/mohammadraziei/libspeech/actions/workflows/cmake.yml/badge.svg)](https://github.com/mohammadraziei/libspeech/actions)
 [![Code Quality](https://sonarcloud.io/api/project_badges/measure?project=MohammadRaziei_libspeech&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=MohammadRaziei_libspeech)
 [![CodeFactor](https://www.codefactor.io/repository/github/mohammadraziei/libspeech/badge/master)](https://www.codefactor.io/repository/github/mohammadraziei/libspeech/overview/master)
 [![snyk.io](https://snyk.io/advisor/python/libspeech/badge.svg)](https://snyk.io/advisor/python/libspeech)
@@ -33,7 +33,7 @@
 - 🔊 **Speech models** (`speech::models`): a `Denoiser` interface (Facebook/SpeechBrain backends) and Silero VAD
 - 🖥️ **Cross-platform**: Windows, Linux, macOS
 - 🐍 **Python bindings** (nanobind) mirroring the C++ API 1:1
-- 📦 **Zero system dependencies**: no `apt install libcurl-dev` / OpenSSL needed -- HTTPS model downloads go through a vendored [cpp-httplib](https://github.com/yhirose/cpp-httplib) + [Mbed TLS](https://github.com/Mbed-TLS/mbedtls) built from source
+- 📦 **Zero system dependencies**: no `apt install libcurl-dev` / OpenSSL needed -- HTTPS model downloads go through [`httpp`](https://github.com/mohammadraziei/httpp) (`pip install httpp`), a separately-installed package with its own prebuilt HTTP(S) client and progress bar
 
 ## 📦 Installation
 
@@ -46,11 +46,12 @@ pip install libspeech
 ```bash
 git clone https://github.com/MohammadRaziei/libspeech.git
 cd libspeech
-git submodule update --init src/third_party/miniaudio src/third_party/dr_libs src/third_party/indicators
+git submodule update --init src/third_party/miniaudio src/third_party/dr_libs
 
-# Mbed TLS is pinned to v3.6.2 and kept as a shallow submodule (see .gitmodules):
-git submodule update --init src/third_party/mbedtls
-git submodule update --init --depth 1 src/third_party/mbedtls/framework
+# speech::models (BUILD_MODELS=ON, the default) needs httpp on
+# CMAKE_PREFIX_PATH for model downloads (HTTPS client + progress bar) --
+# no more Mbed TLS/libcurl to build, just:
+pip install httpp
 
 mkdir build && cd build
 cmake ..                      # downloads ONNX Runtime automatically on first configure
@@ -132,6 +133,18 @@ speech_test                       # everything
 
 Run everything with `cmake --build build --target speech_test`, or just
 `ctest` for the same suites without the extra build-tool chatter.
+
+### Docs & coverage
+
+```bash
+cmake .. -DBUILD_DOCS=ON && cmake --build . --target speech_docs       # Doxygen HTML -> build/docs/out/html
+cmake .. -DBUILD_COVERAGE=ON && cmake --build . --target speech_coverage_cpp_dsp   # lcov HTML -> build/coverage/cpp_dsp/html
+```
+
+`BUILD_COVERAGE` is off by default (it instruments `speech_dsp` with
+`--coverage`, which would otherwise break linking anything else that
+depends on it) and needs `lcov`/`genhtml` on `PATH`; currently only covers
+`speech::dsp` (the one C++ module with a full test suite so far).
 
 ## 🔧 Architecture
 

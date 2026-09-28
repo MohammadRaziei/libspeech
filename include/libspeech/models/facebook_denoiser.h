@@ -21,7 +21,7 @@ class SPEECH_API FacebookDenoiser : public ONNXModel, public Denoiser {
     /**
      * Constructor for FacebookDenoiser.
      * @param url The URL of the ONNX model file to download.
-     * @param base_dir The base directory where the model will be stored.
+     * @param sample_rate The sample rate (Hz) the model expects its input at. Defaults to 16000.
      */
     FacebookDenoiser(const std::string& url, const int sample_rate=16000);
 
@@ -33,7 +33,6 @@ class SPEECH_API FacebookDenoiser : public ONNXModel, public Denoiser {
     /**
      * Processes an input audio tensor using the denoiser model.
      * @param input_audio A vector of floats representing the input audio (normalized between -1 and 1).
-     * @param sample_rate The sample rate of the input audio (e.g., 16000 Hz).
      * @return A vector of floats representing the denoised audio.
      */
     std::vector<float> process(const std::vector<float>& input_audio) override;
