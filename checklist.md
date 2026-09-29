@@ -288,29 +288,24 @@ ctoon's `tests/python/CMakeLists.txt` pattern:
   call -- that missing flag on `--extract` is why branch coverage earlier
   showed "no data found". No Go/Rust/Julia/MATLAB/Zig parts, since libspeech
   has none of those bindings.
-- [x] Removed the `dr_libs` submodule -- it was pure duplication.
-  `miniaudio.h` already vendors its own renamed copy of dr_wav/dr_mp3/dr_flac
-  internally (search `dr_wav_h begin`/`dr_flac_h begin`/`dr_mp3_h begin` in
-  it -- same upstream author, kept in sync) and exposes all three uniformly
-  through `ma_decoder`/`ma_encoder` (`ma_encoding_format_{wav,flac,mp3}`),
-  including WAV encoding. Rewrote `src/audio.cpp`'s `loadWAV`/`loadMP3`/
-  `loadFLAC` into one shared `loadWithMiniaudio()` helper (encoding format
-  passed explicitly, so a mismatched extension still fails the same way the
-  old per-format `dr_*_init_*` calls did) and `saveWAV` to use
-  `ma_encoder_init_file`/`ma_encoder_write_pcm_frames`; dropped the
-  `dr_wav.h`/`dr_mp3.h`/`dr_flac.h` includes and their `DR_*_IMPLEMENTATION`
-  macros entirely. `speech_io`'s CMake target, `.gitmodules`, and the
-  submodule-init line in `README.md`/`CONTRIBUTING.md`/
-  `src/third_party/README.md` all updated to drop `dr_libs`; actually ran
-  `git submodule deinit`/`git rm` for it, not just deleted the directory.
-  Verified with real audio, not just a compile: `ffmpeg`-generated WAV/MP3/
-  FLAC (mono) + a stereo FLAC loaded correctly (right sample rate/channel
-  count/duration for all four); WAV and FLAC (both lossless) decoded to
-  bit-identical samples; MP3's duration came out ~10% longer than the
-  source, which is the format's own encoder priming/padding delay, not a
-  regression (same file, same padding would occur with dr_mp3 too); the
-  existing `test_save_and_load_wav_round_trip` pytest and the full `ctest`
-  suite (5/5) still pass.
+- [x] README polish: added an HTML-based (not markdown `[x](#y)`, which
+  Doxygen tries and fails to `\ref`-resolve since `README.md` is in its
+  `INPUT` -- verified `speech_docs` stays warning-free) table of contents,
+  and fixed a stale architecture-table cell still saying "httplib+Mbed TLS"
+  for `speech::models`' download dependency (it's `httpp` now, same as the
+  submodule-init/Key-Features stale refs fixed earlier).
+- [x] Actually ran `benchmarks/bench_stft` (3 repeats each of
+  `LIBSPEECH_ENABLE_OPENMP=ON` and `=OFF`, fetching the real
+  `libspeech@v0.3.0` from GitHub via the benchmark's own `FetchContent`) and
+  put real numbers in `README.md`'s Benchmarking section instead of just a
+  "please run this" ask. Result unchanged from the earlier note above:
+  ON avg 66.75-67.71ms vs. OFF avg 66.31-71.69ms -- statistically
+  indistinguishable, which is the *expected, uninteresting* result on this
+  sandbox's 1 vCPU (Intel Xeon @ 2.10GHz) -- there's no second core for the
+  parallel-frame path to use, so it can only tie or lose slightly to
+  thread-spawn overhead, never show the real speedup it exists to test.
+  Multi-core re-benchmarking is still the open item, now stated plainly in
+  the README itself rather than only in this file.
 ## Python bindings for speech::models
 
 - [x] New `bind_models` module (`_models`, re-exported as

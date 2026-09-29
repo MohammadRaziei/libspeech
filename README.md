@@ -25,6 +25,18 @@
 
 </div>
 
+## Contents
+
+<ul>
+<li><a href="#-key-features">Key Features</a></li>
+<li><a href="#-installation">Installation</a></li>
+<li><a href="#-quick-start">Quick Start</a></li>
+<li><a href="#-testing">Testing</a></li>
+<li><a href="#-architecture">Architecture</a></li>
+<li><a href="#-benchmarking">Benchmarking</a></li>
+<li><a href="#-contributing">Contributing</a></li>
+</ul>
+
 ## ✨ Key Features
 
 - 🚀 **ONNX Runtime powered** models, without a heavy LibTorch dependency
@@ -172,7 +184,7 @@ library:
 |---|---|---|---|
 | `speech::dsp` | `speech_dsp` | `speech_dsp_py` | nothing but a vendored subset of [AudioFlux](https://github.com/libAudioFlux/audioflux)'s C sources |
 | `speech::io` | `speech_io` | `speech_io_py` | `speech::dsp` (for resampling), miniaudio |
-| `speech::models` | `speech_models` | `speech_models_py` | ONNX Runtime, httplib+Mbed TLS (for downloading model weights) |
+| `speech::models` | `speech_models` | `speech_models_py` | ONNX Runtime, [`httpp`](https://github.com/mohammadraziei/httpp) (for downloading model weights) |
 
 See [`checklist.md`](checklist.md) for the detailed, up-to-date state of
 the project (what's done, what's in progress, known issues), and
@@ -194,13 +206,11 @@ cmake -S . -B build-bench -DCMAKE_BUILD_TYPE=Release
 cmake --build build-bench --target libspeech_benchmarks
 ```
 
-`benchmarks/cpp/bench_stft.cpp` measures `speech::dsp::STFT`, specifically
-to A/B test whether enabling OpenMP's parallel-frame path
-(`LIBSPEECH_ENABLE_OPENMP`, on by default) actually helps -- STFT frames
-are independent so this *should* scale with core count, but this couldn't
-be verified in this project's own single-core development sandbox (see
-`checklist.md`). If you have a multi-core machine, please run this and
-report back:
+`benchmarks/cpp/bench_stft.cpp` measures `speech::dsp::STFT` on a 60s/16kHz
+signal (20 timed runs after 3 untimed warm-up runs), specifically to A/B
+test whether enabling OpenMP's parallel-frame path (`LIBSPEECH_ENABLE_OPENMP`,
+on by default) actually helps -- STFT frames are independent, so this
+*should* scale with core count:
 
 ```bash
 cmake -S . -B build-bench -DCMAKE_BUILD_TYPE=Release -DLIBSPEECH_ENABLE_OPENMP=ON
@@ -210,8 +220,23 @@ cmake -S . -B build-bench -DLIBSPEECH_ENABLE_OPENMP=OFF
 cmake --build build-bench --target bench_stft && ./build-bench/cpp/bench_stft
 ```
 
-Compare the two `avg=...ms` numbers -- that's the real effect of enabling
-OpenMP on your hardware.
+Last run (1 vCPU Intel Xeon @ 2.10GHz -- this is the crux of the problem,
+see below), 3 repeats of each, `avg` over the 20 timed runs:
+
+| OpenMP | Run 1 | Run 2 | Run 3 |
+|---|---|---|---|
+| `ON`  | 67.29ms | 66.75ms | 67.71ms |
+| `OFF` | 71.69ms | 66.31ms | 69.26ms |
+
+Statistically indistinguishable, and that's the expected, uninteresting
+result on a single-core machine -- there's no second core for the
+parallel-frame path to actually use, so `ON` can only ever match `OFF`
+(best case) or lose slightly to thread-spawn overhead (worst case), never
+show the real speedup it's meant to test. **This is still an open
+question** (see `checklist.md`): if you have a multi-core machine, please
+run the two commands above and share your `avg=...ms` numbers -- that's
+the comparison that actually answers whether `LIBSPEECH_ENABLE_OPENMP=ON`
+is worth its default-on status.
 
 ## 🤝 Contributing
 
