@@ -11,13 +11,10 @@
 
 
 #include <httpp/progress.hpp>
-// Include `dr_wav`, `dr_mp3`, and `dr_flac`
-#define DR_WAV_IMPLEMENTATION
-#include "dr_wav.h"
-#define DR_MP3_IMPLEMENTATION
-#include "dr_mp3.h"
-#define DR_FLAC_IMPLEMENTATION
-#include "dr_flac.h"
+// miniaudio.h embeds its own renamed copy of dr_wav/dr_mp3/dr_flac
+// internally (see "dr_wav_h begin" etc. inside it) and exposes them
+// uniformly through ma_decoder/ma_encoder -- no need for the separate
+// dr_libs submodule.
 #define MINIAUDIO_IMPLEMENTATION
 #include "miniaudio.h"
 
@@ -45,92 +42,70 @@ class AudioImpl {
     double duration() const;
 
     void to_mono();
+
+   private:
+    // Shared by loadWAV/loadMP3/loadFLAC: miniaudio's ma_decoder already
+    // embeds its own (renamed, `ma_`-prefixed) copy of dr_wav/dr_mp3/dr_flac
+    // internally -- see "dr_wav_h begin" etc. in miniaudio.h -- so there is
+    // no need for the separate dr_libs submodule to get identical decoding
+    // for all three formats through one API. `encodingFormat` is passed
+    // explicitly (rather than left to miniaudio's file-extension/trial-and-
+    // error sniffing) so a mismatched extension still fails the same way
+    // dr_wav/dr_mp3/dr_flac's own type-specific init functions did.
+    bool loadWithMiniaudio(const std::filesystem::path& filePath, ma_encoding_format format, const char* formatName);
 };
 
 } // namespace speech::io
 
-// **Load WAV**
-bool speech::io::AudioImpl::loadWAV(const std::filesystem::path& filePath) {
-    drwav wav;
-    if (!drwav_init_file(&wav, filePath.string().c_str(), NULL)) {
-        LOG(ERROR) << TAG("speech::io::Audio") << "Failed to open WAV file: " << filePath << std::endl;
+bool speech::io::AudioImpl::loadWithMiniaudio(const std::filesystem::path& filePath, ma_encoding_format format, const char* formatName) {
+    ma_decoder_config config = ma_decoder_config_init(ma_format_f32, /*outputChannels=*/0, /*outputSampleRate=*/0);
+    config.encodingFormat = format;
+
+    ma_decoder decoder;
+    if (ma_decoder_init_file(filePath.string().c_str(), &config, &decoder) != MA_SUCCESS) {
+        LOG(ERROR) << TAG("speech::io::Audio") << "Failed to open " << formatName << " file: " << filePath << std::endl;
         return false;
     }
-    sampleRate = wav.sampleRate;
-    channels = wav.channels;
-    size_t numFrames = wav.totalPCMFrameCount;
+
+    ma_uint32 outChannels = 0, outSampleRate = 0;
+    ma_decoder_get_data_format(&decoder, nullptr, &outChannels, &outSampleRate, nullptr, 0);
+    channels = static_cast<int>(outChannels);
+    sampleRate = static_cast<int>(outSampleRate);
+
+    ma_uint64 numFrames = 0;
+    ma_decoder_get_length_in_pcm_frames(&decoder, &numFrames);
     audioData.resize(channels, std::vector<float>(numFrames)); // Allocate memory for each channel
 
     std::vector<float> interleavedData(numFrames * channels);
-    drwav_read_pcm_frames_f32(&wav, numFrames, interleavedData.data());
+    ma_uint64 framesRead = 0;
+    ma_decoder_read_pcm_frames(&decoder, interleavedData.data(), numFrames, &framesRead);
 
     // Deinterleave the data into separate channels
-    for (size_t i = 0; i < numFrames; ++i) {
+    for (ma_uint64 i = 0; i < framesRead; ++i) {
         for (int c = 0; c < channels; ++c) {
             audioData[c][i] = interleavedData[i * channels + c];
         }
     }
 
-    drwav_uninit(&wav);
+    ma_decoder_uninit(&decoder);
     loaded = true;
-    LOG(DEBUG) << TAG("speech::io::Audio") << "Loaded WAV: " << filePath << ", Sample Rate: " << sampleRate << ", Channels: " << channels << std::endl;
+    LOG(DEBUG) << TAG("speech::io::Audio") << "Loaded " << formatName << ": " << filePath << ", Sample Rate: " << sampleRate << ", Channels: " << channels << std::endl;
     return true;
+}
+
+// **Load WAV**
+bool speech::io::AudioImpl::loadWAV(const std::filesystem::path& filePath) {
+    return loadWithMiniaudio(filePath, ma_encoding_format_wav, "WAV");
 }
 
 // **Load MP3**
 bool speech::io::AudioImpl::loadMP3(const std::filesystem::path& filePath) {
-    drmp3 mp3;
-    if (!drmp3_init_file(&mp3, filePath.string().c_str(), NULL)) {
-        LOG(ERROR) << TAG("speech::io::Audio") << "Failed to open MP3 file: " << filePath << std::endl;
-        return false;
-    }
-    sampleRate = mp3.sampleRate;
-    channels = mp3.channels;
-    size_t numFrames = drmp3_get_pcm_frame_count(&mp3);
-    audioData.resize(channels, std::vector<float>(numFrames)); // Allocate memory for each channel
-
-    std::vector<float> interleavedData(numFrames * channels);
-    drmp3_read_pcm_frames_f32(&mp3, numFrames, interleavedData.data());
-
-    // Deinterleave the data into separate channels
-    for (size_t i = 0; i < numFrames; ++i) {
-        for (int c = 0; c < channels; ++c) {
-            audioData[c][i] = interleavedData[i * channels + c];
-        }
-    }
-
-    drmp3_uninit(&mp3);
-    loaded = true;
-    LOG(DEBUG) << TAG("speech::io::Audio") << "Loaded MP3: " << filePath << ", Sample Rate: " << sampleRate << ", Channels: " << channels << std::endl;
-    return true;
+    return loadWithMiniaudio(filePath, ma_encoding_format_mp3, "MP3");
 }
 
 // **Load FLAC**
 bool speech::io::AudioImpl::loadFLAC(const std::filesystem::path& filePath) {
-    drflac* flac = drflac_open_file(filePath.string().c_str(), NULL);
-    if (!flac) {
-        LOG(ERROR) << TAG("speech::io::Audio") << "Failed to open FLAC file: " << filePath << std::endl;
-        return false;
-    }
-    sampleRate = flac->sampleRate;
-    channels = flac->channels;
-    size_t numFrames = flac->totalPCMFrameCount;
-    audioData.resize(channels, std::vector<float>(numFrames)); // Allocate memory for each channel
-
-    std::vector<float> interleavedData(numFrames * channels);
-    drflac_read_pcm_frames_f32(flac, numFrames, interleavedData.data());
-
-    // Deinterleave the data into separate channels
-    for (size_t i = 0; i < numFrames; ++i) {
-        for (int c = 0; c < channels; ++c) {
-            audioData[c][i] = interleavedData[i * channels + c];
-        }
-    }
-
-    drflac_close(flac);
-    loaded = true;
-    LOG(DEBUG) << TAG("speech::io::Audio") << "Loaded FLAC: " << filePath << ", Sample Rate: " << sampleRate << ", Channels: " << channels << std::endl;
-    return true;
+    return loadWithMiniaudio(filePath, ma_encoding_format_flac, "FLAC");
 }
 
 // **Load PCM from Binary File**
@@ -263,21 +238,17 @@ bool speech::io::AudioImpl::saveWAV(const std::filesystem::path& outputPath) {
         }
     }
 
-    drwav_data_format format = {};
-    format.container = drwav_container_riff;
-    format.format = DR_WAVE_FORMAT_IEEE_FLOAT;
-    format.channels = channels;
-    format.sampleRate = sampleRate;
-    format.bitsPerSample = 32;
+    ma_encoder_config config = ma_encoder_config_init(ma_encoding_format_wav, ma_format_f32, channels, sampleRate);
 
-    drwav wav;
-    if (!drwav_init_file_write(&wav, outputPath.string().c_str(), &format, NULL)) {
+    ma_encoder encoder;
+    if (ma_encoder_init_file(outputPath.string().c_str(), &config, &encoder) != MA_SUCCESS) {
         LOG(ERROR) << TAG("speech::io::Audio") << "Failed to save WAV file: " << outputPath << std::endl;
         return false;
     }
 
-    drwav_write_pcm_frames(&wav, numFrames, interleavedData.data());
-    drwav_uninit(&wav);
+    ma_uint64 framesWritten = 0;
+    ma_encoder_write_pcm_frames(&encoder, interleavedData.data(), numFrames, &framesWritten);
+    ma_encoder_uninit(&encoder);
     LOG(DEBUG) << TAG("speech::io::Audio") << "Saved WAV file: " << outputPath << std::endl;
     return true;
 }

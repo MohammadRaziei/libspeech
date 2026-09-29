@@ -46,7 +46,7 @@ pip install libspeech
 ```bash
 git clone https://github.com/MohammadRaziei/libspeech.git
 cd libspeech
-git submodule update --init src/third_party/miniaudio src/third_party/dr_libs
+git submodule update --init src/third_party/miniaudio
 
 # speech::models (BUILD_MODELS=ON, the default) needs httpp on
 # CMAKE_PREFIX_PATH for model downloads (HTTPS client + progress bar) --
@@ -171,7 +171,7 @@ library:
 | Namespace | CMake target | Python module | Depends on |
 |---|---|---|---|
 | `speech::dsp` | `speech_dsp` | `speech_dsp_py` | nothing but a vendored subset of [AudioFlux](https://github.com/libAudioFlux/audioflux)'s C sources |
-| `speech::io` | `speech_io` | `speech_io_py` | `speech::dsp` (for resampling), miniaudio, dr_libs |
+| `speech::io` | `speech_io` | `speech_io_py` | `speech::dsp` (for resampling), miniaudio |
 | `speech::models` | `speech_models` | `speech_models_py` | ONNX Runtime, httplib+Mbed TLS (for downloading model weights) |
 
 See [`checklist.md`](checklist.md) for the detailed, up-to-date state of

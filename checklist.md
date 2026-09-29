@@ -288,19 +288,29 @@ ctoon's `tests/python/CMakeLists.txt` pattern:
   call -- that missing flag on `--extract` is why branch coverage earlier
   showed "no data found". No Go/Rust/Julia/MATLAB/Zig parts, since libspeech
   has none of those bindings.
-- [x] Dead Python code found by the new Python coverage report (both 0%) --
-  deleted. `libspeech/core.py` did `from ._audio import Audio` (module gone
-  since the `speech_io_py` rename, so `import libspeech.core` raised
-  `ModuleNotFoundError`); `libspeech/__main__.py` was a URL/host-parsing CLI
-  (`--url`, `--host`, `Url`/`Host` classes) from a different project -- none of
-  those names exist anywhere in libspeech, so `python -m libspeech` raised
-  `ImportError`. Checked nothing depended on them first: no
-  `[project.scripts]`/entry point in `pyproject.toml`, no doc/CI/test
-  reference, and the CMake install rule is a `*.py` glob, not a file list
-  (only a comment named them, updated). Chose deleting over writing a speech
-  CLI: that would be a new feature with no spec, not a fix -- if a CLI is
-  wanted later it should be designed on the current `Audio`/`Denoiser`/
-  `SileroVad` API rather than resurrected from this.
+- [x] Removed the `dr_libs` submodule -- it was pure duplication.
+  `miniaudio.h` already vendors its own renamed copy of dr_wav/dr_mp3/dr_flac
+  internally (search `dr_wav_h begin`/`dr_flac_h begin`/`dr_mp3_h begin` in
+  it -- same upstream author, kept in sync) and exposes all three uniformly
+  through `ma_decoder`/`ma_encoder` (`ma_encoding_format_{wav,flac,mp3}`),
+  including WAV encoding. Rewrote `src/audio.cpp`'s `loadWAV`/`loadMP3`/
+  `loadFLAC` into one shared `loadWithMiniaudio()` helper (encoding format
+  passed explicitly, so a mismatched extension still fails the same way the
+  old per-format `dr_*_init_*` calls did) and `saveWAV` to use
+  `ma_encoder_init_file`/`ma_encoder_write_pcm_frames`; dropped the
+  `dr_wav.h`/`dr_mp3.h`/`dr_flac.h` includes and their `DR_*_IMPLEMENTATION`
+  macros entirely. `speech_io`'s CMake target, `.gitmodules`, and the
+  submodule-init line in `README.md`/`CONTRIBUTING.md`/
+  `src/third_party/README.md` all updated to drop `dr_libs`; actually ran
+  `git submodule deinit`/`git rm` for it, not just deleted the directory.
+  Verified with real audio, not just a compile: `ffmpeg`-generated WAV/MP3/
+  FLAC (mono) + a stereo FLAC loaded correctly (right sample rate/channel
+  count/duration for all four); WAV and FLAC (both lossless) decoded to
+  bit-identical samples; MP3's duration came out ~10% longer than the
+  source, which is the format's own encoder priming/padding delay, not a
+  regression (same file, same padding would occur with dr_mp3 too); the
+  existing `test_save_and_load_wav_round_trip` pytest and the full `ctest`
+  suite (5/5) still pass.
 ## Python bindings for speech::models
 
 - [x] New `bind_models` module (`_models`, re-exported as

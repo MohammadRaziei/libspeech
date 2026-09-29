@@ -12,7 +12,7 @@ git clone https://github.com/MohammadRaziei/libspeech.git
 cd libspeech
 
 # Small, lightweight submodules:
-git submodule update --init src/third_party/miniaudio src/third_party/dr_libs
+git submodule update --init src/third_party/miniaudio
 
 # speech::models (BUILD_MODELS=ON, the default) needs httpp on
 # CMAKE_PREFIX_PATH for model downloads (HTTPS client + progress bar):

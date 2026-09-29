@@ -5,14 +5,20 @@ It's organized into two kinds, side by side in this same directory:
 
 ## Git submodules
 
-- **`miniaudio/`** — [mackron/miniaudio](https://github.com/mackron/miniaudio), used by `speech::io`.
-- **`dr_libs/`** — [mackron/dr_libs](https://github.com/mackron/dr_libs), used by `speech::io`.
+- **`miniaudio/`** — [mackron/miniaudio](https://github.com/mackron/miniaudio), used by `speech::io`
+  for both audio file decode/encode (WAV/MP3/FLAC, via `ma_decoder`/
+  `ma_encoder`) and device playback. There used to be a separate `dr_libs/`
+  submodule for the decode/encode side too, but miniaudio.h already embeds
+  its own renamed copy of dr_wav/dr_mp3/dr_flac internally (search for
+  `dr_wav_h begin` in it) and exposes them through the same API -- so that
+  second submodule was pure duplication, removed once `src/audio.cpp` was
+  switched over to `ma_decoder`/`ma_encoder`.
 
-These stay as thin submodule pointers (see `.gitmodules`) since the full
-upstream project is needed as-is. Initialize them with:
+This stays as a thin submodule pointer (see `.gitmodules`) since the full
+upstream project is needed as-is. Initialize it with:
 
 ```bash
-git submodule update --init src/third_party/miniaudio src/third_party/dr_libs
+git submodule update --init src/third_party/miniaudio
 ```
 
 ## Copied in place (not submodules)

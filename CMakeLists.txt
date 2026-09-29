@@ -214,16 +214,18 @@ endif()
 
 # ---------------------------------------------------------------------------
 # speech::io -- audio file I/O (the Audio class: load/save/play/resample/
-# to_mono), backed by miniaudio + dr_libs. Mirrors speech::dsp/speech::models:
-# its own static library, its own namespace (speech::io in the C++ code,
-# matching this CMake alias).
+# to_mono), backed by miniaudio alone (its ma_decoder/ma_encoder embed their
+# own renamed copy of dr_wav/dr_mp3/dr_flac internally -- see the comment at
+# the top of src/audio.cpp -- so the separate dr_libs submodule this used to
+# also need is gone). Mirrors speech::dsp/speech::models: its own static
+# library, its own namespace (speech::io in the C++ code, matching this
+# CMake alias).
 # ---------------------------------------------------------------------------
 add_library(speech_io STATIC src/audio.cpp)
 add_library(speech::io ALIAS speech_io)
 
 target_include_directories(speech_io
         PUBLIC ${PROJECT_SOURCE_DIR}/include
-        PRIVATE src/third_party/dr_libs
         PRIVATE src/third_party/aixlog/include
 )
 target_link_libraries(speech_io
