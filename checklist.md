@@ -288,14 +288,19 @@ ctoon's `tests/python/CMakeLists.txt` pattern:
   call -- that missing flag on `--extract` is why branch coverage earlier
   showed "no data found". No Go/Rust/Julia/MATLAB/Zig parts, since libspeech
   has none of those bindings.
-- [ ] Dead Python code found by the new Python coverage report (both 0%):
-  `src/bindings/python/libspeech/core.py` does `from ._audio import Audio`
-  (module no longer exists since the `speech_io_py` rename -- `import
-  libspeech.core` raises `ModuleNotFoundError`), and `__main__.py` does
-  `from . import Host, Url, ...` (neither name exists in the package any
-  more -- `python -m libspeech` raises `ImportError`). Both look like leftovers
-  from the pre-split `speech`/`httpp` architecture. Not touched: decide whether
-  to delete them or rebuild a real CLI on the current API.
+- [x] Dead Python code found by the new Python coverage report (both 0%) --
+  deleted. `libspeech/core.py` did `from ._audio import Audio` (module gone
+  since the `speech_io_py` rename, so `import libspeech.core` raised
+  `ModuleNotFoundError`); `libspeech/__main__.py` was a URL/host-parsing CLI
+  (`--url`, `--host`, `Url`/`Host` classes) from a different project -- none of
+  those names exist anywhere in libspeech, so `python -m libspeech` raised
+  `ImportError`. Checked nothing depended on them first: no
+  `[project.scripts]`/entry point in `pyproject.toml`, no doc/CI/test
+  reference, and the CMake install rule is a `*.py` glob, not a file list
+  (only a comment named them, updated). Chose deleting over writing a speech
+  CLI: that would be a new feature with no spec, not a fix -- if a CLI is
+  wanted later it should be designed on the current `Audio`/`Denoiser`/
+  `SileroVad` API rather than resurrected from this.
 ## Python bindings for speech::models
 
 - [x] New `bind_models` module (`_models`, re-exported as

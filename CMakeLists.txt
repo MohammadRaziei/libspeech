@@ -490,7 +490,7 @@ if(DEFINED PYTHON_PROJECT_NAME)
                 LIBRARY DESTINATION ${PYTHON_PROJECT_NAME}
                 RUNTIME DESTINATION ${PYTHON_PROJECT_NAME})
 
-        # The pure-Python files (__init__.py, __main__.py, core.py) need
+        # The pure-Python files (currently just __init__.py) need
         # their own explicit install rule -- scikit-build-core's automatic
         # Python-package discovery only looks for an immediate src/<name>
         # layout, so now that the package lives nested under
