@@ -1,0 +1,3 @@
+# Build output lives in the CMake build dir; only results/report.html is meant to be committed.
+results/*
+!results/report.html

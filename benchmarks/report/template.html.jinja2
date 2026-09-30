@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>libspeech benchmarks</title>
+<style>
+  :root { --bg:#fff; --fg:#1d2330; --muted:#5d6678; --line:#dfe3eb; --card:#f6f8fb; --best:#1a7f4b; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg:#12151c; --fg:#e6e9f0; --muted:#98a1b3; --line:#2a3040; --card:#191d27; --best:#4cd08a; }
+  }
+  body { background:var(--bg); color:var(--fg); font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; margin:0 auto; max-width:980px; padding:24px 16px 64px; }
+  h1 { margin:0 0 4px; } h2 { margin:40px 0 8px; } h3 { margin:24px 0 6px; font-size:1.05em; }
+  p.sub, .note { color:var(--muted); }
+  .scroll { overflow-x:auto; }
+  table { border-collapse:collapse; width:100%; margin:8px 0 4px; }
+  th, td { border-bottom:1px solid var(--line); padding:6px 10px; text-align:right; white-space:nowrap; }
+  th:first-child, td:first-child { text-align:left; }
+  td.best { color:var(--best); font-weight:600; }
+  td small { color:var(--muted); font-weight:400; }
+  .chart { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:12px; margin:12px 0; }
+  .chart canvas { max-height:320px; }
+  .err { color:#c0392b; font-family:ui-monospace,monospace; font-size:.85em; }
+  footer { margin-top:48px; color:var(--muted); font-size:.9em; }
+</style>
+</head>
+<body>
+<h1>libspeech benchmarks</h1>
+<p class="sub">libspeech against librosa, audioflux, scipy and soundfile on the same synthetic speech-like corpus. Generated {{ generated }}.</p>
+
+<p class="note">
+  Fixed parameters: n_fft {{ parameters.n_fft }}, hop {{ parameters.hop }}, {{ parameters.n_mels }} mel filters,
+  {{ parameters.n_mfcc }} MFCCs, resample to {{ parameters.resample_target_hz }} Hz.
+  Best of {{ repeats }} timed runs after one warm-up. "libspeech (list API)" is the library's native Python
+  interface (lists of floats in, nested lists out); "libspeech (numpy in/out)" also counts the conversion
+  a numpy-based caller has to do. Outputs are not bit-identical across libraries (window and filterbank
+  conventions differ). Ratios are relative to the fastest library in that row, at that input size only.
+</p>
+
+{% for op in op_order %}
+<h2>{{ op_labels[op] }}</h2>
+
+{% if time_rows.get(op) %}
+<h3>Time</h3>
+<div class="scroll"><table>
+  <tr><th>Input</th>{% for lib in libs %}<th>{{ lib_labels[lib] }}</th>{% endfor %}</tr>
+  {% for r in time_rows[op] %}
+  <tr>
+    <td>{{ r.entry }}</td>
+    {% for lib in libs %}
+      {% set v = r.vals.get(lib) %}
+      {% if v is none %}<td>-</td>
+      {% else %}<td class="{{ 'best' if v == r.best else '' }}">{{ '%.2f' % (v * 1000) }} ms <small>{{ '%.1fx' % r.ratios[lib] }}</small></td>{% endif %}
+    {% endfor %}
+  </tr>
+  {% endfor %}
+</table></div>
+<div class="chart"><canvas id="time-{{ op }}"></canvas></div>
+{% endif %}
+
+{% if mem_rows.get(op) %}
+<h3>Peak extra memory</h3>
+<div class="scroll"><table>
+  <tr><th>Input</th>{% for lib in libs %}<th>{{ lib_labels[lib] }}</th>{% endfor %}</tr>
+  {% for r in mem_rows[op] %}
+  <tr>
+    <td>{{ r.entry }}</td>
+    {% for lib in libs %}
+      {% set v = r.vals.get(lib) %}
+      {% if v is none %}<td>-</td>
+      {% else %}<td class="{{ 'best' if v == r.best else '' }}">{{ '%.1f' % v }} MiB</td>{% endif %}
+    {% endfor %}
+  </tr>
+  {% endfor %}
+</table></div>
+{% endif %}
+{% endfor %}
+
+<h2>Install size (latest PyPI release)</h2>
+<div class="scroll"><table>
+  <tr><th>Package</th><th>Version</th><th>Package alone</th><th>With dependencies</th></tr>
+  {% for s in sizes %}
+  <tr>
+    <td>{{ s.package }}</td><td>{{ s.version or '-' }}</td>
+    <td>{{ '%.1f MiB' % (s.own_bytes / 1048576) if s.own_bytes else '-' }}</td>
+    <td>{{ '%.1f MiB' % (s.total_bytes / 1048576) if s.total_bytes else '-' }}</td>
+  </tr>
+  {% endfor %}
+</table></div>
+<p class="note">libspeech's wheel bundles ONNX Runtime and the models runtime, which the DSP-only libraries do not ship.</p>
+
+{% if skipped %}<p class="note">Not installed, skipped: {{ skipped.keys() | join(', ') }}.</p>{% endif %}
+{% if errors %}<h2>Errors</h2>{% for e in errors %}<div class="err">{{ e }}</div>{% endfor %}{% endif %}
+
+<footer>
+  Versions: {% for lib, v in versions.items() %}{{ lib }} {{ v or '?' }}{{ '; ' if not loop.last }}{% endfor %}.<br>
+  Machine: {{ system.cpu_model or 'unknown' }}, {{ system.logical_cores or '?' }} logical cores,
+  {{ system.ram_gib or '?' }} GiB RAM, {{ system.os or '' }}, Python {{ system.python_version or '?' }}.
+</footer>
+
+<script>{{ chartjs | safe }}</script>
+<script>
+const DATA = {{ chart_json | safe }};
+const css = getComputedStyle(document.documentElement);
+Object.keys(DATA.time).forEach(op => {
+  const rows = DATA.time[op];
+  const libs = Object.keys(DATA.labels).filter(l => rows.some(r => r.vals[l] !== undefined));
+  new Chart(document.getElementById('time-' + op), {
+    type: 'bar',
+    data: {
+      labels: rows.map(r => r.entry),
+      datasets: libs.map(l => ({
+        label: DATA.labels[l],
+        backgroundColor: DATA.colors[l],
+        data: rows.map(r => r.vals[l] === undefined ? null : r.vals[l] * 1000),
+      })),
+    },
+    options: {
+      responsive: true,
+      scales: {
+        y: { type: 'logarithmic', title: { display: true, text: 'ms (log scale, lower is better)' } },
+      },
+    },
+  });
+});
+</script>
+</body>
+</html>

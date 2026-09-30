@@ -1,0 +1,11 @@
+# Competitors benchmarked against libspeech
+librosa
+audioflux
+scipy               # scipy.signal.resample_poly, resample-only reference
+soundfile           # libsndfile-backed reader, load-only reference
+numpy
+
+# Benchmark tooling
+pip-size            # github.com/MohammadRaziei/pip-size -- real download-size comparison
+jinja2              # renders the standalone HTML report
+tqdm                # progress bars for the longer-running sweeps
