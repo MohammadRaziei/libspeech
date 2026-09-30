@@ -288,24 +288,24 @@ ctoon's `tests/python/CMakeLists.txt` pattern:
   call -- that missing flag on `--extract` is why branch coverage earlier
   showed "no data found". No Go/Rust/Julia/MATLAB/Zig parts, since libspeech
   has none of those bindings.
-- [x] README polish: added an HTML-based (not markdown `[x](#y)`, which
-  Doxygen tries and fails to `\ref`-resolve since `README.md` is in its
-  `INPUT` -- verified `speech_docs` stays warning-free) table of contents,
+- [x] README polish: added an HTML-based (not markdown link syntax, which
+  Doxygen tries and fails to cross-reference since README.md is in its
+  INPUT -- verified speech_docs stays warning-free) table of contents,
   and fixed a stale architecture-table cell still saying "httplib+Mbed TLS"
   for `speech::models`' download dependency (it's `httpp` now, same as the
   submodule-init/Key-Features stale refs fixed earlier).
 - [x] Actually ran `benchmarks/bench_stft` (3 repeats each of
   `LIBSPEECH_ENABLE_OPENMP=ON` and `=OFF`, fetching the real
-  `libspeech@v0.3.0` from GitHub via the benchmark's own `FetchContent`) and
-  put real numbers in `README.md`'s Benchmarking section instead of just a
-  "please run this" ask. Result unchanged from the earlier note above:
-  ON avg 66.75-67.71ms vs. OFF avg 66.31-71.69ms -- statistically
+  `libspeech@v0.3.0` from GitHub via the benchmark's own `FetchContent`) --
+  reported in chat rather than committed to `README.md` (its whole
+  Benchmarking section was removed again on request; the numbers below are
+  just for this file's record). Result unchanged from the earlier note
+  above: ON avg 66.75-67.71ms vs. OFF avg 66.31-71.69ms -- statistically
   indistinguishable, which is the *expected, uninteresting* result on this
   sandbox's 1 vCPU (Intel Xeon @ 2.10GHz) -- there's no second core for the
   parallel-frame path to use, so it can only tie or lose slightly to
   thread-spawn overhead, never show the real speedup it exists to test.
-  Multi-core re-benchmarking is still the open item, now stated plainly in
-  the README itself rather than only in this file.
+  Multi-core re-benchmarking is still the open item.
 ## Python bindings for speech::models
 
 - [x] New `bind_models` module (`_models`, re-exported as
