@@ -76,14 +76,22 @@ bool speech::io::AudioImpl::loadWithMiniaudio(const std::filesystem::path& fileP
     ma_decoder_get_length_in_pcm_frames(&decoder, &numFrames);
     audioData.resize(channels, std::vector<float>(numFrames)); // Allocate memory for each channel
 
-    std::vector<float> interleavedData(numFrames * channels);
     ma_uint64 framesRead = 0;
-    ma_decoder_read_pcm_frames(&decoder, interleavedData.data(), numFrames, &framesRead);
+    if (channels == 1) {
+        // Mono is already "deinterleaved": decode straight into the channel buffer
+        // (no intermediate interleaved buffer, no copy loop).
+        ma_decoder_read_pcm_frames(&decoder, audioData[0].data(), numFrames, &framesRead);
+    } else {
+        std::vector<float> interleavedData(numFrames * channels);
+        ma_decoder_read_pcm_frames(&decoder, interleavedData.data(), numFrames, &framesRead);
 
-    // Deinterleave the data into separate channels
-    for (ma_uint64 i = 0; i < framesRead; ++i) {
+        // Deinterleave the data into separate channels
         for (int c = 0; c < channels; ++c) {
-            audioData[c][i] = interleavedData[i * channels + c];
+            float* dst = audioData[c].data();
+            const float* src = interleavedData.data() + c;
+            for (ma_uint64 i = 0; i < framesRead; ++i) {
+                dst[i] = src[i * channels];
+            }
         }
     }
 
@@ -398,7 +406,22 @@ std::vector<float> speech::io::Audio::data(int index) const {
     return pImpl->audioData[index];
 }
 size_t speech::io::Audio::size() const {
-    return pImpl->channels > 0 ? this->data(0).size() : 0;
+    // Was `this->data(0).size()`, which copied the whole channel just to read its length.
+    return (pImpl->channels > 0 && !pImpl->audioData.empty()) ? pImpl->audioData[0].size() : 0;
+}
+
+const float* speech::io::Audio::channelData(int index, size_t* length) const {
+    if (index < 0 || index >= pImpl->channels || index >= static_cast<int>(pImpl->audioData.size())) {
+        LOG(ERROR) << TAG("speech::io::Audio") <<
+            "Invalid channel index: " + std::to_string(index) << std::endl;
+        throw std::out_of_range("Invalid channel index: " + std::to_string(index));
+    }
+    if (length) *length = pImpl->audioData[index].size();
+    return pImpl->audioData[index].data();
+}
+
+int speech::io::Audio::channels() const {
+    return pImpl->channels;
 }
 
 speech::io::Audio &speech::io::Audio::operator=(const speech::io::Audio &other) {

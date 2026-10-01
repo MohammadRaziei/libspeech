@@ -34,6 +34,12 @@ class SPEECH_API Audio {
 
     [[nodiscard]] std::vector<std::vector<float>> data() const;
     [[nodiscard]] std::vector<float> data(int index) const;
+
+    // Borrowed, copy-free view of one channel: returns a pointer to its samples
+    // and stores the sample count in *length. Valid until this Audio is next
+    // modified (load/assign). Throws std::out_of_range on a bad channel index.
+    [[nodiscard]] const float* channelData(int index, size_t* length) const;
+    [[nodiscard]] int channels() const;
     [[nodiscard]] int sample_rate() const;
     [[nodiscard]] double duration() const;
     [[nodiscard]] size_t size() const;

@@ -12,7 +12,10 @@
 #include <utility>
 #include <vector>
 
+#include <cstddef>
+
 #include "flux_base.h"  // WindowType enum
+#include "libspeech/detail/uninit_vector.h"
 #include "libspeech/export.h"
 
 // Opaque handle to AudioFlux's underlying C STFT object (declared in the
@@ -30,6 +33,15 @@ namespace speech::dsp {
  * spectrogram is represented as a matrix: outer vector = time frames, inner
  * vector = fftLength frequency-domain samples per frame.
  */
+// Flat, frame-major spectrogram: frame i occupies [i*fftLength, (i+1)*fftLength)
+// in both `real` and `imag`. One allocation per plane, no per-frame vectors.
+struct Spectrogram {
+    int numFrames = 0;
+    int fftLength = 0;
+    detail::UninitVector<float> real;
+    detail::UninitVector<float> imag;
+};
+
 class SPEECH_API STFT {
    public:
     // radix2Exp: frame length = 2^radix2Exp.
@@ -53,6 +65,15 @@ class SPEECH_API STFT {
 
     // Signal length istft() needs to reconstruct, for a given frame count.
     [[nodiscard]] int calDataLength(int timeLength) const;
+
+    // Copy-free core: frames/windows/FFTs `data[0..n)` straight into two flat
+    // buffers (each numFrames*fftLength floats, frame-major). The buffers are
+    // fully overwritten, so callers may pass uninitialized memory. Returns the
+    // frame count (0 if the signal is shorter than fftLength).
+    int stftInto(const float* data, std::size_t n, float* real, float* imag);
+
+    // Same, allocating the (uninitialized) output planes.
+    Spectrogram spectrogram(const float* data, std::size_t n);
 
     // Frames `data`, windows each frame, and FFTs it. Returns {real, imag},
     // each a [timeLength][fftLength] matrix (timeLength = calTimeLength(data.size())).

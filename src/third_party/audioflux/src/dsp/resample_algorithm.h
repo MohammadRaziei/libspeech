@@ -53,6 +53,13 @@ void resampleObj_enableContinue(ResampleObj resampleObj,int flag);
 
 int resampleObj_resample(ResampleObj resampleObj,float *dataArr1,int dataLength1,float *dataArr2);
 
+// --- libspeech patch (see UPSTREAM_PATCHES.md): read-only view of the
+// interpolation tables and rate state, so the C++ wrapper can build an exact
+// rational polyphase filter bank from the very same tables. Pointers stay
+// owned by resampleObj and are invalidated by setSamplate/setSamplateRatio/free.
+int resampleObj_getTables(ResampleObj resampleObj,const float **interpArr,const float **interpDeltaArr,
+							int *interpLength,int *bitLength,float *ratio,int *p,int *q,int *isScale,int *isContinue);
+
 void resampleObj_free(ResampleObj resampleObj);
 void resampleObj_debug(ResampleObj resampleObj);
 

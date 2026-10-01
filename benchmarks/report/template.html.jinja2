@@ -31,9 +31,8 @@
 <p class="note">
   Fixed parameters: n_fft {{ parameters.n_fft }}, hop {{ parameters.hop }}, {{ parameters.n_mels }} mel filters,
   {{ parameters.n_mfcc }} MFCCs, resample to {{ parameters.resample_target_hz }} Hz.
-  Best of {{ repeats }} timed runs after one warm-up. "libspeech (list API)" is the library's native Python
-  interface (lists of floats in, nested lists out); "libspeech (numpy in/out)" also counts the conversion
-  a numpy-based caller has to do. Outputs are not bit-identical across libraries (window and filterbank
+  Best of {{ repeats }} timed runs after one warm-up. "libspeech (numpy)" reads float32 arrays in place and returns
+  NumPy arrays that own the C++ buffer; "libspeech (list API)" is the original list-of-floats interface. Outputs are not bit-identical across libraries (window and filterbank
   conventions differ). Ratios are relative to the fastest library in that row, at that input size only.
 </p>
 

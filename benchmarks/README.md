@@ -33,18 +33,28 @@ Individual stages: `libspeech_bench_corpus`, `_throughput`, `_memory`, `_sizes`,
 
 ## Reading the results
 
-- **Two libspeech rows.** libspeech's Python API takes `list[float]` and returns nested lists. `libspeech` times exactly that. `libspeech_np` also counts `ndarray.tolist()` on input and `np.asarray()` on output, which is what a numpy user pays.
+- **Two libspeech rows.** `libspeech` is the NumPy path: float32 arrays are read in place and results come back as NumPy arrays that own the C++ buffer (no list conversion, no copies). `libspeech_list` is the original `list[float]` in / nested-list out API, kept so its cost stays visible. A caller holding lists or float64/strided arrays pays one conversion (nanobind copies those once).
 - **Outputs are not bit-identical** across libraries (window and filterbank conventions differ), and libspeech's STFT returns all `fftLength` bins per frame while librosa and audioflux return `fftLength/2 + 1`. Compare times as "the same call a user would make", not as identical arithmetic.
 - **Ratios** in the report are relative to the fastest library in that row, at that input size only.
 - **Single-core hosts** hide OpenMP gains in libspeech's STFT. Include the machine info footer when sharing numbers.
 
-## Known finding (2026-09-30, single-core sandbox, 3 repeats, treat as indicative)
+## Where time went, and what changed (single-core sandbox, treat as indicative)
 
-For STFT on 10 s of 16 kHz audio (n_fft 512, hop 128), native C++ takes about 6 ms, in line with librosa and audioflux, but the Python call takes about 49 ms. The gap is building `1247 x 512` nested Python lists twice (real and imaginary), not DSP. Returning numpy arrays from the bindings would remove most of it. Native C++ timing at the same parameters can be reproduced by editing `cpp/bench_stft.cpp` to use `STFT(9, Window_Hann, 128)` on 160000 samples.
+Before optimization, the Python API was dominated by building Python objects, not DSP: STFT on 10 s of 16 kHz audio took ~49 ms through lists while the C++ core took ~6 ms. The fixes, all covered by tests in `tests/dsp/test_fast_paths.cpp` and `tests/python/test_numpy_api.py`:
 
-Also worth knowing: every call currently logs `Debug`/`Trace` lines to stderr through AixLog, and the Python API has no way to change the level.
+- **STFT**: flat, frame-major `Spectrogram` / `stftInto()` (no per-frame vectors, no zero-fill); NumPy bindings hand the buffer over without copying.
+- **MFCC**: one pass in 64-frame blocks (no full spectrogram), sparse mel filters, power only over the bins the filters touch, and a DCT whose cosine basis is built once. The old DCT called `std::cos` ~340 times per frame. Native C++ time on 10 s: 16.7 ms -> 5.2 ms, values equal to 1e-5.
+- **Resample**: exact rational polyphase filter bank built from the same tables, contiguous weights, AVX2+FMA kernel with runtime dispatch (`LIBSPEECH_DISABLE_AVX2=1` forces the portable one). Native 10 s at 44.1->16 kHz: 56 ms -> ~4 ms. Output differs from the old kernel by interpolation rounding only (<= 2.2e-3 on a full-scale test tone) and is closer to the analytic signal.
+- **Load**: mono decodes straight into the channel buffer; `Audio.size()` no longer copies the channel; `Audio.to_numpy()` replaces `data(0)` for numpy users.
+
+Measured in one process, 40 repeats, 10 s inputs (min ms): load 0.32 (librosa 1.20), mfcc 6.0 (librosa 5.1, audioflux 15.7), stft 7.1 (librosa 3.8, audioflux 8.0), resample 6.1 (librosa 2.6, audioflux 61). So libspeech is clearly ahead on load and well ahead of audioflux on MFCC/resample, but still behind librosa on STFT and resample.
+
+Why: STFT still computes a full-length complex FFT per frame (all 512 bins, real and imaginary planes) where librosa returns 257 bins. And libspeech's default resample quality is "Best" (64 zero crossings, a resampy-class filter) while librosa's default is soxr_hq; compare against `res_type="kaiser_best"` for like-for-like quality.
+
+Also worth knowing: every call logs `Debug`/`Trace` lines to stderr through AixLog, and the Python API has no way to change the level.
 
 ## Not covered yet
 
+- A real-input FFT (half the work for STFT/MFCC) is the next speed item.
 - No scaling sweep (time vs input length) or CLI benchmarks like pygixml has.
 - No comparison against `sherpa-onnx` for the ONNX models (still open in `checklist.md`).

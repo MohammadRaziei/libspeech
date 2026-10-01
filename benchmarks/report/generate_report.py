@@ -21,8 +21,8 @@ from jinja2 import Environment, FileSystemLoader
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 LIB_LABELS = {
-    "libspeech": "libspeech (list API)",
-    "libspeech_np": "libspeech (numpy in/out)",
+    "libspeech": "libspeech (numpy)",
+    "libspeech_list": "libspeech (list API)",
     "librosa": "librosa",
     "audioflux": "audioflux",
     "scipy": "scipy",
@@ -30,7 +30,7 @@ LIB_LABELS = {
 }
 LIB_COLORS = {
     "libspeech": "#e67225",
-    "libspeech_np": "#f2b27d",
+    "libspeech_list": "#f2b27d",
     "librosa": "#5b8cff",
     "audioflux": "#35d0ba",
     "scipy": "#b98bff",

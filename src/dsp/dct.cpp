@@ -44,4 +44,32 @@ std::vector<float> dctII(const std::vector<float>& input, int numOutputs, bool o
     return output;
 }
 
+DctII::DctII(int n, int numOutputs, bool orthonormal) : n_(n), k_(numOutputs) {
+    if (n <= 0 || numOutputs <= 0 || numOutputs > n) {
+        throw std::invalid_argument("DctII: need 1 <= numOutputs <= n.");
+    }
+    basis_.resize(static_cast<std::size_t>(k_) * n_);
+    for (int k = 0; k < k_; ++k) {
+        double scale = 2.0;
+        if (orthonormal) {
+            scale *= (k == 0) ? std::sqrt(1.0 / (4.0 * n)) : std::sqrt(1.0 / (2.0 * n));
+        }
+        for (int i = 0; i < n_; ++i) {
+            basis_[static_cast<std::size_t>(k) * n_ + i] = static_cast<float>(
+                scale * std::cos(3.14159265358979323846 * (2.0 * i + 1.0) * k / (2.0 * n)));
+        }
+    }
+}
+
+void DctII::apply(const float* in, float* out) const {
+    for (int k = 0; k < k_; ++k) {
+        const float* row = basis_.data() + static_cast<std::size_t>(k) * n_;
+        float acc = 0.0f;
+        for (int i = 0; i < n_; ++i) {
+            acc += row[i] * in[i];
+        }
+        out[k] = acc;
+    }
+}
+
 }  // namespace speech::dsp

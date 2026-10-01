@@ -1,12 +1,15 @@
 #include <nanobind/nanobind.h>
+#include <nanobind/ndarray.h>
 #include <nanobind/stl/filesystem.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/vector.h>
 
+#include <cstring>
 #include <filesystem>
 #include <string>
 
 #include "libspeech/audio.h"
+#include "ndarray_util.h"
 
 namespace nb = nanobind;
 
@@ -43,6 +46,18 @@ NB_MODULE(NB_MODULE_NAME, m) {
         .def("data", static_cast<std::vector<float> (speech::io::Audio::*)(int) const>(&speech::io::Audio::data),
              "Returns a single channel (by index) as a list of floats.",
              nb::arg("channel_index"))
+
+        // NumPy access: one memcpy into a NumPy-owned buffer (no Python floats).
+        .def("to_numpy",
+             [](const speech::io::Audio& self, int channel_index) {
+                 size_t n = 0;
+                 const float* src = self.channelData(channel_index, &n);
+                 speech::py::FloatVec buf(n);
+                 if (n) std::memcpy(buf.data(), src, n * sizeof(float));
+                 return speech::py::wrap<speech::py::OutArray1D>(std::move(buf), {n});
+             },
+             nb::arg("channel_index") = 0,
+             "Returns one channel as a float32 NumPy array (a copy; no list conversion).")
 
         // Properties
         .def_prop_ro("sample_rate", &speech::io::Audio::sample_rate, "The sample rate of the audio, in Hz.")

@@ -639,6 +639,23 @@ static void _resampleObj_calInterpArr(ResampleObj resampleObj){
 	free(winArr);
 }
 
+int resampleObj_getTables(ResampleObj resampleObj,const float **interpArr,const float **interpDeltaArr,
+							int *interpLength,int *bitLength,float *ratio,int *p,int *q,int *isScale,int *isContinue){
+	if(!resampleObj){
+		return -1;
+	}
+	*interpArr=resampleObj->interpArr;
+	*interpDeltaArr=resampleObj->interpDeltaArr;
+	*interpLength=resampleObj->interpLength;
+	*bitLength=resampleObj->bitLength;
+	*ratio=resampleObj->ratio;
+	*p=resampleObj->p;
+	*q=resampleObj->q;
+	*isScale=resampleObj->isScale;
+	*isContinue=resampleObj->isContinue;
+	return 0;
+}
+
 void resampleObj_free(ResampleObj resampleObj){
 	float *interpArr=NULL; // ratio<1 *ration
 	float *interpDeltaArr=NULL;

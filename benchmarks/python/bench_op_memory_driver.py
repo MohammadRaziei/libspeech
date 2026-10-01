@@ -22,10 +22,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 # but keeping the driver free of any benchmark code is the point.
 OPS = ("load", "resample", "stft", "mfcc")
 LIBS_FOR_OP = {
-    "load": ("libspeech", "libspeech_np", "librosa", "soundfile"),
-    "resample": ("libspeech", "libspeech_np", "librosa", "audioflux", "scipy"),
-    "stft": ("libspeech", "libspeech_np", "librosa", "audioflux"),
-    "mfcc": ("libspeech", "libspeech_np", "librosa", "audioflux"),
+    "load": ("libspeech", "libspeech_list", "librosa", "soundfile"),
+    "resample": ("libspeech", "libspeech_list", "librosa", "audioflux", "scipy"),
+    "stft": ("libspeech", "libspeech_list", "librosa", "audioflux"),
+    "mfcc": ("libspeech", "libspeech_list", "librosa", "audioflux"),
 }
 TARGET_RATE = 16000
 

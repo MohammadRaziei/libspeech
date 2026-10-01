@@ -1,4 +1,5 @@
 #include <nanobind/nanobind.h>
+#include <nanobind/ndarray.h>
 #include <nanobind/stl/pair.h>
 #include <nanobind/stl/vector.h>
 
@@ -8,6 +9,7 @@
 #include "libspeech/dsp/resample.h"
 #include "libspeech/dsp/stft.h"
 #include "libspeech/dsp/window.h"
+#include "ndarray_util.h"
 
 namespace nb = nanobind;
 
@@ -38,7 +40,23 @@ NB_MODULE(NB_MODULE_NAME, m) {
     nb::class_<speech::dsp::Resample>(m, "Resample")
         .def(nb::init<int, int>(), nb::arg("source_rate"), nb::arg("target_rate"),
              "Amplitude-preserving resampler between two sample rates.")
-        .def("resample", &speech::dsp::Resample::resample, nb::arg("input_data"));
+        // NumPy fast path: float32 C-contiguous arrays are read in place (other
+        // dtypes/layouts are converted once by nanobind) and the result is a
+        // NumPy array that owns the C++ buffer -- no list conversion, no copies.
+        .def("resample",
+             [](speech::dsp::Resample& self, speech::py::InArray1D x) {
+                 speech::detail::UninitVector<float> out;
+                 {
+                     nb::gil_scoped_release release;
+                     out = self.resampleFlat(x.data(), x.size());
+                 }
+                 const std::size_t n = out.size();
+                 return speech::py::wrap<speech::py::OutArray1D>(std::move(out), {n});
+             },
+             nb::arg("input_data"),
+             "Resamples a float32 1-D array; returns a float32 NumPy array.")
+        .def("resample", &speech::dsp::Resample::resample, nb::arg("input_data"),
+             "Resamples a list of floats; returns a list of floats.");
 
     // --- FFT -------------------------------------------------------------
     nb::class_<speech::dsp::FFT>(m, "FFT")
@@ -62,6 +80,22 @@ NB_MODULE(NB_MODULE_NAME, m) {
         .def_prop_ro("slide_length", &speech::dsp::STFT::slideLength)
         .def("cal_time_length", &speech::dsp::STFT::calTimeLength, nb::arg("data_length"))
         .def("cal_data_length", &speech::dsp::STFT::calDataLength, nb::arg("time_length"))
+        .def("stft",
+             [](speech::dsp::STFT& self, speech::py::InArray1D x) {
+                 speech::dsp::Spectrogram sp;
+                 {
+                     nb::gil_scoped_release release;
+                     sp = self.spectrogram(x.data(), x.size());
+                 }
+                 const std::size_t frames = static_cast<std::size_t>(sp.numFrames);
+                 const std::size_t bins = static_cast<std::size_t>(sp.fftLength);
+                 auto re = speech::py::wrap<speech::py::OutArray2D>(std::move(sp.real), {frames, bins});
+                 auto im = speech::py::wrap<speech::py::OutArray2D>(std::move(sp.imag), {frames, bins});
+                 return nb::make_tuple(re, im);
+             },
+             nb::arg("data"),
+             "Float32 1-D array in; returns (real, imag) float32 NumPy arrays of shape "
+             "(num_frames, fft_length).")
         .def("stft", &speech::dsp::STFT::stft, nb::arg("data"),
              "Returns (real, imag), each a [num_frames][fft_length] matrix.")
         .def("istft", &speech::dsp::STFT::istft,
@@ -80,6 +114,20 @@ NB_MODULE(NB_MODULE_NAME, m) {
 
     nb::class_<speech::dsp::MFCC>(m, "MFCC")
         .def(nb::init<speech::dsp::MFCC::Params>(), nb::arg("params"))
+        .def("compute",
+             [](speech::dsp::MFCC& self, speech::py::InArray1D x) {
+                 speech::dsp::MfccMatrix m;
+                 {
+                     nb::gil_scoped_release release;
+                     m = self.computeFlat(x.data(), x.size());
+                 }
+                 const std::size_t frames = static_cast<std::size_t>(m.numFrames);
+                 const std::size_t coefs = static_cast<std::size_t>(m.numCoefficients);
+                 return speech::py::wrap<speech::py::OutArray2D>(std::move(m.data), {frames, coefs});
+             },
+             nb::arg("signal"),
+             "Float32 1-D array in; returns a float32 NumPy array of shape "
+             "(num_frames, num_coefficients).")
         .def("compute", &speech::dsp::MFCC::compute, nb::arg("signal"),
              "Returns a [num_frames][num_coefficients] matrix of MFCCs.");
 }

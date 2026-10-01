@@ -10,12 +10,12 @@ Fixed parameters (speech front-end defaults, 16 kHz input):
   load      16-bit PCM WAV file -> float32 samples in Python
 
 Libraries:
-  libspeech     native call: its Python API takes list[float] and returns
-                nested lists. The input list is prepared OUTSIDE the timer
-                (it is the library's native input type).
-  libspeech_np  same call, but the timer also covers ndarray.tolist() on the
-                way in and np.asarray() on the way out -- what a caller who
-                lives in numpy actually pays.
+  libspeech       numpy in / numpy out: float32 arrays are read in place and
+                  the result is a NumPy array owning the C++ buffer (no list
+                  conversion, no copy). This is the fast path a numpy user gets.
+  libspeech_list  the original list[float] in / nested-list out API, kept so
+                  the cost of the list path stays visible. The input list is
+                  prepared OUTSIDE the timer (it is that API's native input).
   librosa, audioflux, scipy, soundfile: numpy in / numpy out.
 
 Every runner constructs its transform object (STFT/MFCC/Resample) INSIDE the
@@ -40,15 +40,15 @@ RESAMPLE_TARGET = 16000
 OPS = ("load", "resample", "stft", "mfcc")
 
 LIBS_FOR_OP = {
-    "load": ("libspeech", "libspeech_np", "librosa", "soundfile"),
-    "resample": ("libspeech", "libspeech_np", "librosa", "audioflux", "scipy"),
-    "stft": ("libspeech", "libspeech_np", "librosa", "audioflux"),
-    "mfcc": ("libspeech", "libspeech_np", "librosa", "audioflux"),
+    "load": ("libspeech", "libspeech_list", "librosa", "soundfile"),
+    "resample": ("libspeech", "libspeech_list", "librosa", "audioflux", "scipy"),
+    "stft": ("libspeech", "libspeech_list", "librosa", "audioflux"),
+    "mfcc": ("libspeech", "libspeech_list", "librosa", "audioflux"),
 }
 
 _IMPORT_NAME = {
     "libspeech": "libspeech",
-    "libspeech_np": "libspeech",
+    "libspeech_list": "libspeech",
     "librosa": "librosa",
     "audioflux": "audioflux",
     "scipy": "scipy",
@@ -74,7 +74,7 @@ def library_available(lib):
 def library_version(lib):
     from importlib import metadata
 
-    dist = {"libspeech_np": "libspeech"}.get(lib, lib)
+    dist = {"libspeech_list": "libspeech"}.get(lib, lib)
     try:
         return metadata.version(dist)
     except metadata.PackageNotFoundError:
@@ -105,39 +105,60 @@ def describe(res):
 
 def make_runner(op, lib, x, sr, path):
     """Import the library and prepare inputs (untimed), return run()."""
-    if lib in ("libspeech", "libspeech_np"):
+    if lib == "libspeech":
         import libspeech as ls
 
-        native = lib == "libspeech"
-        xl = x.tolist() if native else None
-
+        # numpy in / numpy out. Transform objects are constructed inside the
+        # timed call, like every other library.
+        xf = np.ascontiguousarray(x, dtype=np.float32)
         if op == "load":
             def run():
                 a = ls.Audio()
                 a.load(path)
-                d = a.data(0)
-                return d if native else np.asarray(d, dtype=np.float32)
+                return a.to_numpy(0)
         elif op == "resample":
             def run():
-                data = xl if native else x.tolist()
-                out = ls.Resample(sr, RESAMPLE_TARGET).resample(data)
-                return out if native else np.asarray(out, dtype=np.float32)
+                return ls.Resample(sr, RESAMPLE_TARGET).resample(xf)
         elif op == "stft":
             def run():
-                data = xl if native else x.tolist()
-                re, im = ls.STFT(N_FFT_EXP, ls.WindowType.hann, HOP).stft(data)
-                return (re, im) if native else (np.asarray(re), np.asarray(im))
+                return ls.STFT(N_FFT_EXP, ls.WindowType.hann, HOP).stft(xf)
         elif op == "mfcc":
             def run():
-                data = xl if native else x.tolist()
                 p = ls.MFCCParams()
                 p.sample_rate = sr
                 p.num_mel_filters = N_MELS
                 p.num_coefficients = N_MFCC
                 p.radix2_exp = N_FFT_EXP
                 p.slide_length = HOP
-                out = ls.MFCC(p).compute(data)
-                return out if native else np.asarray(out)
+                return ls.MFCC(p).compute(xf)
+        else:
+            raise ValueError(op)
+        return run
+
+    if lib == "libspeech_list":
+        import libspeech as ls
+
+        xl = x.tolist()
+        if op == "load":
+            def run():
+                a = ls.Audio()
+                a.load(path)
+                return a.data(0)
+        elif op == "resample":
+            def run():
+                return ls.Resample(sr, RESAMPLE_TARGET).resample(xl)
+        elif op == "stft":
+            def run():
+                return ls.STFT(N_FFT_EXP, ls.WindowType.hann, HOP).stft(xl)
+        elif op == "mfcc":
+            def run():
+                p = ls.MFCCParams()
+                p.sample_rate = sr
+                p.num_mel_filters = N_MELS
+                p.num_coefficients = N_MFCC
+                p.radix2_exp = N_FFT_EXP
+                p.slide_length = HOP
+                return ls.MFCC(p).compute(xl)
         else:
             raise ValueError(op)
         return run

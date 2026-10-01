@@ -46,37 +46,52 @@ int STFT::calDataLength(int timeLength) const {
     return stftObj_calDataLength(stftObj_, timeLength);
 }
 
-std::pair<std::vector<std::vector<float>>, std::vector<std::vector<float>>> STFT::stft(
-    const std::vector<float>& data) {
-    const int dataLength = static_cast<int>(data.size());
+int STFT::stftInto(const float* data, std::size_t n, float* real, float* imag) {
+    const int dataLength = static_cast<int>(n);
     const int timeLength = calTimeLength(dataLength);
-
     if (timeLength <= 0) {
         LOG(DEBUG) << TAG(kTag) << "stft(): input length " << dataLength
                    << " is shorter than fftLength=" << fftLength_
                    << "; returning zero frames." << std::endl;
+        return 0;
+    }
+    // AudioFlux writes frame-major into flat buffers and does not modify the
+    // input (the const_cast only satisfies its non-const C signature).
+    stftObj_stft(stftObj_, const_cast<float*>(data), dataLength, real, imag);
+    return timeLength;
+}
+
+Spectrogram STFT::spectrogram(const float* data, std::size_t n) {
+    Spectrogram out;
+    out.fftLength = fftLength_;
+    const int timeLength = calTimeLength(static_cast<int>(n));
+    if (timeLength <= 0) {
+        return out;
+    }
+    const std::size_t total = static_cast<std::size_t>(timeLength) * fftLength_;
+    out.real.resize(total);  // uninitialized: fully overwritten below
+    out.imag.resize(total);
+    out.numFrames = stftInto(data, n, out.real.data(), out.imag.data());
+    return out;
+}
+
+std::pair<std::vector<std::vector<float>>, std::vector<std::vector<float>>> STFT::stft(
+    const std::vector<float>& data) {
+    // Legacy nested-vector API (kept for source compatibility): one pass of
+    // per-frame copies out of the flat spectrogram. Prefer spectrogram().
+    Spectrogram sp = spectrogram(data.data(), data.size());
+    if (sp.numFrames <= 0) {
         return {};
     }
-
-    // AudioFlux writes into one flat buffer per matrix, frame-major
-    // (frame i occupies [i*fftLength, (i+1)*fftLength)).
-    std::vector<float> flatReal(static_cast<size_t>(timeLength) * fftLength_, 0.0f);
-    std::vector<float> flatImag(static_cast<size_t>(timeLength) * fftLength_, 0.0f);
-
-    stftObj_stft(stftObj_, const_cast<float*>(data.data()), dataLength, flatReal.data(),
-                 flatImag.data());
-
-    std::vector<std::vector<float>> real(timeLength);
-    std::vector<std::vector<float>> imag(timeLength);
-    for (int i = 0; i < timeLength; ++i) {
-        real[i].assign(flatReal.begin() + static_cast<long>(i) * fftLength_,
-                        flatReal.begin() + static_cast<long>(i + 1) * fftLength_);
-        imag[i].assign(flatImag.begin() + static_cast<long>(i) * fftLength_,
-                        flatImag.begin() + static_cast<long>(i + 1) * fftLength_);
+    std::vector<std::vector<float>> real(sp.numFrames);
+    std::vector<std::vector<float>> imag(sp.numFrames);
+    for (int i = 0; i < sp.numFrames; ++i) {
+        const std::size_t off = static_cast<std::size_t>(i) * fftLength_;
+        real[i].assign(sp.real.begin() + off, sp.real.begin() + off + fftLength_);
+        imag[i].assign(sp.imag.begin() + off, sp.imag.begin() + off + fftLength_);
     }
-
-    LOG(DEBUG) << TAG(kTag) << "Computed STFT: " << dataLength << " samples -> " << timeLength
-               << " frames." << std::endl;
+    LOG(DEBUG) << TAG(kTag) << "Computed STFT: " << data.size() << " samples -> "
+               << sp.numFrames << " frames." << std::endl;
     return {std::move(real), std::move(imag)};
 }
 

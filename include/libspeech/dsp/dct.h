@@ -13,6 +13,7 @@
 #ifndef LIBSPEECH_DSP_DCT_H
 #define LIBSPEECH_DSP_DCT_H
 
+#include <cstddef>
 #include <vector>
 
 #include "libspeech/export.h"
@@ -33,6 +34,30 @@ namespace speech::dsp {
  */
 SPEECH_API std::vector<float> dctII(const std::vector<float>& input, int numOutputs = -1,
                           bool orthonormal = true);
+
+/**
+ * DctII: DCT-II with the cosine basis precomputed once, for applying the same
+ * size transform to many vectors (e.g. one per MFCC frame). dctII() above
+ * re-evaluates std::cos for every (output, input) pair on every call, which
+ * dominates MFCC time; this class pays that cost once at construction.
+ * Results match dctII() to float precision.
+ */
+class SPEECH_API DctII {
+   public:
+    // n: input length; numOutputs in [1, n]; orthonormal: same scaling as dctII().
+    DctII(int n, int numOutputs, bool orthonormal = true);
+
+    [[nodiscard]] int inputSize() const { return n_; }
+    [[nodiscard]] int outputSize() const { return k_; }
+
+    // out[0..numOutputs) = DCT-II of in[0..n). No allocation.
+    void apply(const float* in, float* out) const;
+
+   private:
+    int n_;
+    int k_;
+    std::vector<float> basis_;  // [k][n], row-major, scale folded in
+};
 
 }  // namespace speech::dsp
 

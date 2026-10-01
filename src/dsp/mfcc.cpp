@@ -12,6 +12,7 @@ namespace speech::dsp {
 
 namespace {
 constexpr const char* kTag = "speech::dsp::MFCC";
+constexpr int kBlockFrames = 64;  // 64 * 512 * 4 B * 2 planes = 256 KiB: stays in L2
 
 // HTK-style conversion, matching AudioFlux's auditory_freToMel/auditory_melToFre.
 float hzToMel(float hz) { return 2595.0f * std::log10(1.0f + hz / 700.0f); }
@@ -40,6 +41,40 @@ MFCC::MFCC(Params params) : params_(params) {
 
     melFilterBank_ = buildMelFilterBank(params_.numMelFilters, fftLength, params_.sampleRate,
                                          params_.lowFreqHz, highFreq);
+
+    // Sparse mel filters: identical weights to the dense bank, minus the zeros.
+    const int numFftBins = fftLength / 2 + 1;
+    melStart_.assign(params_.numMelFilters, 0);
+    melLen_.assign(params_.numMelFilters, 0);
+    melOffset_.assign(params_.numMelFilters, 0);
+    minBin_ = numFftBins;
+    maxBin_ = -1;
+    for (int m = 0; m < params_.numMelFilters; ++m) {
+        int first = -1;
+        int last = -1;
+        for (int k = 0; k < numFftBins; ++k) {
+            if (melFilterBank_[m][k] != 0.0f) {
+                if (first < 0) first = k;
+                last = k;
+            }
+        }
+        melOffset_[m] = static_cast<int>(melWeights_.size());
+        if (first >= 0) {
+            melStart_[m] = first;
+            melLen_[m] = last - first + 1;
+            melWeights_.insert(melWeights_.end(), melFilterBank_[m].begin() + first,
+                               melFilterBank_[m].begin() + last + 1);
+            minBin_ = std::min(minBin_, first);
+            maxBin_ = std::max(maxBin_, last);
+        }
+    }
+    if (maxBin_ < 0) {
+        minBin_ = 0;
+        maxBin_ = -1;
+    }
+
+    dct_ = std::make_unique<DctII>(params_.numMelFilters, params_.numCoefficients,
+                                   /*orthonormal=*/true);
 
     LOG(DEBUG) << TAG(kTag) << "Created MFCC: sampleRate=" << params_.sampleRate
                << ", numMelFilters=" << params_.numMelFilters
@@ -94,34 +129,78 @@ std::vector<std::vector<float>> MFCC::buildMelFilterBank(int numMelFilters, int 
     return filterBank;
 }
 
-std::vector<std::vector<float>> MFCC::compute(const std::vector<float>& signal) {
-    auto [real, imag] = stft_->stft(signal);
-    const int numFrames = static_cast<int>(real.size());
-    const int numFftBins = stft_->fftLength() / 2 + 1;
+MfccMatrix MFCC::computeFlat(const float* signal, std::size_t n) {
     constexpr float kLogEpsilon = 1e-10f;
+    const int fftLength = stft_->fftLength();
+    const int hop = stft_->slideLength();
+    const int numFrames = stft_->calTimeLength(static_cast<int>(n));
+    const int numMel = params_.numMelFilters;
+    const int numCoef = params_.numCoefficients;
 
-    std::vector<std::vector<float>> result(numFrames);
+    MfccMatrix out;
+    out.numCoefficients = numCoef;
+    if (numFrames <= 0) {
+        return out;
+    }
+    out.numFrames = numFrames;
+    out.data.resize(static_cast<std::size_t>(numFrames) * numCoef);  // fully overwritten below
 
-    for (int f = 0; f < numFrames; ++f) {
-        std::vector<float> powerSpectrum(numFftBins);
-        for (int k = 0; k < numFftBins; ++k) {
-            powerSpectrum[k] = real[f][k] * real[f][k] + imag[f][k] * imag[f][k];
-        }
-
-        std::vector<float> logMelEnergies(params_.numMelFilters);
-        for (int m = 0; m < params_.numMelFilters; ++m) {
-            float energy = 0.0f;
-            for (int k = 0; k < numFftBins; ++k) {
-                energy += melFilterBank_[m][k] * powerSpectrum[k];
-            }
-            logMelEnergies[m] = std::log(energy + kLogEpsilon);
-        }
-
-        result[f] = dctII(logMelEnergies, params_.numCoefficients, /*orthonormal=*/true);
+    const std::size_t blockElems = static_cast<std::size_t>(kBlockFrames) * fftLength;
+    if (scratchReal_.size() < blockElems) {
+        scratchReal_.resize(blockElems);
+        scratchImag_.resize(blockElems);
     }
 
-    LOG(DEBUG) << TAG(kTag) << "Computed MFCC: " << signal.size() << " samples -> " << numFrames
-               << " frames x " << params_.numCoefficients << " coefficients." << std::endl;
+    float mel[256];  // log-mel energies of one frame (numMelFilters is small)
+    std::vector<float> melHeap;
+    float* melBuf = mel;
+    if (numMel > 256) {
+        melHeap.resize(numMel);
+        melBuf = melHeap.data();
+    }
+    std::vector<float> power(maxBin_ >= minBin_ ? maxBin_ - minBin_ + 1 : 0);
+
+    for (int f0 = 0; f0 < numFrames; f0 += kBlockFrames) {
+        const int frames = std::min(kBlockFrames, numFrames - f0);
+        // Frames [f0, f0+frames) are exactly the frames of this sample chunk
+        // (no padding), so the chunked STFT equals the corresponding rows of
+        // the full one.
+        const std::size_t chunkStart = static_cast<std::size_t>(f0) * hop;
+        const std::size_t chunkLen = static_cast<std::size_t>(frames - 1) * hop + fftLength;
+        stft_->stftInto(signal + chunkStart, chunkLen, scratchReal_.data(), scratchImag_.data());
+
+        for (int fr = 0; fr < frames; ++fr) {
+            const float* re = scratchReal_.data() + static_cast<std::size_t>(fr) * fftLength;
+            const float* im = scratchImag_.data() + static_cast<std::size_t>(fr) * fftLength;
+            for (int k = minBin_; k <= maxBin_; ++k) {
+                power[k - minBin_] = re[k] * re[k] + im[k] * im[k];
+            }
+            for (int m = 0; m < numMel; ++m) {
+                const float* w = melWeights_.data() + melOffset_[m];
+                const float* p = power.data() + (melStart_[m] - minBin_);
+                float energy = 0.0f;
+                for (int j = 0; j < melLen_[m]; ++j) {
+                    energy += w[j] * p[j];
+                }
+                melBuf[m] = std::log(energy + kLogEpsilon);
+            }
+            dct_->apply(melBuf, out.data.data() + static_cast<std::size_t>(f0 + fr) * numCoef);
+        }
+    }
+
+    LOG(DEBUG) << TAG(kTag) << "Computed MFCC: " << n << " samples -> " << numFrames
+               << " frames x " << numCoef << " coefficients." << std::endl;
+    return out;
+}
+
+std::vector<std::vector<float>> MFCC::compute(const std::vector<float>& signal) {
+    // Legacy nested-vector API: one copy out of the flat result.
+    MfccMatrix flat = computeFlat(signal.data(), signal.size());
+    std::vector<std::vector<float>> result(flat.numFrames);
+    for (int f = 0; f < flat.numFrames; ++f) {
+        const auto begin = flat.data.begin() + static_cast<std::ptrdiff_t>(f) * flat.numCoefficients;
+        result[f].assign(begin, begin + flat.numCoefficients);
+    }
     return result;
 }
 
