@@ -1,9 +1,11 @@
 #include "libspeech/dsp/stft.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <stdexcept>
 
 #include "aixlog.hpp"
+#include "dsp/flux_window.h"  // Vendored AudioFlux: window_calFFTWindow()
 #include "real_fft.h"
 #include "stft_algorithm.h"  // Vendored AudioFlux C header (src/third_party/audioflux)
 
@@ -28,8 +30,13 @@ STFT::STFT(int radix2Exp, WindowType windowType, int slideLength)
     slideLength_ = (slideLength > 0) ? slideLength : fftLength_ / 4;
 
     if (rfft_impl::RealFrameFFT::supports(fftLength_)) {
-        if (const float* window = stftObj_windowData(stftObj_)) {
-            rfft_ = std::make_unique<rfft_impl::RealFrameFFT>(fftLength_, window);
+        // The real-FFT path must apply the very same analysis window AudioFlux's STFT
+        // does. stftObj_new() builds it with window_calFFTWindow(windowType, fftLength),
+        // so call that same (unpatched, public) function instead of reaching into the
+        // opaque STFT object -- no change to the vendored sources is needed.
+        if (float* window = window_calFFTWindow(windowType, fftLength_)) {
+            rfft_ = std::make_unique<rfft_impl::RealFrameFFT>(fftLength_, window);  // copies it
+            std::free(window);
         }
     }
 

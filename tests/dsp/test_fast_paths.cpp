@@ -19,6 +19,7 @@
 #include "libspeech/dsp/simd.h"
 #include "libspeech/dsp/stft.h"
 #include "libspeech/dsp/window.h"
+#include "stft_algorithm.h"  // vendored AudioFlux C API: the reference the real-FFT path must match
 
 namespace {
 
@@ -104,6 +105,37 @@ UTEST(FastPaths, StftMatchesNaiveDftAtEverySupportedSize) {
                 const size_t i = static_cast<size_t>(f) * N + k;
                 ASSERT_TRUE(std::hypot(sp.real[i] - re, sp.imag[i] - im) < 1e-4 * std::max(1.0, std::hypot(re, im)));
             }
+        }
+    }
+}
+
+UTEST(FastPaths, RealFftAppliesTheSameWindowAsAudioFluxForEveryWindowType) {
+    // Reference: AudioFlux's own complex STFT, driven through its C API exactly as the
+    // pre-optimization implementation did. The real-FFT path builds its window with
+    // window_calFFTWindow(), so this pins that the two stay in lockstep.
+    const WindowType types[] = {Window_Rect,    Window_Hann,     Window_Hamm,
+                                Window_Blackman, Window_Bartlett, Window_Triang,
+                                Window_Flattop, Window_Blackman_Harris, Window_Blackman_Nuttall,
+                                Window_Bartlett_Hann, Window_Bohman};
+    const int expo = 9, N = 1 << expo, hop = 128;
+    auto sig = speechLike(N * 4, 16000);
+    for (WindowType type : types) {
+        speech::dsp::STFT st(expo, type, hop);
+        auto got = st.spectrogram(sig.data(), sig.size(), false);
+
+        ::OpaqueSTFT* ref = nullptr;
+        int slide = hop, isContinue = 0;
+        WindowType t = type;
+        ASSERT_EQ(stftObj_new(&ref, expo, &t, &slide, &isContinue), 0);
+        std::vector<float> re(static_cast<size_t>(got.numFrames) * N), im(re.size());
+        stftObj_stft(ref, sig.data(), static_cast<int>(sig.size()), re.data(), im.data());
+        stftObj_free(ref);
+
+        float maxMag = 0.0f;
+        for (size_t i = 0; i < re.size(); ++i) maxMag = std::max(maxMag, std::hypot(re[i], im[i]));
+        for (size_t i = 0; i < re.size(); ++i) {
+            ASSERT_TRUE(std::fabs(got.real[i] - re[i]) < 1e-5f * maxMag);
+            ASSERT_TRUE(std::fabs(got.imag[i] - im[i]) < 1e-5f * maxMag);
         }
     }
 }
