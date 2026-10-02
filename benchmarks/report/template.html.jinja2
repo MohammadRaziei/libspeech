@@ -93,6 +93,7 @@
 
 <footer>
   Versions: {% for lib, v in versions.items() %}{{ lib }} {{ v or '?' }}{{ '; ' if not loop.last }}{% endfor %}.<br>
+  libspeech SIMD backend: {{ simd_backend or 'unknown' }}.<br>
   Machine: {{ system.cpu_model or 'unknown' }}, {{ system.logical_cores or '?' }} logical cores,
   {{ system.ram_gib or '?' }} GiB RAM, {{ system.os or '' }}, Python {{ system.python_version or '?' }}.
 </footer>

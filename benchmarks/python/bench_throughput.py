@@ -71,6 +71,12 @@ def main():
         cells.append(cell)
 
     versions = {lib: ops.library_version(lib) for lib in sorted({c["library"] for c in cells})}
+    try:  # which kernel set libspeech ran: 'avx2+fma', 'neon' or 'generic'
+        import libspeech
+
+        simd_backend = libspeech.simd_backend()
+    except (ImportError, AttributeError):
+        simd_backend = None
     with open(output, "w", encoding="utf-8") as f:
         json.dump({
             "repeats": args.repeats,
@@ -79,6 +85,7 @@ def main():
                 "n_mfcc": ops.N_MFCC, "resample_target_hz": ops.RESAMPLE_TARGET,
             },
             "versions": versions,
+            "libspeech_simd_backend": simd_backend,
             "skipped": skipped,
             "cells": cells,
         }, f, indent=2)

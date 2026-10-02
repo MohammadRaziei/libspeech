@@ -139,8 +139,14 @@ speech_test                       # everything
 └── speech_test_python
     ├── speech_test_python_audio  # libspeech.Audio
     ├── speech_test_python_dsp    # libspeech.Resample/FFT/STFT/MFCC/...
+    ├── speech_test_python_numpy_api       # NumPy in/out fast paths
+    ├── speech_test_python_simd            # SIMD backend selection and agreement
+    ├── speech_test_python_librosa_compat  # load/save/resample/STFT/MFCC vs librosa
     └── speech_test_python_models # libspeech.Denoiser/SileroVad
 ```
+
+The librosa cross-checks need the test extra (`pip install "libspeech[test]"` installs
+librosa, soundfile, scipy and numpy); without them that module skips itself.
 
 Run everything with `cmake --build build --target speech_test`, or just
 `ctest` for the same suites without the extra build-tool chatter.
@@ -190,6 +196,41 @@ the project (what's done, what's in progress, known issues), and
 [`audioflux_issues.md`](audioflux_issues.md) for a couple of real bugs
 found in AudioFlux while vendoring it (with repro steps and fixes, in case
 they're useful upstream).
+
+### SIMD and portability
+
+Kernels that benefit from explicit SIMD (today the polyphase resampler, ~2.3x over its
+portable twin on AVX2) have a portable C++ implementation plus vectorized twins that are
+**selected at run time from the CPU**, never from build flags -- so one wheel or one default
+CMake build is correct on every machine of its architecture and fast on the capable ones.
+No `-march=native`, no per-ISA build variants. The real-input FFT behind STFT/MFCC is plain
+portable C++ that the compiler vectorizes for the baseline ISA: a hand-targeted AVX2 clone
+of it was measured (n_fft 64-8192) and was never faster, so it was dropped.
+
+| Target | Fast path | Compilers | Notes |
+|---|---|---|---|
+| x86 / x86-64 | AVX2 + FMA (CPUID and OS YMM-state checked) | GCC, Clang, MSVC | MSVC path is written but not yet built in CI -- see below |
+| ARM64 (Linux, macOS, Windows) | NEON | GCC, Clang, MSVC | |
+| anything else (32-bit ARM, RISC-V, ...) | portable C++ | any C++17 compiler | the compiler may still auto-vectorize it |
+
+```python
+import libspeech
+libspeech.simd_backend()        # 'avx2+fma' | 'neon' | 'generic'
+libspeech.set_simd_enabled(False)   # run-time switch (objects/calls created afterwards)
+```
+
+- Environment: `LIBSPEECH_SIMD=off` forces the portable kernels (`LIBSPEECH_DISABLE_AVX2=1` still works).
+- All backends are cross-checked against each other and against independent references in
+  `tests/dsp/test_fast_paths.cpp`. The suite is run on x86-64 (GCC and Clang), 32-bit x86,
+  AArch64 (under QEMU), and with SIMD disabled at run time.
+- **MSVC**: the AVX2 resampler and the CPUID/XGETBV detection are written against MSVC's intrinsics but
+  have not been compiled with `cl` yet (no Windows toolchain was available when this was written).
+  If anything misbehaves there, `LIBSPEECH_SIMD=off` falls back to the portable code at run time.
+- Layout for contributors: support is decided in the sources, not the build system.
+  `src/dsp/simd_internal.h` holds every architecture/compiler macro (`LS_HAVE_X86_AVX2`,
+  `LS_HAVE_ARM_NEON`, `LS_TARGET_AVX2`, ...): `#if LS_HAVE_X86_AVX2` the AVX2 kernel is compiled
+  and used when the CPU has it, otherwise the portable one is. Kernels never test
+  `__x86_64__`/`_MSC_VER` directly.
 
 ## 🤝 Contributing
 

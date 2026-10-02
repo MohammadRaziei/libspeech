@@ -7,6 +7,7 @@
 #include "libspeech/dsp/fft.h"
 #include "libspeech/dsp/mfcc.h"
 #include "libspeech/dsp/resample.h"
+#include "libspeech/dsp/simd.h"
 #include "libspeech/dsp/stft.h"
 #include "libspeech/dsp/window.h"
 #include "ndarray_util.h"
@@ -14,6 +15,14 @@
 namespace nb = nanobind;
 
 NB_MODULE(NB_MODULE_NAME, m) {
+    m.def("simd_backend", &speech::dsp::simd::backendName,
+          "Name of the SIMD backend the DSP kernels use right now: 'avx2+fma', 'neon' or "
+          "'generic'. Chosen at run time from the CPU; LIBSPEECH_SIMD=off forces 'generic'.");
+    m.def("set_simd_enabled", &speech::dsp::simd::setEnabled, nb::arg("enabled"),
+          "Run-time switch for the vectorized kernels (default on). Disabling selects the "
+          "portable kernels for objects constructed / calls made afterwards.");
+    m.def("simd_enabled", &speech::dsp::simd::isEnabled);
+
     // --- Window ------------------------------------------------------------
     nb::enum_<WindowType>(m, "WindowType")
         .value("rect", Window_Rect)
@@ -78,24 +87,28 @@ NB_MODULE(NB_MODULE_NAME, m) {
              "Short-time Fourier transform: frames + windows + FFTs a signal.")
         .def_prop_ro("fft_length", &speech::dsp::STFT::fftLength)
         .def_prop_ro("slide_length", &speech::dsp::STFT::slideLength)
+        .def("num_bins", &speech::dsp::STFT::numBins, nb::arg("onesided") = false,
+             "Columns per frame: fft_length, or fft_length // 2 + 1 if onesided.")
         .def("cal_time_length", &speech::dsp::STFT::calTimeLength, nb::arg("data_length"))
         .def("cal_data_length", &speech::dsp::STFT::calDataLength, nb::arg("time_length"))
         .def("stft",
-             [](speech::dsp::STFT& self, speech::py::InArray1D x) {
+             [](speech::dsp::STFT& self, speech::py::InArray1D x, bool onesided) {
                  speech::dsp::Spectrogram sp;
                  {
                      nb::gil_scoped_release release;
-                     sp = self.spectrogram(x.data(), x.size());
+                     sp = self.spectrogram(x.data(), x.size(), onesided);
                  }
                  const std::size_t frames = static_cast<std::size_t>(sp.numFrames);
-                 const std::size_t bins = static_cast<std::size_t>(sp.fftLength);
+                 const std::size_t bins = static_cast<std::size_t>(sp.numBins);
                  auto re = speech::py::wrap<speech::py::OutArray2D>(std::move(sp.real), {frames, bins});
                  auto im = speech::py::wrap<speech::py::OutArray2D>(std::move(sp.imag), {frames, bins});
                  return nb::make_tuple(re, im);
              },
-             nb::arg("data"),
+             nb::arg("data"), nb::arg("onesided") = false,
              "Float32 1-D array in; returns (real, imag) float32 NumPy arrays of shape "
-             "(num_frames, fft_length).")
+             "(num_frames, fft_length), or (num_frames, fft_length // 2 + 1) with "
+             "onesided=True (the non-redundant half of a real signal's spectrum; half the "
+             "work and half the memory).")
         .def("stft", &speech::dsp::STFT::stft, nb::arg("data"),
              "Returns (real, imag), each a [num_frames][fft_length] matrix.")
         .def("istft", &speech::dsp::STFT::istft,

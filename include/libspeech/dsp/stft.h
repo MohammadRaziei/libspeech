@@ -13,6 +13,7 @@
 #include <vector>
 
 #include <cstddef>
+#include <memory>
 
 #include "flux_base.h"  // WindowType enum
 #include "libspeech/detail/uninit_vector.h"
@@ -33,14 +34,19 @@ namespace speech::dsp {
  * spectrogram is represented as a matrix: outer vector = time frames, inner
  * vector = fftLength frequency-domain samples per frame.
  */
-// Flat, frame-major spectrogram: frame i occupies [i*fftLength, (i+1)*fftLength)
+// Flat, frame-major spectrogram: frame i occupies [i*numBins, (i+1)*numBins)
 // in both `real` and `imag`. One allocation per plane, no per-frame vectors.
 struct Spectrogram {
     int numFrames = 0;
     int fftLength = 0;
+    int numBins = 0;  // columns per frame: fftLength (full) or fftLength/2 + 1 (one-sided)
     detail::UninitVector<float> real;
     detail::UninitVector<float> imag;
 };
+
+namespace rfft_impl {
+class RealFrameFFT;  // private real-input FFT engine (src/dsp/real_fft.h)
+}
 
 class SPEECH_API STFT {
    public:
@@ -72,8 +78,24 @@ class SPEECH_API STFT {
     // frame count (0 if the signal is shorter than fftLength).
     int stftInto(const float* data, std::size_t n, float* real, float* imag);
 
-    // Same, allocating the (uninitialized) output planes.
-    Spectrogram spectrogram(const float* data, std::size_t n);
+    // One-sided variant: only bins [0, fftLength/2] of each frame, which fully
+    // describe a real signal's spectrum (the rest is its conjugate mirror).
+    // Half the FFT work and half the output of stftInto(); each of `real` and
+    // `imag` must hold numFrames * (fftLength/2 + 1) floats.
+    int stftOnesidedInto(const float* data, std::size_t n, float* real, float* imag);
+
+    // Same, allocating the (uninitialized) output planes. onesided=true gives
+    // numBins = fftLength/2 + 1 columns instead of fftLength.
+    Spectrogram spectrogram(const float* data, std::size_t n, bool onesided = false);
+
+    // Number of columns per frame: fftLength/2 + 1 if onesided, else fftLength.
+    [[nodiscard]] int numBins(bool onesided) const { return onesided ? fftLength_ / 2 + 1 : fftLength_; }
+
+    // Power spectra |X[k]|^2 (one-sided, fftLength/2 + 1 bins per frame) for
+    // frames [firstFrame, firstFrame + numFrames) of `data`, written row-major
+    // into `power` (numFrames * (fftLength/2 + 1) floats). The caller guarantees
+    // those frames exist (firstFrame + numFrames <= calTimeLength(n)).
+    void powerSpectra(const float* data, std::size_t n, int firstFrame, int numFrames, float* power);
 
     // Frames `data`, windows each frame, and FFTs it. Returns {real, imag},
     // each a [timeLength][fftLength] matrix (timeLength = calTimeLength(data.size())).
@@ -95,6 +117,9 @@ class SPEECH_API STFT {
     ::OpaqueSTFT* stftObj_;
     int fftLength_;
     int slideLength_;
+    // Real-input FFT engine; null for lengths it does not support (then every
+    // path falls back to AudioFlux's complex STFT).
+    std::unique_ptr<rfft_impl::RealFrameFFT> rfft_;
 };
 
 }  // namespace speech::dsp

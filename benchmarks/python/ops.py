@@ -5,6 +5,7 @@ import this, so speed and memory always measure exactly the same work.
 
 Fixed parameters (speech front-end defaults, 16 kHz input):
   stft      n_fft=512, hop=128, Hann window, no centering/padding
+            (bins returned: libspeech numpy and librosa 257, audioflux 512)
   mfcc      13 coefficients, 26 mel filters, n_fft=512, hop=128, no centering
   resample  44.1 kHz -> 16 kHz
   load      16-bit PCM WAV file -> float32 samples in Python
@@ -13,6 +14,8 @@ Libraries:
   libspeech       numpy in / numpy out: float32 arrays are read in place and
                   the result is a NumPy array owning the C++ buffer (no list
                   conversion, no copy). This is the fast path a numpy user gets.
+                  STFT is requested one-sided (257 bins, like librosa); audioflux
+                  and the list API return all 512 bins.
   libspeech_list  the original list[float] in / nested-list out API, kept so
                   the cost of the list path stays visible. The input list is
                   prepared OUTSIDE the timer (it is that API's native input).
@@ -121,7 +124,7 @@ def make_runner(op, lib, x, sr, path):
                 return ls.Resample(sr, RESAMPLE_TARGET).resample(xf)
         elif op == "stft":
             def run():
-                return ls.STFT(N_FFT_EXP, ls.WindowType.hann, HOP).stft(xf)
+                return ls.STFT(N_FFT_EXP, ls.WindowType.hann, HOP).stft(xf, onesided=True)
         elif op == "mfcc":
             def run():
                 p = ls.MFCCParams()

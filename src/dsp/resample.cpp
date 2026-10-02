@@ -2,12 +2,13 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
-#include <cstdlib>
 #include <stdexcept>
 
 #include "aixlog.hpp"
 #include "dsp/resample_algorithm.h"  // Vendored AudioFlux C header (src/third_party/audioflux)
+#include "simd_internal.h"
 
 namespace speech::dsp {
 
@@ -19,17 +20,23 @@ constexpr const char* kTag = "speech::dsp::Resample";
 // time accumulation. Rows are kLanes-padded with zeros.
 constexpr int kLanes = 8;
 
+// All kernels compute outputs i in [i0, i1) into out[i]. Output i reads the wlen
+// inputs base[n_i - bias + k], k in [0, wlen), with n_i = floor(i*down/up); the
+// caller guarantees those indices are valid (the interior of the signal, or a
+// small zero-padded edge buffer).
+//
 // Portable kernel: 8 independent accumulators, vectorizes without -ffast-math
 // because the lanes never mix until the final reduction.
-void runPolyphaseGeneric(const float* weights, int wlen, int up, int down, const float* xpad,
-                         float* out, std::size_t outLen) {
+void runPolyphaseGeneric(const float* weights, int wlen, int up, int down, const float* base,
+                         std::ptrdiff_t bias, float* out, std::size_t i0, std::size_t i1) {
+    const long long start = static_cast<long long>(i0) * down;
+    long long n = start / up;
+    int ph = static_cast<int>(start % up);
     const int stepN = down / up;
     const int stepP = down % up;
-    int n = 0;
-    int ph = 0;
-    for (std::size_t i = 0; i < outLen; ++i) {
+    for (std::size_t i = i0; i < i1; ++i) {
         const float* w = weights + static_cast<std::size_t>(ph) * wlen;
-        const float* x = xpad + n;
+        const float* x = base + (static_cast<std::ptrdiff_t>(n) - bias);
         float acc[kLanes] = {0, 0, 0, 0, 0, 0, 0, 0};
         for (int k = 0; k < wlen; k += kLanes) {
             for (int l = 0; l < kLanes; ++l) acc[l] += w[k + l] * x[k + l];
@@ -44,90 +51,163 @@ void runPolyphaseGeneric(const float* weights, int wlen, int up, int down, const
     }
 }
 
-#if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__))
-#define LIBSPEECH_HAVE_AVX2_KERNEL 1
-#include <immintrin.h>
+// ---- x86: AVX2 + FMA (compiled only where LS_HAVE_X86_AVX2; chosen at run time) ----
+#if LS_HAVE_X86_AVX2
 
-__attribute__((target("avx2,fma"))) inline float hsum256(__m256 v) {
+LS_TARGET_AVX2 inline float hsum256(__m256 v) {
     __m128 s = _mm_add_ps(_mm256_castps256_ps128(v), _mm256_extractf128_ps(v, 1));
     s = _mm_add_ps(s, _mm_movehl_ps(s, s));
     s = _mm_add_ss(s, _mm_shuffle_ps(s, s, 1));
     return _mm_cvtss_f32(s);
 }
 
-// Phase-major: all outputs with the same (i mod up) share one weight row, and their
-// input windows are exactly `down` samples apart, so each 8-float weight chunk
-// is loaded once and FMA'd against 8 outputs (9 loads per 8 FMAs instead of 16).
-__attribute__((target("avx2,fma"))) void runPolyphaseAvx2(const float* weights, int wlen, int up,
-                                                          int down, const float* xpad, float* out,
-                                                          std::size_t outLen) {
+// Outputs i = ph + up*m (fixed ph, varying m) share one weight row -- a permutation
+// of ph, NOT ph itself -- and their input windows are exactly `down` samples apart,
+// so each 8-float weight chunk is loaded once and FMA'd against 8 outputs (9 loads
+// per 8 FMAs instead of 16).
+//
+// Loop order matters for long inputs: the outer loop walks groups of 8 consecutive
+// m (a ~15 KiB input span at 44.1 -> 16 kHz, resident in L1) and the inner loop
+// sweeps every phase over that span. The all-phases weight set (up*wlen floats,
+// ~245 KiB here) lives in L2. Sweeping phase-major instead re-streams the ENTIRE
+// input once per phase: fine while the input fits in cache (10 s), several times
+// slower once it does not (60 s).
+LS_TARGET_AVX2 void runPolyphaseAvx2(const float* weights, int wlen, int up, int down,
+                                     const float* base, std::ptrdiff_t bias, float* out,
+                                     std::size_t i0, std::size_t i1) {
     const std::size_t d = static_cast<std::size_t>(down);
-    for (int ph = 0; ph < up; ++ph) {
-        if (static_cast<std::size_t>(ph) >= outLen) break;
-        // Outputs i = ph + up*m all have phase (i*down) mod up = (ph*down) mod up, hence one
-        // weight row -- a permutation of ph, NOT ph itself -- and n_i = n0 + m*down.
-        const long long phDown = static_cast<long long>(ph) * down;
-        const float* w = weights + static_cast<std::size_t>(phDown % up) * wlen;
-        const std::size_t n0 = static_cast<std::size_t>(phDown / up);
-        const std::size_t count = (outLen - static_cast<std::size_t>(ph) + up - 1) / up;
-        std::size_t m = 0;
-        for (; m + 8 <= count; m += 8) {
-            const float* x = xpad + n0 + m * d;
-            __m256 a0 = _mm256_setzero_ps(), a1 = a0, a2 = a0, a3 = a0, a4 = a0, a5 = a0, a6 = a0,
-                   a7 = a0;
-            for (int k = 0; k < wlen; k += 8) {
-                const __m256 wv = _mm256_load_ps(w + k);
-                a0 = _mm256_fmadd_ps(wv, _mm256_loadu_ps(x + k), a0);
-                a1 = _mm256_fmadd_ps(wv, _mm256_loadu_ps(x + d + k), a1);
-                a2 = _mm256_fmadd_ps(wv, _mm256_loadu_ps(x + 2 * d + k), a2);
-                a3 = _mm256_fmadd_ps(wv, _mm256_loadu_ps(x + 3 * d + k), a3);
-                a4 = _mm256_fmadd_ps(wv, _mm256_loadu_ps(x + 4 * d + k), a4);
-                a5 = _mm256_fmadd_ps(wv, _mm256_loadu_ps(x + 5 * d + k), a5);
-                a6 = _mm256_fmadd_ps(wv, _mm256_loadu_ps(x + 6 * d + k), a6);
-                a7 = _mm256_fmadd_ps(wv, _mm256_loadu_ps(x + 7 * d + k), a7);
+    const std::size_t U = static_cast<std::size_t>(up);
+    const std::size_t mLo = i0 / U;
+    const std::size_t mHi = (i1 + U - 1) / U;
+
+    for (std::size_t m0 = mLo; m0 < mHi; m0 += 8) {
+        for (int ph = 0; ph < up; ++ph) {
+            const long long phDown = static_cast<long long>(ph) * down;
+            const float* w = weights + static_cast<std::size_t>(phDown % up) * wlen;
+            const std::size_t n0 = static_cast<std::size_t>(phDown / up) + m0 * d;
+            const float* x = base + (static_cast<std::ptrdiff_t>(n0) - bias);
+            const std::size_t first = static_cast<std::size_t>(ph) + U * m0;  // output index of j = 0
+            float* o = out + first;
+
+            if (first >= i0 && first + U * 7 < i1) {
+                __m256 a0 = _mm256_setzero_ps(), a1 = a0, a2 = a0, a3 = a0, a4 = a0, a5 = a0,
+                       a6 = a0, a7 = a0;
+                for (int k = 0; k < wlen; k += 8) {
+                    const __m256 wv = _mm256_load_ps(w + k);
+                    a0 = _mm256_fmadd_ps(wv, _mm256_loadu_ps(x + k), a0);
+                    a1 = _mm256_fmadd_ps(wv, _mm256_loadu_ps(x + d + k), a1);
+                    a2 = _mm256_fmadd_ps(wv, _mm256_loadu_ps(x + 2 * d + k), a2);
+                    a3 = _mm256_fmadd_ps(wv, _mm256_loadu_ps(x + 3 * d + k), a3);
+                    a4 = _mm256_fmadd_ps(wv, _mm256_loadu_ps(x + 4 * d + k), a4);
+                    a5 = _mm256_fmadd_ps(wv, _mm256_loadu_ps(x + 5 * d + k), a5);
+                    a6 = _mm256_fmadd_ps(wv, _mm256_loadu_ps(x + 6 * d + k), a6);
+                    a7 = _mm256_fmadd_ps(wv, _mm256_loadu_ps(x + 7 * d + k), a7);
+                }
+                o[0] = hsum256(a0);
+                o[U] = hsum256(a1);
+                o[2 * U] = hsum256(a2);
+                o[3 * U] = hsum256(a3);
+                o[4 * U] = hsum256(a4);
+                o[5 * U] = hsum256(a5);
+                o[6 * U] = hsum256(a6);
+                o[7 * U] = hsum256(a7);
+            } else {  // partial group at either end of [i0, i1)
+                for (std::size_t j = 0; j < 8; ++j) {
+                    const std::size_t idx = first + U * j;
+                    if (idx < i0) continue;
+                    if (idx >= i1) break;
+                    const float* xj = x + j * d;
+                    __m256 a = _mm256_setzero_ps();
+                    for (int k = 0; k < wlen; k += 8) {
+                        a = _mm256_fmadd_ps(_mm256_load_ps(w + k), _mm256_loadu_ps(xj + k), a);
+                    }
+                    out[idx] = hsum256(a);
+                }
             }
-            float* o = out + ph + static_cast<std::size_t>(up) * m;
-            o[0] = hsum256(a0);
-            o[static_cast<std::size_t>(up)] = hsum256(a1);
-            o[2 * static_cast<std::size_t>(up)] = hsum256(a2);
-            o[3 * static_cast<std::size_t>(up)] = hsum256(a3);
-            o[4 * static_cast<std::size_t>(up)] = hsum256(a4);
-            o[5 * static_cast<std::size_t>(up)] = hsum256(a5);
-            o[6 * static_cast<std::size_t>(up)] = hsum256(a6);
-            o[7 * static_cast<std::size_t>(up)] = hsum256(a7);
-        }
-        for (; m < count; ++m) {  // tail: fewer than 8 outputs left for this phase
-            const float* x = xpad + n0 + m * d;
-            __m256 a = _mm256_setzero_ps();
-            for (int k = 0; k < wlen; k += 8) {
-                a = _mm256_fmadd_ps(_mm256_load_ps(w + k), _mm256_loadu_ps(x + k), a);
-            }
-            out[ph + static_cast<std::size_t>(up) * m] = hsum256(a);
         }
     }
 }
-#endif
+#endif  // LS_HAVE_X86_AVX2
 
-bool cpuHasAvx2Fma() {
-#ifdef LIBSPEECH_HAVE_AVX2_KERNEL
-    // LIBSPEECH_DISABLE_AVX2=1 forces the portable kernel (testing / debugging).
-    static const bool ok = __builtin_cpu_supports("avx2") && __builtin_cpu_supports("fma") &&
-                           std::getenv("LIBSPEECH_DISABLE_AVX2") == nullptr;
-    return ok;
-#else
-    return false;
-#endif
+// ---- ARM64: NEON (compiled only where LS_HAVE_ARM_NEON) ---------------------------
+// Same blocked structure as the AVX2 kernel with 4-lane vectors: 8 outputs share
+// each weight vector (9 loads per 8 FMAs).
+#if LS_HAVE_ARM_NEON
+void runPolyphaseNeon(const float* weights, int wlen, int up, int down, const float* base,
+                      std::ptrdiff_t bias, float* out, std::size_t i0, std::size_t i1) {
+    const std::size_t d = static_cast<std::size_t>(down);
+    const std::size_t U = static_cast<std::size_t>(up);
+    const std::size_t mLo = i0 / U;
+    const std::size_t mHi = (i1 + U - 1) / U;
+
+    for (std::size_t m0 = mLo; m0 < mHi; m0 += 8) {
+        for (int ph = 0; ph < up; ++ph) {
+            const long long phDown = static_cast<long long>(ph) * down;
+            const float* w = weights + static_cast<std::size_t>(phDown % up) * wlen;
+            const std::size_t n0 = static_cast<std::size_t>(phDown / up) + m0 * d;
+            const float* x = base + (static_cast<std::ptrdiff_t>(n0) - bias);
+            const std::size_t first = static_cast<std::size_t>(ph) + U * m0;
+            float* o = out + first;
+
+            if (first >= i0 && first + U * 7 < i1) {
+                float32x4_t a0 = vdupq_n_f32(0.0f), a1 = a0, a2 = a0, a3 = a0, a4 = a0, a5 = a0,
+                            a6 = a0, a7 = a0;
+                for (int k = 0; k < wlen; k += 4) {
+                    const float32x4_t wv = vld1q_f32(w + k);
+                    a0 = vfmaq_f32(a0, wv, vld1q_f32(x + k));
+                    a1 = vfmaq_f32(a1, wv, vld1q_f32(x + d + k));
+                    a2 = vfmaq_f32(a2, wv, vld1q_f32(x + 2 * d + k));
+                    a3 = vfmaq_f32(a3, wv, vld1q_f32(x + 3 * d + k));
+                    a4 = vfmaq_f32(a4, wv, vld1q_f32(x + 4 * d + k));
+                    a5 = vfmaq_f32(a5, wv, vld1q_f32(x + 5 * d + k));
+                    a6 = vfmaq_f32(a6, wv, vld1q_f32(x + 6 * d + k));
+                    a7 = vfmaq_f32(a7, wv, vld1q_f32(x + 7 * d + k));
+                }
+                o[0] = vaddvq_f32(a0);
+                o[U] = vaddvq_f32(a1);
+                o[2 * U] = vaddvq_f32(a2);
+                o[3 * U] = vaddvq_f32(a3);
+                o[4 * U] = vaddvq_f32(a4);
+                o[5 * U] = vaddvq_f32(a5);
+                o[6 * U] = vaddvq_f32(a6);
+                o[7 * U] = vaddvq_f32(a7);
+            } else {  // partial group at either end of [i0, i1)
+                for (std::size_t j = 0; j < 8; ++j) {
+                    const std::size_t idx = first + U * j;
+                    if (idx < i0) continue;
+                    if (idx >= i1) break;
+                    const float* xj = x + j * d;
+                    float32x4_t a = vdupq_n_f32(0.0f);
+                    for (int k = 0; k < wlen; k += 4) {
+                        a = vfmaq_f32(a, vld1q_f32(w + k), vld1q_f32(xj + k));
+                    }
+                    out[idx] = vaddvq_f32(a);
+                }
+            }
+        }
+    }
 }
+#endif  // LS_HAVE_ARM_NEON
 
-void runPolyphase(const float* weights, int wlen, int up, int down, const float* xpad,
-                  float* out, std::size_t outLen) {
-#ifdef LIBSPEECH_HAVE_AVX2_KERNEL
-    if (cpuHasAvx2Fma()) {
-        runPolyphaseAvx2(weights, wlen, up, down, xpad, out, outLen);
+// Picks the kernel for this call: vectorized twin if compiled in AND the CPU/env
+// allow it (see libspeech/dsp/simd.h), else the portable one. Every twin computes
+// the same sums in the same lane structure, so results agree to rounding.
+void runPolyphase(const float* weights, int wlen, int up, int down, const float* base,
+                  std::ptrdiff_t bias, float* out, std::size_t i0, std::size_t i1) {
+    if (i0 >= i1) return;
+#if LS_HAVE_X86_AVX2
+    if (simd::useAvx2Fma()) {
+        runPolyphaseAvx2(weights, wlen, up, down, base, bias, out, i0, i1);
         return;
     }
 #endif
-    runPolyphaseGeneric(weights, wlen, up, down, xpad, out, outLen);
+#if LS_HAVE_ARM_NEON
+    if (simd::useNeon()) {
+        runPolyphaseNeon(weights, wlen, up, down, base, bias, out, i0, i1);
+        return;
+    }
+#endif
+    runPolyphaseGeneric(weights, wlen, up, down, base, bias, out, i0, i1);
 }
 }  // namespace
 
@@ -208,22 +288,51 @@ void Resample::buildPolyphase() {
 
 detail::UninitVector<float> Resample::resamplePolyphase(const float* data, std::size_t n) {
     const Polyphase& pl = *poly_;
-    const int outLen = resampleObj_calDataLength(resampleObj, static_cast<int>(n));
-    if (outLen <= 0) {
+    const int outLenInt = resampleObj_calDataLength(resampleObj, static_cast<int>(n));
+    if (outLenInt <= 0) {
         throw std::runtime_error("Resampling failed or produced no output.");
     }
-    // Zero-padded copy of the input so every output is one uniform dot product:
-    // input index k lives at xpad[k + lmax - 1]; samples outside [0, n) are zero,
-    // exactly what the direct kernel's boundary clamping amounts to.
-    const std::size_t lead = static_cast<std::size_t>(pl.lmax - 1);
-    detail::UninitVector<float> xpad(lead + n + static_cast<std::size_t>(pl.wlen) + 8);
-    std::fill(xpad.begin(), xpad.begin() + lead, 0.0f);
-    std::copy(data, data + n, xpad.begin() + lead);
-    std::fill(xpad.begin() + lead + n, xpad.end(), 0.0f);
+    const std::size_t outLen = static_cast<std::size_t>(outLenInt);
+    detail::UninitVector<float> out(outLen);
 
-    detail::UninitVector<float> out(static_cast<std::size_t>(outLen));
-    runPolyphase(pl.weights, pl.wlen, pl.up, pl.down, xpad.data(), out.data(),
-                 static_cast<std::size_t>(outLen));
+    // Output i reads inputs [n_i - lead, n_i - lead + wlen), n_i = floor(i*down/up).
+    // Where that window lies inside [0, n) the kernel reads the caller's samples in
+    // place (no padded copy of the whole signal); only the few outputs near either
+    // end see out-of-range samples (zeros) and go through a small padded buffer.
+    const long long lead = pl.lmax - 1;
+    const long long wlen = pl.wlen;
+    const long long up = pl.up;
+    const long long down = pl.down;
+    const long long len = static_cast<long long>(n);
+
+    auto ceilDiv = [](long long a, long long b) { return a <= 0 ? 0LL : (a + b - 1) / b; };
+    // interior: n_i >= lead  and  n_i + wlen - lead <= n
+    std::size_t iLo = static_cast<std::size_t>(std::min<long long>(ceilDiv(lead * up, down),
+                                                                   static_cast<long long>(outLen)));
+    std::size_t iHi = static_cast<std::size_t>(std::min<long long>(
+        ceilDiv((len - wlen + lead + 1) * up, down), static_cast<long long>(outLen)));
+    if (iHi < iLo) iHi = iLo = 0;  // signal shorter than the filter: everything is "edge"
+    if (iHi == iLo) iHi = iLo = 0;
+
+    runPolyphase(pl.weights, pl.wlen, pl.up, pl.down, data, static_cast<std::ptrdiff_t>(lead), out.data(),
+                 iLo, iHi);
+
+    auto runEdge = [&](std::size_t a, std::size_t b) {
+        if (a >= b) return;
+        const long long first = static_cast<long long>(a) * down / up - lead;
+        const long long last = (static_cast<long long>(b - 1) * down / up) - lead + wlen;  // exclusive
+        std::vector<float> buf(static_cast<std::size_t>(last - first), 0.0f);
+        const long long from = std::max<long long>(first, 0);
+        const long long to = std::min<long long>(last, len);
+        if (to > from) {
+            std::copy(data + from, data + to, buf.begin() + (from - first));
+        }
+        // base[n_i - bias] must be buf[n_i - lead - first]  =>  bias = lead + first
+        runPolyphase(pl.weights, pl.wlen, pl.up, pl.down, buf.data(),
+                     static_cast<std::ptrdiff_t>(lead + first), out.data(), a, b);
+    };
+    runEdge(0, iLo);
+    runEdge(iHi, outLen);
     return out;
 }
 

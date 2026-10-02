@@ -46,6 +46,9 @@ if(TARGET speech_io_py)
         add_python_test(audio)
         add_python_test(models)
         add_python_test(dsp)
+        add_python_test(numpy_api)
+        add_python_test(simd)
+        add_python_test(librosa_compat)   # needs the `test` extra (librosa, soundfile, scipy); skips itself without
 
         # ---------------------------------------------------------------
         # Python coverage (coverage.py -> lcov, same flow as ctoon's

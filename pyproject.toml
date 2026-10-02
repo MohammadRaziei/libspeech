@@ -45,7 +45,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = ["pytest-xdist"]
+# librosa/soundfile/scipy/numpy: tests/python/test_librosa_compat.py cross-checks load, save,
+# resample, STFT, MFCC and windows against them (the module skips itself if they are missing).
+test = ["pytest-xdist", "numpy", "librosa", "soundfile", "scipy"]
 
 
 [project.urls]

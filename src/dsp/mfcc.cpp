@@ -132,7 +132,7 @@ std::vector<std::vector<float>> MFCC::buildMelFilterBank(int numMelFilters, int 
 MfccMatrix MFCC::computeFlat(const float* signal, std::size_t n) {
     constexpr float kLogEpsilon = 1e-10f;
     const int fftLength = stft_->fftLength();
-    const int hop = stft_->slideLength();
+    const int numBins = fftLength / 2 + 1;
     const int numFrames = stft_->calTimeLength(static_cast<int>(n));
     const int numMel = params_.numMelFilters;
     const int numCoef = params_.numCoefficients;
@@ -145,46 +145,37 @@ MfccMatrix MFCC::computeFlat(const float* signal, std::size_t n) {
     out.numFrames = numFrames;
     out.data.resize(static_cast<std::size_t>(numFrames) * numCoef);  // fully overwritten below
 
-    const std::size_t blockElems = static_cast<std::size_t>(kBlockFrames) * fftLength;
-    if (scratchReal_.size() < blockElems) {
-        scratchReal_.resize(blockElems);
-        scratchImag_.resize(blockElems);
-    }
+    const int numBlocks = (numFrames + kBlockFrames - 1) / kBlockFrames;
+    STFT* stft = stft_.get();
+    float* outData = out.data.data();
 
-    float mel[256];  // log-mel energies of one frame (numMelFilters is small)
-    std::vector<float> melHeap;
-    float* melBuf = mel;
-    if (numMel > 256) {
-        melHeap.resize(numMel);
-        melBuf = melHeap.data();
-    }
-    std::vector<float> power(maxBin_ >= minBin_ ? maxBin_ - minBin_ + 1 : 0);
+    // Blocks are independent, so they can run on separate threads; each thread
+    // owns its power-spectrum block buffer and per-frame scratch.
+#pragma omp parallel if (numFrames >= 256)
+    {
+        std::vector<float> powerBlock(static_cast<std::size_t>(kBlockFrames) * numBins);
+        std::vector<float> melHeap(static_cast<std::size_t>(numMel));
+        float* melBuf = melHeap.data();
 
-    for (int f0 = 0; f0 < numFrames; f0 += kBlockFrames) {
-        const int frames = std::min(kBlockFrames, numFrames - f0);
-        // Frames [f0, f0+frames) are exactly the frames of this sample chunk
-        // (no padding), so the chunked STFT equals the corresponding rows of
-        // the full one.
-        const std::size_t chunkStart = static_cast<std::size_t>(f0) * hop;
-        const std::size_t chunkLen = static_cast<std::size_t>(frames - 1) * hop + fftLength;
-        stft_->stftInto(signal + chunkStart, chunkLen, scratchReal_.data(), scratchImag_.data());
+#pragma omp for schedule(static)
+        for (int blk = 0; blk < numBlocks; ++blk) {
+            const int f0 = blk * kBlockFrames;
+            const int frames = std::min(kBlockFrames, numFrames - f0);
+            stft->powerSpectra(signal, n, f0, frames, powerBlock.data());
 
-        for (int fr = 0; fr < frames; ++fr) {
-            const float* re = scratchReal_.data() + static_cast<std::size_t>(fr) * fftLength;
-            const float* im = scratchImag_.data() + static_cast<std::size_t>(fr) * fftLength;
-            for (int k = minBin_; k <= maxBin_; ++k) {
-                power[k - minBin_] = re[k] * re[k] + im[k] * im[k];
-            }
-            for (int m = 0; m < numMel; ++m) {
-                const float* w = melWeights_.data() + melOffset_[m];
-                const float* p = power.data() + (melStart_[m] - minBin_);
-                float energy = 0.0f;
-                for (int j = 0; j < melLen_[m]; ++j) {
-                    energy += w[j] * p[j];
+            for (int fr = 0; fr < frames; ++fr) {
+                const float* power = powerBlock.data() + static_cast<std::size_t>(fr) * numBins;
+                for (int m = 0; m < numMel; ++m) {
+                    const float* w = melWeights_.data() + melOffset_[m];
+                    const float* p = power + melStart_[m];
+                    float energy = 0.0f;
+                    for (int j = 0; j < melLen_[m]; ++j) {
+                        energy += w[j] * p[j];
+                    }
+                    melBuf[m] = std::log(energy + kLogEpsilon);
                 }
-                melBuf[m] = std::log(energy + kLogEpsilon);
+                dct_->apply(melBuf, outData + static_cast<std::size_t>(f0 + fr) * numCoef);
             }
-            dct_->apply(melBuf, out.data.data() + static_cast<std::size_t>(f0 + fr) * numCoef);
         }
     }
 

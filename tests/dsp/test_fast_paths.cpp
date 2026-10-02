@@ -10,12 +10,15 @@
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 #include "libspeech/dsp/dct.h"
 #include "libspeech/dsp/mfcc.h"
 #include "libspeech/dsp/resample.h"
+#include "libspeech/dsp/simd.h"
 #include "libspeech/dsp/stft.h"
+#include "libspeech/dsp/window.h"
 
 namespace {
 
@@ -75,6 +78,84 @@ UTEST(FastPaths, SpectrogramMatchesNestedStft) {
             const size_t i = static_cast<size_t>(f) * flat.fftLength + k;
             ASSERT_EQ(flat.real[i], nested.first[f][k]);
             ASSERT_EQ(flat.imag[i], nested.second[f][k]);
+        }
+    }
+}
+
+UTEST(FastPaths, StftMatchesNaiveDftAtEverySupportedSize) {
+    // Independent reference: a double-precision O(N^2) DFT of the windowed frame.
+    for (int expo = 4; expo <= 13; ++expo) {
+        const int N = 1 << expo, hop = std::max(1, N / 4);
+        auto sig = speechLike(N * 2 + hop, 16000);
+        speech::dsp::STFT st(expo, Window_Hann, hop);
+        auto sp = st.spectrogram(sig.data(), sig.size(), /*onesided=*/false);
+        auto w = speech::dsp::window::generate(Window_Hann, N);
+        ASSERT_TRUE(sp.numFrames >= 2);
+        ASSERT_EQ(sp.numBins, N);
+        for (int f = 0; f < 2; ++f) {
+            for (int k = 0; k < N; k += std::max(1, N / 32)) {
+                double re = 0.0, im = 0.0;
+                for (int n = 0; n < N; ++n) {
+                    const double v = static_cast<double>(sig[static_cast<size_t>(f) * hop + n]) * w[n];
+                    const double a = -2.0 * M_PI * static_cast<double>(k) * n / N;
+                    re += v * std::cos(a);
+                    im += v * std::sin(a);
+                }
+                const size_t i = static_cast<size_t>(f) * N + k;
+                ASSERT_TRUE(std::hypot(sp.real[i] - re, sp.imag[i] - im) < 1e-4 * std::max(1.0, std::hypot(re, im)));
+            }
+        }
+    }
+}
+
+UTEST(FastPaths, OnesidedIsTheFirstHalfOfTheFullSpectrum) {
+    // Includes sizes outside the real-FFT engine's range (N=8 and N=16384), which
+    // take the AudioFlux fallback.
+    for (int expo : {3, 4, 9, 13, 14}) {
+        const int N = 1 << expo, hop = std::max(1, N / 4);
+        auto sig = speechLike(N * 2 + hop, 16000);
+        speech::dsp::STFT st(expo, Window_Hann, hop);
+        auto full = st.spectrogram(sig.data(), sig.size(), false);
+        auto half = st.spectrogram(sig.data(), sig.size(), true);
+        ASSERT_EQ(half.numFrames, full.numFrames);
+        ASSERT_EQ(half.numBins, N / 2 + 1);
+        for (int f = 0; f < full.numFrames; ++f) {
+            for (int k = 0; k < half.numBins; ++k) {
+                ASSERT_EQ(half.real[static_cast<size_t>(f) * half.numBins + k],
+                          full.real[static_cast<size_t>(f) * N + k]);
+                ASSERT_EQ(half.imag[static_cast<size_t>(f) * half.numBins + k],
+                          full.imag[static_cast<size_t>(f) * N + k]);
+            }
+        }
+    }
+}
+
+UTEST(FastPaths, FullSpectrumIsConjugateSymmetric) {
+    auto sig = speechLike(4096, 16000);
+    speech::dsp::STFT st(9, Window_Hann, 128);
+    auto sp = st.spectrogram(sig.data(), sig.size(), false);
+    for (int f = 0; f < sp.numFrames; ++f) {
+        const size_t o = static_cast<size_t>(f) * 512;
+        for (int k = 1; k < 256; ++k) {
+            ASSERT_EQ(sp.real[o + 512 - k], sp.real[o + k]);
+            ASSERT_EQ(sp.imag[o + 512 - k], -sp.imag[o + k]);
+        }
+        ASSERT_EQ(sp.imag[o], 0.0f);        // DC bin of a real signal is real
+        ASSERT_EQ(sp.imag[o + 256], 0.0f);  // so is Nyquist
+    }
+}
+
+UTEST(FastPaths, PowerSpectraMatchOnesidedStft) {
+    auto sig = speechLike(8192, 16000);
+    speech::dsp::STFT st(9, Window_Hann, 128);
+    auto half = st.spectrogram(sig.data(), sig.size(), true);
+    std::vector<float> power(static_cast<size_t>(10) * 257);
+    st.powerSpectra(sig.data(), sig.size(), 5, 10, power.data());  // frames 5..14
+    for (int f = 0; f < 10; ++f) {
+        for (int k = 0; k < 257; ++k) {
+            const size_t i = static_cast<size_t>(f + 5) * 257 + k;
+            const float ref = half.real[i] * half.real[i] + half.imag[i] * half.imag[i];
+            ASSERT_TRUE(std::fabs(power[static_cast<size_t>(f) * 257 + k] - ref) < 1e-4f * std::max(1.0f, ref));
         }
     }
 }
@@ -236,6 +317,44 @@ UTEST(FastPaths, PolyphaseResampleMatchesDirectKernel) {
     ASSERT_TRUE(maxErr < 5e-3);   // and the fast one is a correct resampler
 }
 
+UTEST(FastPaths, PolyphaseMatchesDirectKernelAcrossLengthsAndRates) {
+    // Lengths straddle the interior/edge split (input windows that fit inside the
+    // signal are read in place, the rest go through a small zero-padded buffer), and
+    // the rate pairs cover down-, up- and near-unity ratios with different phase counts.
+    struct Pair { int src, dst; };
+    for (Pair rates : {Pair{44100, 16000}, Pair{48000, 16000}, Pair{22050, 16000}, Pair{16000, 48000},
+                       Pair{48000, 44100}}) {
+        for (int n : {50, 400, 1000, 3000, 5000, 12345, 44100, 100003}) {
+            std::vector<float> x(n);
+            for (int i = 0; i < n; ++i) {
+                x[i] = static_cast<float>(0.4 * std::sin(2.0 * M_PI * 300.0 * i / rates.src) +
+                                          0.1 * std::sin(2.0 * M_PI * 2000.0 * i / rates.src));
+            }
+            speech::dsp::Resample fast(rates.src, rates.dst);
+            speech::dsp::Resample direct(rates.src, rates.dst);
+            direct.enableContinuous(false);  // drops the polyphase bank -> original kernel
+
+            std::vector<float> yf, yd;
+            try {
+                yf = fast.resample(x);
+            } catch (const std::runtime_error&) {
+                bool alsoThrows = false;  // zero-length output: both kernels must agree
+                try { direct.resample(x); } catch (const std::runtime_error&) { alsoThrows = true; }
+                ASSERT_TRUE(alsoThrows);
+                continue;
+            }
+            yd = direct.resample(x);
+            ASSERT_EQ(yf.size(), yd.size());
+            double maxDiff = 0.0;
+            for (size_t i = 0; i < yf.size(); ++i) {
+                ASSERT_TRUE(std::isfinite(yf[i]));
+                maxDiff = std::max(maxDiff, static_cast<double>(std::fabs(yf[i] - yd[i])));
+            }
+            ASSERT_TRUE(maxDiff < 6e-3);
+        }
+    }
+}
+
 UTEST(FastPaths, ResampleFlatEqualsResampleAndIsRepeatable) {
     auto x = speechLike(30000, 44100);
     speech::dsp::Resample r(44100, 16000);
@@ -288,4 +407,73 @@ UTEST(FastPaths, ResampleIdentityAndUpsample) {
     auto z = up.resample(x);
     ASSERT_EQ(z.size(), x.size() * 3);
     for (float v : z) ASSERT_TRUE(std::isfinite(v));
+}
+
+// ---- SIMD backend selection ---------------------------------------------
+
+namespace {
+// Restores the global SIMD switch even if an assertion returns early.
+struct SimdGuard {
+    bool saved = speech::dsp::simd::isEnabled();
+    ~SimdGuard() { speech::dsp::simd::setEnabled(saved); }
+};
+}  // namespace
+
+UTEST(FastPaths, SimdBackendNameAndRuntimeSwitch) {
+    SimdGuard guard;
+    const std::string name = speech::dsp::simd::backendName();
+    ASSERT_TRUE(name == "generic" || name == "avx2+fma" || name == "neon");
+
+    speech::dsp::simd::setEnabled(false);
+    ASSERT_FALSE(speech::dsp::simd::isEnabled());
+    ASSERT_TRUE(speech::dsp::simd::activeBackend() == speech::dsp::simd::Backend::Generic);
+    ASSERT_STREQ("generic", speech::dsp::simd::backendName());
+
+    speech::dsp::simd::setEnabled(true);
+    ASSERT_STREQ(name.c_str(), speech::dsp::simd::backendName());
+}
+
+UTEST(FastPaths, SimdAndGenericKernelsAgree) {
+    // Whatever vectorized backend this binary/CPU selects must match the portable
+    // kernels to float rounding (different summation order only).
+    SimdGuard guard;
+    auto sig16 = speechLike(24000, 16000);
+    auto sig44 = speechLike(60000, 44100);
+    // A noiseless synthetic tone leaves the upper mel bands at the float rounding
+    // floor (~1e-11 power), where MFCC's log() turns rounding-order differences
+    // between any two correct FFTs into O(0.1) errors. A 1% noise floor keeps every
+    // band well above that, so the comparison measures the kernels, not log(noise).
+    unsigned lcg = 12345u;
+    for (float& v : sig16) {
+        lcg = lcg * 1664525u + 1013904223u;
+        v += 0.01f * (static_cast<float>(lcg >> 8) / 16777216.0f - 0.5f);
+    }
+
+    auto run = [&](bool simdOn, std::vector<float>& stft, std::vector<float>& mfcc,
+                   std::vector<float>& rs) {
+        speech::dsp::simd::setEnabled(simdOn);  // objects below pick their kernel at construction
+        speech::dsp::STFT st(9, Window_Hann, 128);
+        auto sp = st.spectrogram(sig16.data(), sig16.size(), true);
+        stft.assign(sp.real.begin(), sp.real.end());
+        stft.insert(stft.end(), sp.imag.begin(), sp.imag.end());
+
+        speech::dsp::MFCC m(mfccParams());
+        auto mm = m.computeFlat(sig16.data(), sig16.size());
+        mfcc.assign(mm.data.begin(), mm.data.end());
+
+        speech::dsp::Resample r(44100, 16000);
+        auto y = r.resampleFlat(sig44.data(), sig44.size());
+        rs.assign(y.begin(), y.end());
+    };
+
+    std::vector<float> s1, m1, r1, s0, m0, r0;
+    run(true, s1, m1, r1);
+    run(false, s0, m0, r0);
+
+    ASSERT_EQ(s1.size(), s0.size());
+    ASSERT_EQ(m1.size(), m0.size());
+    ASSERT_EQ(r1.size(), r0.size());
+    for (size_t i = 0; i < s1.size(); ++i) ASSERT_TRUE(std::fabs(s1[i] - s0[i]) < 1e-3f * std::max(1.0f, std::fabs(s0[i])));
+    for (size_t i = 0; i < m1.size(); ++i) ASSERT_TRUE(std::fabs(m1[i] - m0[i]) < 1e-3f * std::max(1.0f, std::fabs(m0[i])));
+    for (size_t i = 0; i < r1.size(); ++i) ASSERT_TRUE(std::fabs(r1[i] - r0[i]) < 1e-5f);
 }

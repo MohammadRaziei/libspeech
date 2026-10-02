@@ -98,6 +98,11 @@ target_include_directories(speech_dsp
         PRIVATE src/third_party/audioflux/src   # private AudioFlux headers (fft_algorithm.h, stft_algorithm.h, ...)
 )
 target_link_libraries(speech_dsp PUBLIC audioflux)
+# The STFT/MFCC frame loops carry `#pragma omp`; cmake/AudioFlux.cmake only links the
+# C flavour of OpenMP (for AudioFlux's own C code), so the C++ flavour is linked here.
+if(LIBSPEECH_ENABLE_OPENMP AND OpenMP_CXX_FOUND)
+    target_link_libraries(speech_dsp PUBLIC OpenMP::OpenMP_CXX)
+endif()
 
 # See include/libspeech/export.h -- this makes SPEECH_API expand to
 # __declspec(dllexport) for FFT/STFT/MFCC/Resample when compiled here (as

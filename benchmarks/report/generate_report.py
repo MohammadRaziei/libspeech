@@ -115,6 +115,7 @@ def main():
         mem_rows=mem_rows,
         sizes=sizes["rows"],
         versions=throughput.get("versions", {}),
+        simd_backend=throughput.get("libspeech_simd_backend"),
         parameters=throughput.get("parameters", {}),
         repeats=throughput.get("repeats"),
         skipped=throughput.get("skipped", {}),

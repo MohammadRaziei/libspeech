@@ -68,8 +68,8 @@ class SPEECH_API MFCC {
     std::vector<std::vector<float>> compute(const std::vector<float>& signal);
 
     // Copy-free variant: one flat output allocation, no per-frame vectors.
-    // Frames are processed in cache-sized blocks (STFT -> power -> sparse mel
-    // -> log -> DCT), so the full spectrogram is never materialized.
+    // Frames are processed in cache-sized blocks (real-input FFT -> power ->
+    // sparse mel -> log -> DCT), so no spectrogram is ever materialized.
     MfccMatrix computeFlat(const float* signal, std::size_t n);
 
    private:
@@ -88,8 +88,6 @@ class SPEECH_API MFCC {
     int maxBin_ = 0;
 
     std::unique_ptr<DctII> dct_;
-    detail::UninitVector<float> scratchReal_;  // [kBlockFrames][fftLength], reused across calls
-    detail::UninitVector<float> scratchImag_;
 
     static std::vector<std::vector<float>> buildMelFilterBank(int numMelFilters, int fftLength,
                                                                 int sampleRate, float lowFreqHz,

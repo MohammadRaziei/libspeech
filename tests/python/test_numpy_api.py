@@ -46,6 +46,33 @@ def test_stft_numpy_returns_float32_arrays_equal_to_list_api():
     assert np.array_equal(im, np.asarray(im_l, dtype=np.float32))
 
 
+def test_stft_onesided_is_the_first_half_of_the_full_spectrum():
+    x = speech_like(16000, 16000)
+    stft = libspeech.STFT(9, libspeech.WindowType.hann, 128)
+    assert stft.num_bins() == 512 and stft.num_bins(onesided=True) == 257
+
+    re_f, im_f = stft.stft(x)
+    re_h, im_h = stft.stft(x, onesided=True)
+    assert re_h.shape == im_h.shape == (122, 257)
+    assert np.array_equal(re_h, re_f[:, :257])
+    assert np.array_equal(im_h, im_f[:, :257])
+    # the full spectrum's upper half is the conjugate mirror of the lower
+    assert np.array_equal(re_f[:, 1:256][:, ::-1], re_f[:, 257:])
+    assert np.array_equal(-im_f[:, 1:256][:, ::-1], im_f[:, 257:])
+
+
+def test_stft_matches_numpys_rfft_of_the_windowed_frames():
+    x = speech_like(8000, 16000)
+    n_fft, hop = 512, 128
+    re, im = libspeech.STFT(9, libspeech.WindowType.hann, hop).stft(x, onesided=True)
+
+    window = np.hanning(n_fft + 1)[:-1]  # periodic Hann, same window the STFT applies
+    frames = np.stack([x[i * hop : i * hop + n_fft] * window for i in range(re.shape[0])])
+    ref = np.fft.rfft(frames.astype(np.float64), axis=1)
+    got = re.astype(np.float64) + 1j * im.astype(np.float64)
+    assert np.abs(got - ref).max() < 1e-3 * max(1.0, np.abs(ref).max())
+
+
 def test_stft_numpy_accepts_float64_and_strided_input():
     x = speech_like(16000, 16000)
     ref, _ = libspeech.STFT(9).stft(x)

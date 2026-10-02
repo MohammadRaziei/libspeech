@@ -40,21 +40,28 @@ Individual stages: `libspeech_bench_corpus`, `_throughput`, `_memory`, `_sizes`,
 
 ## Where time went, and what changed (single-core sandbox, treat as indicative)
 
-Before optimization, the Python API was dominated by building Python objects, not DSP: STFT on 10 s of 16 kHz audio took ~49 ms through lists while the C++ core took ~6 ms. The fixes, all covered by tests in `tests/dsp/test_fast_paths.cpp` and `tests/python/test_numpy_api.py`:
+Before optimization the Python API was dominated by building Python objects and by redundant passes, not by DSP: STFT on 10 s of 16 kHz audio took ~49 ms through lists while the C++ core took ~6 ms. What changed, all covered by `tests/dsp/test_fast_paths.cpp` and `tests/python/test_numpy_api.py`:
 
-- **STFT**: flat, frame-major `Spectrogram` / `stftInto()` (no per-frame vectors, no zero-fill); NumPy bindings hand the buffer over without copying.
-- **MFCC**: one pass in 64-frame blocks (no full spectrogram), sparse mel filters, power only over the bins the filters touch, and a DCT whose cosine basis is built once. The old DCT called `std::cos` ~340 times per frame. Native C++ time on 10 s: 16.7 ms -> 5.2 ms, values equal to 1e-5.
-- **Resample**: exact rational polyphase filter bank built from the same tables, contiguous weights, AVX2+FMA kernel with runtime dispatch (`LIBSPEECH_DISABLE_AVX2=1` forces the portable one). Native 10 s at 44.1->16 kHz: 56 ms -> ~4 ms. Output differs from the old kernel by interpolation rounding only (<= 2.2e-3 on a full-scale test tone) and is closer to the analytic signal.
-- **Load**: mono decodes straight into the channel buffer; `Audio.size()` no longer copies the channel; `Audio.to_numpy()` replaces `data(0)` for numpy users.
+- **Real-input FFT** (`src/dsp/real_fft.{h,cpp}`): frames are windowed and bit-reverse-loaded as N/2 complex samples in one pass, one N/2-point FFT runs on split re/im arrays (AVX2+FMA instantiation chosen at runtime, portable fallback; `LIBSPEECH_DISABLE_AVX2=1` forces it), then a split pass yields the N/2+1 unique bins. Checked against a double-precision naive DFT for every size from 16 to 8192. AudioFlux's STFT ran a full complex FFT and wrote all N bins.
+- **STFT**: flat frame-major `Spectrogram`; `onesided=True` returns 257 instead of 512 columns (half the work and memory, what librosa returns); the full spectrum is still available and is the conjugate-mirrored result of the same engine. Frame loops carry `#pragma omp` (threshold 128 frames) -- unmeasured here, one core.
+- **MFCC**: block-streamed (64 frames), power spectra straight from the real FFT, sparse mel filters, and a DCT whose cosine basis is built once (the old one called `std::cos` ~340 times per frame).
+- **Resample**: exact rational polyphase bank built from AudioFlux's own tables, AVX2+FMA kernel blocked for cache, reads the input in place (only the few edge outputs use a small zero-padded buffer). Output differs from the old kernel by interpolation rounding only (<= 6e-3 in the equivalence tests, and closer to the analytic signal on a test tone).
+- **Load / Audio**: mono decodes straight into the channel buffer, `Audio.size()` no longer copies the channel, `Audio.to_numpy()` avoids Python floats.
 
-Measured in one process, 40 repeats, 10 s inputs (min ms): load 0.32 (librosa 1.20), mfcc 6.0 (librosa 5.1, audioflux 15.7), stft 7.1 (librosa 3.8, audioflux 8.0), resample 6.1 (librosa 2.6, audioflux 61). So libspeech is clearly ahead on load and well ahead of audioflux on MFCC/resample, but still behind librosa on STFT and resample.
+Measured in one process, 30 repeats, min ms (libspeech NumPy path, STFT one-sided like librosa):
 
-Why: STFT still computes a full-length complex FFT per frame (all 512 bins, real and imaginary planes) where librosa returns 257 bins. And libspeech's default resample quality is "Best" (64 zero crossings, a resampy-class filter) while librosa's default is soxr_hq; compare against `res_type="kaiser_best"` for like-for-like quality.
+| input | libspeech | librosa | audioflux | scipy |
+|---|---|---|---|---|
+| stft 10 s / 60 s | 2.3 / 13.2 | 4.1 / 23.5 | 8.4 / 53 | |
+| mfcc 10 s / 60 s | 2.2 / 12.4 | 6.3 / 31.6 | 17 / 116 | |
+| resample 10 s / 60 s | 4.0 / 17.1 | 3.0 / 16.9 | 73 / 430 | 8.9 / 45 |
+| load 10 s / 60 s (44.1 kHz) | 0.37 / 6.2 | 1.4 / 20 | | |
+
+So libspeech is clearly ahead on STFT, MFCC and load, and level with librosa on resample. Resample quality is not equalized here: libspeech's default is AudioFlux "Best" (64 zero crossings); check librosa's `res_type` before reading that row as a like-for-like comparison.
 
 Also worth knowing: every call logs `Debug`/`Trace` lines to stderr through AixLog, and the Python API has no way to change the level.
 
 ## Not covered yet
 
-- A real-input FFT (half the work for STFT/MFCC) is the next speed item.
 - No scaling sweep (time vs input length) or CLI benchmarks like pygixml has.
 - No comparison against `sherpa-onnx` for the ONNX models (still open in `checklist.md`).

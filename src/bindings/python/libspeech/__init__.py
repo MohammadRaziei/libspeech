@@ -84,6 +84,9 @@ from .speech_dsp_py import (
     Resample,
     WindowType,
     dct,
+    set_simd_enabled,
+    simd_backend,
+    simd_enabled,
     window,
 )
 
