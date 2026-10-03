@@ -91,6 +91,16 @@ test-extras = ["test"]
 # it silently dropped the only job that runs the arm64 (NEON) code.
 #build-verbosity = 1
 
+[tool.cibuildwheel.windows]
+# cibuildwheel 4.0 made `delvewheel repair` the default Windows repair step (3.x ran no
+# repair on Windows). It fails here -- "Unable to find library: speech.dll" while analysing
+# speech_audio_py.pyd -- and it is not wanted anyway: libspeech ships its own DLLs
+# (speech.dll, onnxruntime.dll) next to the extension modules and its __init__.py loads
+# them, together with httpp's httpp_core.dll, itself. Rewriting that layout with delvewheel's
+# name-mangled .libs directory and loader patch would change how the package finds them.
+# An empty command restores the pre-4.0 behaviour (wheel used exactly as built).
+repair-wheel-command = ""
+
 [[tool.cibuildwheel.overrides]]
 # Only the cp312 build's nanobind extensions are actually compiled
 # against the Limited API (STABLE_ABI in CMakeLists.txt's
