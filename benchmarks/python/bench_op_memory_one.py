@@ -17,6 +17,8 @@ than the import phase did; the `method` field says which one was used.
 
 Usage: bench_op_memory_one.py OP LIBRARY WAV_PATH OUTPUT_JSON
 """
+from __future__ import annotations
+
 import argparse
 import gc
 import json

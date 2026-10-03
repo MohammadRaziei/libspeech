@@ -40,7 +40,8 @@ def test_stft_numpy_returns_float32_arrays_equal_to_list_api():
     re, im = libspeech.STFT(9, libspeech.WindowType.hann, 128).stft(x)
     re_l, im_l = libspeech.STFT(9, libspeech.WindowType.hann, 128).stft(x.tolist())
 
-    assert isinstance(re, np.ndarray) and re.dtype == np.float32
+    assert isinstance(re, np.ndarray)
+    assert re.dtype == np.float32
     assert re.shape == im.shape == (122, 512)
     assert np.array_equal(re, np.asarray(re_l, dtype=np.float32))
     assert np.array_equal(im, np.asarray(im_l, dtype=np.float32))
@@ -49,7 +50,8 @@ def test_stft_numpy_returns_float32_arrays_equal_to_list_api():
 def test_stft_onesided_is_the_first_half_of_the_full_spectrum():
     x = speech_like(16000, 16000)
     stft = libspeech.STFT(9, libspeech.WindowType.hann, 128)
-    assert stft.num_bins() == 512 and stft.num_bins(onesided=True) == 257
+    assert stft.num_bins() == 512
+    assert stft.num_bins(onesided=True) == 257
 
     re_f, im_f = stft.stft(x)
     re_h, im_h = stft.stft(x, onesided=True)
@@ -87,18 +89,19 @@ def test_stft_numpy_accepts_float64_and_strided_input():
 
 def test_stft_numpy_short_input_gives_zero_frames():
     re, im = libspeech.STFT(9).stft(np.zeros(100, dtype=np.float32))
-    assert re.shape[0] == 0 and im.shape[0] == 0
+    assert re.shape[0] == 0
+    assert im.shape[0] == 0
+
+
+def _spectrum_of_a_temporary_signal():
+    """STFT of a signal that no longer exists once this returns."""
+    x = speech_like(16000, 16000)
+    return libspeech.STFT(9).stft(x)[0]
 
 
 def test_numpy_result_outlives_the_producing_objects():
-    x = speech_like(16000, 16000)
-
-    def make():
-        return libspeech.STFT(9).stft(x)[0]
-
-    out = make()
+    out = _spectrum_of_a_temporary_signal()
     expected = out.copy()
-    del x
     gc.collect()
     junk = [np.random.rand(10000) for _ in range(50)]  # churn the allocator
     gc.collect()
@@ -113,7 +116,8 @@ def test_mfcc_numpy_equals_list_api():
     m = libspeech.MFCC(mfcc_params()).compute(x)
     m_l = libspeech.MFCC(mfcc_params()).compute(x.tolist())
 
-    assert m.dtype == np.float32 and m.shape == (122, 13)
+    assert m.dtype == np.float32
+    assert m.shape == (122, 13)
     assert np.array_equal(m, np.asarray(m_l, dtype=np.float32))
     assert np.isfinite(m).all()
 
@@ -134,7 +138,8 @@ def test_resample_numpy_equals_list_api_and_tracks_the_true_signal():
     y = libspeech.Resample(src, dst).resample(x)
     y_l = libspeech.Resample(src, dst).resample(x.tolist())
 
-    assert y.dtype == np.float32 and y.shape == (dst,)
+    assert y.dtype == np.float32
+    assert y.shape == (dst,)
     assert np.array_equal(y, np.asarray(y_l, dtype=np.float32))
 
     t_out = np.arange(dst) / dst
@@ -163,7 +168,8 @@ def test_audio_to_numpy_matches_data(tmp_path):
     assert loaded.load(str(wav))
     arr = loaded.to_numpy(0)
 
-    assert arr.dtype == np.float32 and arr.shape == (len(loaded),)
+    assert arr.dtype == np.float32
+    assert arr.shape == (len(loaded),)
     assert np.array_equal(arr, np.asarray(loaded.data(0), dtype=np.float32))
     assert np.abs(arr - samples).max() < 1e-3  # WAV round-trip quantization only
 
@@ -174,7 +180,7 @@ def test_audio_to_numpy_is_a_copy_and_validates_channel():
     arr = audio.to_numpy()  # channel 0 by default
     arr[0] = 9.0
     assert audio.to_numpy(0)[0] == pytest.approx(0.1)  # caller's edit did not leak into Audio
-    with pytest.raises(Exception):
+    with pytest.raises(IndexError):
         audio.to_numpy(5)
 
 

@@ -13,6 +13,8 @@ Sample rates:
 
 Usage: corpus.py OUT_DIR   (writes OUT_DIR/*.wav and OUT_DIR/manifest.json)
 """
+from __future__ import annotations
+
 import argparse
 import json
 import os
@@ -32,7 +34,7 @@ CORPUS = [
 def speech_like(duration_s, sample_rate, seed=0):
     """Returns float32 samples in [-0.5, 0.5]."""
     rng = np.random.default_rng(seed)
-    n = int(round(duration_s * sample_rate))
+    n = round(duration_s * sample_rate)
     t = np.arange(n, dtype=np.float64) / sample_rate
     f0 = 120.0 + 40.0 * np.sin(2 * np.pi * 0.3 * t)
     phase = 2 * np.pi * np.cumsum(f0) / sample_rate
@@ -71,7 +73,7 @@ def main():
             "path": os.path.abspath(path),
             "sample_rate": sr,
             "duration_s": dur,
-            "samples": int(len(x)),
+            "samples": len(x),
         })
         print(f"corpus: {name}: {len(x)} samples @ {sr} Hz", flush=True)
 

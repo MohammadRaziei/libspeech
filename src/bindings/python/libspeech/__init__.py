@@ -113,5 +113,8 @@ __all__ = [
     "WindowType",
     "__version__",
     "dct",
+    "set_simd_enabled",
+    "simd_backend",
+    "simd_enabled",
     "window",
 ]

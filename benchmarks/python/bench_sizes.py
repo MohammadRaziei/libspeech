@@ -6,6 +6,8 @@ local checkout.
 
 Usage: bench_sizes.py OUTPUT_JSON
 """
+from __future__ import annotations
+
 import argparse
 import json
 import os
@@ -21,7 +23,7 @@ def pip_size(pkg, no_deps):
     cmd = [exe, pkg, "--json", "--bytes", "--quiet"]
     if no_deps:
         cmd.append("--no-deps")
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if proc.returncode != 0:
         return None
     text = proc.stdout

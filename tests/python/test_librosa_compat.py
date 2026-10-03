@@ -7,19 +7,43 @@ differs from librosa (mel filterbank construction, triangular windows, MP3 decod
 delay) the test says so and pins the difference instead of hiding it.
 
 Needs the `test` extra: pip install "libspeech[test]"  (librosa, soundfile, scipy, numpy).
-The whole module is skipped when they are not installed.
+The whole module is skipped when any of them cannot be imported.
 """
 
 from __future__ import annotations
 
-import numpy as np
+import importlib
+import warnings
+
 import pytest
 
 import libspeech
 
-librosa = pytest.importorskip("librosa")
-sf = pytest.importorskip("soundfile")
-scipy_fft = pytest.importorskip("scipy.fft")
+
+def _optional(name: str):
+    """Import an optional test dependency, or skip this whole module.
+
+    Catches more than ImportError on purpose: a half-installed numba/llvmlite (librosa's
+    dependencies) fails with OSError/RuntimeError rather than ModuleNotFoundError, and a
+    DeprecationWarning at import time is an error under this project's pytest settings.
+    Neither is a libspeech problem, so neither may fail the suite.
+    """
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            return importlib.import_module(name)
+    except Exception as exc:
+        pytest.skip(f"optional test dependency {name!r} is unavailable: {exc!r}", allow_module_level=True)
+
+
+np = _optional("numpy")
+librosa = _optional("librosa")
+sf = _optional("soundfile")
+scipy_fft = _optional("scipy.fft")
+
+# These tests judge libspeech's output. Warnings raised inside librosa / numpy / scipy (which
+# differ between their releases, and the project turns warnings into errors) must not fail them.
+pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning", "ignore::FutureWarning", "ignore::UserWarning")
 
 
 # --- helpers -----------------------------------------------------------------
@@ -43,12 +67,12 @@ def noisy_speechlike(seconds: float = 3.0, sample_rate: int = 16000) -> np.ndarr
     return (x + 0.01 * rng.standard_normal(x.size)).astype(np.float32)
 
 
-def libspeech_channels(audio: "libspeech.Audio") -> np.ndarray:
+def libspeech_channels(audio: libspeech.Audio) -> np.ndarray:
     """(channels, samples) float32 view of a libspeech.Audio."""
     return np.stack([audio.to_numpy(c) for c in range(len(audio.data()))])
 
 
-def load_with_libspeech(path) -> "libspeech.Audio":
+def load_with_libspeech(path) -> libspeech.Audio:
     audio = libspeech.Audio()
     assert audio.load(str(path)), f"libspeech failed to load {path}"
     return audio
@@ -58,7 +82,7 @@ def load_with_libspeech(path) -> "libspeech.Audio":
 
 
 @pytest.mark.parametrize("subtype", ["PCM_16", "PCM_24", "PCM_32", "FLOAT"])
-@pytest.mark.parametrize("sample_rate, channels", [(16000, 1), (44100, 2)])
+@pytest.mark.parametrize(("sample_rate", "channels"), [(16000, 1), (44100, 2)])
 def test_wav_load_matches_librosa(tmp_path, subtype, sample_rate, channels):
     data = stereo(sample_rate) if channels == 2 else stereo(sample_rate)[:1]
     path = tmp_path / f"a_{subtype}.wav"
@@ -133,11 +157,11 @@ def test_to_mono_matches_librosa(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "target, res_type, atol",
+    ("target", "res_type", "atol"),
     [
-        (22050, "soxr_hq", 1e-5),   # measured 2e-7
-        (48000, "soxr_hq", 1e-5),   # measured 6e-7
-        (16000, "soxr_hq", 5e-3),   # measured 1e-3 (table-interpolated filter vs soxr)
+        (22050, "soxr_hq", 1e-6),  # measured 9e-8
+        (48000, "soxr_hq", 1e-6),  # measured 1.5e-7
+        (16000, "soxr_hq", 1e-6),  # measured 1.4e-7 (libspeech's windowed-sinc bank is closed-form)
     ],
 )
 def test_audio_resample_matches_librosa(tmp_path, target, res_type, atol):
@@ -160,7 +184,7 @@ def test_audio_resample_matches_librosa(tmp_path, target, res_type, atol):
 # --- save ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("sample_rate, channels", [(16000, 1), (44100, 2), (8000, 2)])
+@pytest.mark.parametrize(("sample_rate", "channels"), [(16000, 1), (44100, 2), (8000, 2)])
 def test_saved_wav_is_read_back_identically_by_librosa(tmp_path, sample_rate, channels):
     data = stereo(sample_rate) if channels == 2 else stereo(sample_rate)[:1]
     audio = libspeech.Audio()
@@ -185,16 +209,15 @@ def test_save_then_load_roundtrip_inside_libspeech(tmp_path):
     assert audio.save(str(path))
 
     again = load_with_libspeech(path)
-    assert again.sample_rate == 22050 and len(again) == data.shape[1]
+    assert again.sample_rate == 22050
+    assert len(again) == data.shape[1]
     np.testing.assert_allclose(libspeech_channels(again), data, rtol=0, atol=1e-7)
 
 
 # --- window -------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "name, librosa_name, atol",
-    [
+@pytest.mark.parametrize(("name", "librosa_name", "atol"), [
         ("hann", "hann", 1e-6),
         ("hamming", "hamming", 1e-6),
         ("blackman", "blackman", 1e-6),
@@ -217,7 +240,7 @@ def test_window_matches_librosa(name, librosa_name, atol):
 # --- STFT ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("radix2_exp, hop", [(8, 64), (9, 128), (10, 256), (11, 512)])
+@pytest.mark.parametrize(("radix2_exp", "hop"), [(8, 64), (9, 128), (10, 256), (11, 512)])
 def test_stft_matches_librosa(radix2_exp, hop):
     x = noisy_speechlike()
     n_fft = 1 << radix2_exp
@@ -247,7 +270,7 @@ def test_full_stft_is_librosas_spectrum_plus_its_conjugate_mirror():
 # --- MFCC ---------------------------------------------------------------------------
 
 
-def _mfcc_params(sample_rate: int) -> "libspeech.MFCCParams":
+def _mfcc_params(sample_rate: int) -> libspeech.MFCCParams:
     p = libspeech.MFCCParams()
     p.sample_rate = sample_rate
     p.num_mel_filters = 26
@@ -313,14 +336,15 @@ def test_mfcc_tracks_librosas_own_mfcc_pipeline():
 
 
 @pytest.mark.parametrize(
-    "source, target, atol",
+    ("source", "target", "atol"),
     [
-        (44100, 22050, 1e-5),  # measured 1e-7
-        (44100, 48000, 1e-5),  # measured 4e-7
-        # libspeech's table-interpolated windowed-sinc resampler is accurate to ~1e-4..1e-3
-        # (about -70 dB here), soxr_hq to ~1e-7: the ratio-dependent gap is pinned below.
-        (48000, 44100, 5e-4),  # measured 7e-5
-        (44100, 16000, 3e-3),  # measured 8e-4
+        # In-band tones agree with soxr_hq to float rounding for every ratio: both are within
+        # ~2e-7 of the true signal (libspeech designs its polyphase filter in closed form).
+        (44100, 22050, 1e-6),
+        (44100, 48000, 1e-6),
+        (48000, 44100, 1e-6),
+        (44100, 16000, 1e-6),
+        (48000, 16000, 1e-6),
     ],
 )
 def test_resample_array_matches_librosa(source, target, atol):

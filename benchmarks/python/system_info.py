@@ -9,6 +9,8 @@ No interpretation, no comparison, no "this machine is fast/slow" --
 just what a reader needs to judge whether these numbers transfer to
 their own hardware.
 """
+from __future__ import annotations
+
 import argparse
 import json
 import os
@@ -18,7 +20,7 @@ import sys
 
 def _linux_cpu_model():
     try:
-        with open("/proc/cpuinfo", "r", encoding="utf-8") as f:
+        with open("/proc/cpuinfo", encoding="utf-8") as f:
             for line in f:
                 if line.lower().startswith("model name"):
                     return line.split(":", 1)[1].strip()
@@ -29,7 +31,7 @@ def _linux_cpu_model():
 
 def _linux_ram_gib():
     try:
-        with open("/proc/meminfo", "r", encoding="utf-8") as f:
+        with open("/proc/meminfo", encoding="utf-8") as f:
             for line in f:
                 if line.startswith("MemTotal:"):
                     kib = int(line.split()[1])

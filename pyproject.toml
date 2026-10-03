@@ -45,9 +45,27 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# librosa/soundfile/scipy/numpy: tests/python/test_librosa_compat.py cross-checks load, save,
-# resample, STFT, MFCC and windows against them (the module skips itself if they are missing).
-test = ["pytest-xdist", "numpy", "librosa", "soundfile", "scipy"]
+# Test dependencies. The first two run every Python test module; the rest only feed
+# tests/python/test_librosa_compat.py, which cross-checks load/save/resample/STFT/MFCC/windows
+# against librosa and skips itself (instead of failing) if any of them cannot be imported.
+#
+# Why the markers: librosa pulls in numba -> llvmlite, which publish wheels only for a window
+# of platforms and Python versions. When no wheel exists pip does NOT fall back to an older
+# release -- it picks the newest one, finds only an sdist and tries to compile LLVM, which
+# is exactly how the macOS x86_64 wheel-test job failed (numba 0.68 / llvmlite 0.50 sdists).
+#   * Intel macOS (x86_64, also what the Rosetta test of a universal2 wheel reports): numba
+#     0.63 dropped x86_64 macOS binaries, 0.62.x is the last release that has them, so cap it
+#     there and llvmlite follows numba's own pin to a release that still ships wheels.
+#   * Python 3.15 and newer: numba/llvmlite lag new interpreters by months (3.14 support
+#     arrived in numba 0.63), so leave the cross-check dependencies out until they catch up.
+test = [
+  "pytest-xdist",
+  "numpy",
+  "librosa; python_version < '3.15'",
+  "soundfile; python_version < '3.15'",
+  "scipy; python_version < '3.15'",
+  "numba<0.63; python_version < '3.15' and sys_platform == 'darwin' and platform_machine == 'x86_64'",
+]
 
 
 [project.urls]
@@ -66,7 +84,10 @@ test = ["pytest-xdist", "numpy", "librosa", "soundfile", "scipy"]
 # overrode anyway.
 test-command = "pytest {project}/tests"
 test-extras = ["test"]
-test-skip = ["*universal2:arm64"]
+# No test-skip: on the arm64 macOS runner cibuildwheel tests BOTH slices of a universal2 wheel
+# (arm64 natively, x86_64 under Rosetta 2; see "Platforms" in the cibuildwheel docs). The old
+# `*universal2:arm64` skip is for Intel runners, where the arm64 slice cannot execute, and here
+# it silently dropped the only job that runs the arm64 (NEON) code.
 #build-verbosity = 1
 
 [[tool.cibuildwheel.overrides]]
@@ -180,6 +201,9 @@ exclude = ["third_party"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["F841", "ARG001", "PT004", "RUF059", "PT011"]
+# Stand-alone benchmark scripts: printing progress is their output, they import competitor
+# libraries lazily (a missing one must only skip its own cells), and plain os.path is fine.
+"benchmarks/**" = ["T20", "PLC0415", "PTH"]
 "src/**/__main__.py" = ["T20"]
 "src/**/core.py" = ["ARG001", "F401"]
 "version.py" = ["T20"]  # CLI script -- printing is the point

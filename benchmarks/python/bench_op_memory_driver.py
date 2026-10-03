@@ -9,6 +9,8 @@ child per data point, so no measurement inherits its parent's memory history
 
 Usage: bench_op_memory_driver.py MANIFEST [MANIFEST ...] OUTPUT_JSON
 """
+from __future__ import annotations
+
 import argparse
 import json
 import os
@@ -60,7 +62,7 @@ def main():
                     proc = subprocess.run(
                         [sys.executable, os.path.join(HERE, "bench_op_memory_one.py"),
                          op, lib, e["path"], out_json],
-                        capture_output=True, text=True,
+                        capture_output=True, text=True, check=False,
                     )
                     point = {"op": op, "library": lib, "entry": e["name"],
                              "duration_s": e["duration_s"], "sample_rate": e["sample_rate"]}

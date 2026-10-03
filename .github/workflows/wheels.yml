@@ -57,7 +57,7 @@ jobs:
         submodules: true
 
     - name: Build wheels
-      uses: pypa/cibuildwheel@v3.4.1
+      uses: pypa/cibuildwheel@v4.2.0
       env:
         # ONNX Runtime's own v1.21.0 release notes state outright: "All
         # macOS packages now require macOS version >= 13.3." Without this,
@@ -85,6 +85,8 @@ jobs:
         # cp38 is excluded: httpp (a build-time dependency, see above) only
         # ships wheels from cp39-abi3 up on PyPI, not cp38 -- building a
         # cp38 wheel here would require httpp built from source instead.
+        # (cibuildwheel 4.2 builds CPython 3.15 by default; this explicit list keeps the
+        # matrix at 3.9-3.12 -- the cp312 wheel is abi3, so it also serves 3.13 and newer.)
         CIBW_BUILD: "cp39-* cp310-* cp311-* cp312-*"
         # Per-Python-version env var overrides (SKBUILD_WHEEL_PY_API=cp312
         # for the cp312 build only, so scikit-build-core tags it as a

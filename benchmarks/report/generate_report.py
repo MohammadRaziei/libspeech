@@ -11,6 +11,8 @@ that row, at that input size only.
 
 Usage: generate_report.py RESULTS_DIR OUTPUT_HTML --chartjs-path PATH
 """
+from __future__ import annotations
+
 import argparse
 import datetime
 import json
@@ -97,7 +99,7 @@ def main():
     ]
 
     libs = sorted({c["library"] for c in throughput["cells"]},
-                  key=lambda l: list(LIB_LABELS).index(l) if l in LIB_LABELS else 99)
+                  key=lambda lib: list(LIB_LABELS).index(lib) if lib in LIB_LABELS else 99)
 
     with open(args.chartjs_path, encoding="utf-8") as f:
         chartjs = f.read()

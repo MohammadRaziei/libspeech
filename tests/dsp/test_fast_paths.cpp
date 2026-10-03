@@ -387,6 +387,94 @@ UTEST(FastPaths, PolyphaseMatchesDirectKernelAcrossLengthsAndRates) {
     }
 }
 
+namespace {
+double toneAt(int i, int sampleRate) {
+    const double t = static_cast<double>(i) / sampleRate;
+    return 0.1 * std::sin(2.0 * M_PI * 300.0 * t) + 0.1 * std::sin(2.0 * M_PI * 1200.0 * t + 0.7) +
+           0.1 * std::sin(2.0 * M_PI * 2500.0 * t + 1.4);
+}
+}  // namespace
+
+UTEST(FastPaths, ExactKaiserDesignIsAccurateAgainstTheAnalyticSignal) {
+    // The polyphase bank is the closed-form windowed sinc, not a lookup table: in-band tones
+    // come out within float rounding of the true signal (the old table-driven kernel was
+    // only good to ~1e-3 at large down-ratios).
+    struct Pair { int src, dst; };
+    for (Pair r : {Pair{44100, 16000}, Pair{48000, 16000}, Pair{44100, 22050}, Pair{48000, 44100},
+                   Pair{16000, 48000}, Pair{22050, 16000}}) {
+        const int n = r.src;  // 1 s
+        std::vector<float> x(n);
+        for (int i = 0; i < n; ++i) x[i] = static_cast<float>(toneAt(i, r.src));
+        speech::dsp::Resample rs(r.src, r.dst);
+        auto y = rs.resample(x);
+        const int edge = r.dst / 50;
+        double maxErr = 0.0;
+        for (size_t i = edge; i + edge < y.size(); ++i) {
+            maxErr = std::max(maxErr, std::fabs(y[i] - toneAt(static_cast<int>(i), r.dst)));
+        }
+        ASSERT_TRUE(maxErr < 2e-6);
+    }
+}
+
+UTEST(FastPaths, ResampleLongInputRunsEveryChunkAndMatchesTheDirectKernel) {
+    // Long enough to be split into parallel chunks (>= 4 chunks of 128 groups of 8 phases-worth).
+    const int src = 44100, dst = 16000, n = src * 12;
+    std::vector<float> x(n);
+    for (int i = 0; i < n; ++i) x[i] = static_cast<float>(toneAt(i, src));
+    speech::dsp::Resample fast(src, dst);
+    speech::dsp::Resample direct(src, dst);
+    direct.enableContinuous(false);
+    auto yf = fast.resample(x);
+    auto yd = direct.resample(x);
+    ASSERT_EQ(yf.size(), yd.size());
+    ASSERT_EQ(yf.size(), static_cast<size_t>(dst) * 12);
+    double maxDiff = 0.0, maxErr = 0.0;
+    for (size_t i = 0; i < yf.size(); ++i) {
+        maxDiff = std::max(maxDiff, static_cast<double>(std::fabs(yf[i] - yd[i])));
+        if (i > 1000 && i + 1000 < yf.size()) {
+            maxErr = std::max(maxErr, std::fabs(yf[i] - toneAt(static_cast<int>(i), dst)));
+        }
+    }
+    ASSERT_TRUE(maxDiff < 3e-3);  // the old kernel's own error bound
+    ASSERT_TRUE(maxErr < 2e-6);   // chunk seams included
+}
+
+UTEST(FastPaths, CachedBanksAreSharedCorrectlyAndKeyedByEveryParameter) {
+    auto x = speechLike(30000, 44100);
+    speech::dsp::Resample a(44100, 16000);
+    speech::dsp::Resample b(44100, 16000);  // same key: served from the cache
+    auto ya = a.resample(x);
+    auto yb = b.resample(x);
+    ASSERT_EQ(ya.size(), yb.size());
+    for (size_t i = 0; i < ya.size(); ++i) ASSERT_EQ(ya[i], yb[i]);
+
+    // Different rates, same source: a distinct bank, not the cached one.
+    speech::dsp::Resample c(44100, 22050);
+    ASSERT_EQ(c.resample(x).size(), static_cast<size_t>(std::floor(x.size() * 22050.0 / 44100.0)));
+
+    // Same rates, different Kaiser beta: must NOT reuse the default-quality bank.
+    speech::dsp::Resample d(44100, 16000, 64, 9, Window_Kaiser, 4.0f, 0.9475937f, false, false);
+    auto yd = d.resample(x);
+    ASSERT_EQ(yd.size(), ya.size());
+    double maxDiff = 0.0;
+    for (size_t i = 0; i < ya.size(); ++i) maxDiff = std::max(maxDiff, static_cast<double>(std::fabs(ya[i] - yd[i])));
+    ASSERT_TRUE(maxDiff > 1e-4);  // a lower beta has a visibly different filter
+}
+
+UTEST(FastPaths, NonKaiserCustomWindowStillResamplesViaAudioFluxTables) {
+    auto x = speechLike(20000, 44100);
+    speech::dsp::Resample hann(44100, 16000, 32, 9, Window_Hann, 0.0f, 0.945f, false, false);
+    speech::dsp::Resample hannDirect(44100, 16000, 32, 9, Window_Hann, 0.0f, 0.945f, false, false);
+    hannDirect.enableContinuous(false);
+    auto y = hann.resample(x);
+    auto yd = hannDirect.resample(x);
+    ASSERT_EQ(y.size(), yd.size());
+    for (size_t i = 0; i < y.size(); ++i) {
+        ASSERT_TRUE(std::isfinite(y[i]));
+        ASSERT_TRUE(std::fabs(y[i] - yd[i]) < 6e-3f);
+    }
+}
+
 UTEST(FastPaths, ResampleFlatEqualsResampleAndIsRepeatable) {
     auto x = speechLike(30000, 44100);
     speech::dsp::Resample r(44100, 16000);

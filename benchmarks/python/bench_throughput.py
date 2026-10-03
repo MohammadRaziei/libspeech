@@ -11,6 +11,8 @@ ops.py (also used by the memory and scaling benchmarks).
 
 Usage: bench_throughput.py MANIFEST [MANIFEST ...] OUTPUT_JSON [--repeats N]
 """
+from __future__ import annotations
+
 import argparse
 import json
 import sys

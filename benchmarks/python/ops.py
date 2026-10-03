@@ -5,7 +5,7 @@ import this, so speed and memory always measure exactly the same work.
 
 Fixed parameters (speech front-end defaults, 16 kHz input):
   stft      n_fft=512, hop=128, Hann window, no centering/padding
-            (bins returned: libspeech numpy and librosa 257, audioflux 512)
+            (bins returned: libspeech numpy, librosa and audioflux 257; libspeech_list 512)
   mfcc      13 coefficients, 26 mel filters, n_fft=512, hop=128, no centering
   resample  44.1 kHz -> 16 kHz
   load      16-bit PCM WAV file -> float32 samples in Python
@@ -14,8 +14,9 @@ Libraries:
   libspeech       numpy in / numpy out: float32 arrays are read in place and
                   the result is a NumPy array owning the C++ buffer (no list
                   conversion, no copy). This is the fast path a numpy user gets.
-                  STFT is requested one-sided (257 bins, like librosa); audioflux
-                  and the list API return all 512 bins.
+                  STFT is requested one-sided (257 bins), which is what librosa and
+                  the audioflux Python package return; only the list API returns all
+                  512 bins.
   libspeech_list  the original list[float] in / nested-list out API, kept so
                   the cost of the list path stays visible. The input list is
                   prepared OUTSIDE the timer (it is that API's native input).
@@ -26,6 +27,8 @@ timed call, for every library, so setup cost is counted consistently.
 Numerical output is NOT bit-identical across libraries (window/filterbank
 conventions differ); the recorded output shape shows what each produced.
 """
+from __future__ import annotations
+
 import gc
 import math
 import time
@@ -182,7 +185,11 @@ def make_runner(op, lib, x, sr, path):
 
     if lib == "audioflux":
         import audioflux as af
-        from audioflux.type import SpectralDataType, SpectralFilterBankScaleType, WindowType
+        from audioflux.type import (
+            SpectralDataType,
+            SpectralFilterBankScaleType,
+            WindowType,
+        )
 
         if op == "resample":
             def run():
@@ -217,7 +224,8 @@ def make_runner(op, lib, x, sr, path):
 
         return lambda: sf.read(path, dtype="float32")[0]
 
-    raise ValueError(f"{lib} does not implement {op}")
+    msg = f"{lib} does not implement {op}"
+    raise ValueError(msg)
 
 
 def time_runner(run, repeats, warmup=1):
