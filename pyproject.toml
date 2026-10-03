@@ -45,7 +45,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Test dependencies. The first two run every Python test module; the rest only feed
+# Test dependencies. numpy and pytest-xdist are required (no markers) and run every Python test module; the rest only feed
 # tests/python/test_librosa_compat.py, which cross-checks load/save/resample/STFT/MFCC/windows
 # against librosa and skips itself (instead of failing) if any of them cannot be imported.
 #
@@ -59,8 +59,8 @@ dependencies = [
 #   * Python 3.15 and newer: numba/llvmlite lag new interpreters by months (3.14 support
 #     arrived in numba 0.63), so leave the cross-check dependencies out until they catch up.
 test = [
+  "numpy",  # unconditional: the NumPy fast-path, SIMD and librosa tests all need it
   "pytest-xdist",
-  "numpy",
   "librosa; python_version < '3.15'",
   "soundfile; python_version < '3.15'",
   "scipy; python_version < '3.15'",

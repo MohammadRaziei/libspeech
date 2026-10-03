@@ -29,11 +29,17 @@ conventions differ); the recorded output shape shows what each produced.
 """
 from __future__ import annotations
 
+# numpy is imported FIRST, deliberately (an isort-sorted file would put it after the stdlib
+# block): its import cost, lazy sub-imports and thread-pool start-up then happen before anything
+# is timed or memory-measured, and libspeech's NumPy-returning calls find it already loaded
+# instead of importing it inside the measured call.
+import numpy as np
+
+# isort: split
+
 import gc
 import math
 import time
-
-import numpy as np
 
 SAMPLE_RATE = 16000
 N_FFT_EXP = 9

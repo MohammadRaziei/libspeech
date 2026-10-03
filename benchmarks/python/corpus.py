@@ -15,12 +15,18 @@ Usage: corpus.py OUT_DIR   (writes OUT_DIR/*.wav and OUT_DIR/manifest.json)
 """
 from __future__ import annotations
 
+# numpy is imported FIRST, deliberately (an isort-sorted file would put it after the stdlib
+# block): its import cost, lazy sub-imports and thread-pool start-up then happen before anything
+# is timed or memory-measured, and libspeech's NumPy-returning calls find it already loaded
+# instead of importing it inside the measured call.
+import numpy as np
+
+# isort: split
+
 import argparse
 import json
 import os
 import wave
-
-import numpy as np
 
 CORPUS = [
     ("speech16k_1s", 16000, 1),

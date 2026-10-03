@@ -26,6 +26,7 @@ Individual stages: `libspeech_bench_corpus`, `_throughput`, `_memory`, `_sizes`,
 ## Methodology
 
 - **Corpus** (`python/corpus.py`): deterministic synthetic speech-like signal, 16-bit mono WAV, so every library reads identical bytes. STFT/MFCC run on the 16 kHz files, resample on the 44.1 kHz files, load on all.
+- **numpy is imported first** in every script that times or measures (`ops.py`, `corpus.py`, `bench_throughput.py`, `bench_op_memory_one.py`), ahead of libspeech and the competitors, so its import cost and lazy sub-imports never land inside a timed or memory-measured call (the per-point memory child has no warm-up call).
 - **What each operation means** is defined once in `python/ops.py` (n_fft 512, hop 128, 13 MFCCs from 26 mels, resample to 16 kHz). Speed and memory both import it.
 - **Timing**: one untimed warm-up, then N timed calls with GC paused; min is the headline, median is stored. Transform objects (STFT, MFCC, Resample) are constructed inside the timed call for every library.
 - **Memory**: one fresh process per data point (`bench_op_memory_one.py`), peak RSS reset via `/proc/self/clear_refs`, reported as the extra memory the call needed on top of the loaded interpreter, library and input. Linux only; elsewhere it falls back to `ru_maxrss`, which can read 0.
@@ -60,16 +61,19 @@ Before optimization the Python API was dominated by building Python objects and 
 - **Resample**: the polyphase bank is now designed directly in double precision from the closed-form Kaiser-windowed sinc (AudioFlux tabulated the same function and linearly interpolated it), cached process-wide (LRU, 32 MiB) so repeated `Resample(src, dst)` costs ~0.07 ms, and run by an AVX2+FMA / NEON kernel blocked for cache, split across cores for long inputs (OpenMP, when available). Same band edges as the old "Best" preset; in-band accuracy went from ~1e-3 (44.1 -> 16 kHz) to ~4e-8, i.e. at or below soxr_hq's own error (1e-7), and the output now agrees with librosa's `soxr_hq` to 1e-6 for every ratio tested. AudioFlux's resampler is created lazily and only backs continuous mode, `isScale`, arbitrary float ratios and non-Kaiser windows.
 - **Load / Audio**: mono decodes straight into the channel buffer, `Audio.size()` no longer copies the channel, `Audio.to_numpy()` avoids Python floats.
 
-Measured in one process, 30 repeats, min ms (libspeech NumPy path, STFT one-sided like librosa; resample against librosa's default `soxr_hq`):
+Measured by the CMake pipeline itself (`libspeech_benchmarks_python`, 7 repeats, best of; libspeech built from this tree, NumPy path, STFT one-sided like librosa; resample against librosa's default `soxr_hq`):
 
-| input | libspeech | librosa | audioflux | scipy |
-|---|---|---|---|---|
-| stft 10 s / 60 s | 2.0 / 12.7 | 4.0 / 21.3 | 8.2 / 47.6 | |
-| mfcc 10 s / 60 s | 2.1 / 11.9 | 6.0 / 28.7 | 17.2 / 113 | |
-| resample 44.1 -> 16 kHz, 10 s / 60 s | 2.8 / 15.9 | 3.0 / 16.4 | 73 / 424 | 8.8 / 45.9 |
-| load 10 s / 44.1 kHz 60 s | 0.45 / 6.2 | 1.4 / 18.5 | | |
+| input (min ms) | libspeech | librosa | audioflux | scipy | soundfile |
+|---|---|---|---|---|---|
+| load 16 kHz 10 s / 60 s | 0.37 / 1.9 | 0.98 / 5.1 | | | 0.48 / 2.0 |
+| load 44.1 kHz 10 s / 60 s | 0.69 / 4.4 | 2.3 / 13.0 | | | 0.97 / 5.0 |
+| stft 10 s / 60 s | 1.4 / 8.3 | 3.9 / 19.8 | 9.5 / 62.9 | | |
+| mfcc 10 s / 60 s | 1.6 / 9.4 | 5.1 / 26.5 | 14.2 / 91.3 | | |
+| resample 44.1 -> 16 kHz, 10 s / 60 s | 2.4 / 14.5 | **2.3 / 13.3** | 53.7 / 297 | 5.3 / 26.7 | |
 
-STFT, MFCC and load are 2x-3x ahead of librosa. Resample is level with soxr_hq (2.8 vs 3.0 ms and 15.9 vs 16.4 ms; run-to-run noise on this machine is 5-15%, so read it as parity, not a win) but with equal or better accuracy and a ~3x faster cached construction path; soxr is a multi-stage design and is hard to beat per core. Multi-core speed-ups (OpenMP in STFT/MFCC/resample) are untested here -- this sandbox has one core.
+Peak extra memory on 60 s inputs (MiB), libspeech / librosa / audioflux: stft 15 / 224 / 97, mfcc 0.7 / 232 / 63, resample 4.2 / 156 / 5.3, load 7.9 / 160 / -. Install size: libspeech 9.6 MiB with dependencies, librosa 123, audioflux 142.
+
+STFT, MFCC and load are 2.4x-3.5x ahead of librosa. **Resample is not ahead: in this run librosa's `soxr_hq` is 7-9% faster** (2.3 vs 2.4 ms, 13.3 vs 14.5 ms); in earlier in-process runs the order flipped by a similar margin, so read it as parity within this machine's 5-15% run-to-run noise -- but with equal or better accuracy (~4e-8 vs soxr's ~1e-7) and a cached construction path. soxr is a multi-stage design and is hard to beat per core. The `libspeech_list` rows (list API, e.g. stft 37 ms for 10 s) show what Python-object conversion costs; use the NumPy path. Multi-core speed-ups (OpenMP in STFT/MFCC/resample) are untested here -- this sandbox has one core.
 
 Also worth knowing: every call logs `Debug`/`Trace` lines to stderr through AixLog, and the Python API has no way to change the level.
 

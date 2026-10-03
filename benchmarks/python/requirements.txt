@@ -1,9 +1,11 @@
+# numpy first: every benchmark script imports it before anything else (see ops.py)
+numpy
+
 # Competitors benchmarked against libspeech
 librosa
 audioflux
 scipy               # scipy.signal.resample_poly, resample-only reference
 soundfile           # libsndfile-backed reader, load-only reference
-numpy
 
 # Benchmark tooling
 pip-size            # github.com/MohammadRaziei/pip-size -- real download-size comparison

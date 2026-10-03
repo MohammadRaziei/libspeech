@@ -343,7 +343,7 @@ elseif(BUILD_PYTHON)
         # to support a much older pip.
         execute_process(
                 COMMAND "${Python3_EXECUTABLE}" -m pip install --break-system-packages
-                nanobind ninja pytest-xdist pip-tools # build requirements
+                nanobind ninja numpy pytest-xdist pip-tools # build + test requirements
                 OUTPUT_QUIET COMMAND_ERROR_IS_FATAL ANY
                 WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
         )

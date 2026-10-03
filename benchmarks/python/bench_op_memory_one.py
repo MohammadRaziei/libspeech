@@ -19,6 +19,14 @@ Usage: bench_op_memory_one.py OP LIBRARY WAV_PATH OUTPUT_JSON
 """
 from __future__ import annotations
 
+# numpy is imported FIRST, deliberately (an isort-sorted file would put it after the stdlib
+# block): its import cost, lazy sub-imports and thread-pool start-up then happen before anything
+# is timed or memory-measured, and libspeech's NumPy-returning calls find it already loaded
+# instead of importing it inside the measured call.
+import numpy as np  # noqa: F401  (imported for its side effects: see above)
+
+# isort: split
+
 import argparse
 import gc
 import json
