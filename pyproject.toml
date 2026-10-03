@@ -45,26 +45,27 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Test dependencies. numpy and pytest-xdist are required (no markers) and run every Python test module; the rest only feed
+# Test dependencies. numpy and pytest-xdist run every Python test module; the rest only feed
 # tests/python/test_librosa_compat.py, which cross-checks load/save/resample/STFT/MFCC/windows
 # against librosa and skips itself (instead of failing) if any of them cannot be imported.
 #
-# Why the markers: librosa pulls in numba -> llvmlite, which publish wheels only for a window
-# of platforms and Python versions. When no wheel exists pip does NOT fall back to an older
-# release -- it picks the newest one, finds only an sdist and tries to compile LLVM, which
-# is exactly how the macOS x86_64 wheel-test job failed (numba 0.68 / llvmlite 0.50 sdists).
-#   * Intel macOS (x86_64, also what the Rosetta test of a universal2 wheel reports): numba
-#     0.63 dropped x86_64 macOS binaries, 0.62.x is the last release that has them, so cap it
-#     there and llvmlite follows numba's own pin to a release that still ships wheels.
-#   * Python 3.15 and newer: numba/llvmlite lag new interpreters by months (3.14 support
-#     arrived in numba 0.63), so leave the cross-check dependencies out until they catch up.
+# The conditions sit on librosa itself, the package we actually depend on. Its dependency chain
+# (numba -> llvmlite) only publishes wheels for some platforms and Python versions, and librosa
+# puts no upper bound on numba (it asks for numba>=0.51), so no librosa version can steer pip
+# away from a numba that has no wheel. When no wheel exists pip does not fall back to an older
+# release: it takes the newest, finds only an sdist and tries to compile LLVM, which is how
+# the macOS x86_64 wheel-test job failed (numba 0.68 / llvmlite 0.50 sdists). So librosa is
+# left out where that chain has no wheels:
+#   * Intel macOS (x86_64; also what the Rosetta test of a universal2 wheel reports):
+#     numba 0.63 dropped x86_64 macOS binaries. The arm64 slice and Linux/Windows still run
+#     the cross-checks.
+#   * Python 3.15 and newer: numba/llvmlite lag new interpreters by months.
 test = [
-  "numpy",  # unconditional: the NumPy fast-path, SIMD and librosa tests all need it
+  "numpy",
   "pytest-xdist",
-  "librosa; python_version < '3.15'",
+  "librosa; python_version < '3.15' and (sys_platform != 'darwin' or platform_machine != 'x86_64')",
   "soundfile; python_version < '3.15'",
   "scipy; python_version < '3.15'",
-  "numba<0.63; python_version < '3.15' and sys_platform == 'darwin' and platform_machine == 'x86_64'",
 ]
 
 
