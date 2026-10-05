@@ -62,6 +62,44 @@ UTEST(FastPaths, DctIIRejectsBadSizes) {
     ASSERT_TRUE(threw);
 }
 
+// ---- dctII (free function) ---------------------------------------------
+
+namespace {
+// The original definition, evaluated naively in double precision.
+std::vector<double> naiveDct(const std::vector<float>& x, int kMax, bool ortho) {
+    const int n = static_cast<int>(x.size());
+    std::vector<double> y(kMax);
+    for (int k = 0; k < kMax; ++k) {
+        double s = 0.0;
+        for (int i = 0; i < n; ++i) s += x[i] * std::cos(M_PI * (2.0 * i + 1.0) * k / (2.0 * n));
+        s *= 2.0;
+        if (ortho) s *= (k == 0) ? std::sqrt(1.0 / (4.0 * n)) : std::sqrt(1.0 / (2.0 * n));
+        y[k] = s;
+    }
+    return y;
+}
+}  // namespace
+
+UTEST(FastPaths, DctIIMatchesTheDefinitionForEverySizeAndPath) {
+    // Power-of-two sizes 16..8192 take the FFT path; 16384 is beyond the engine and 26/100/1000
+    // are not powers of two, so those use the table-driven direct sum.
+    for (int n : {16, 26, 64, 100, 512, 1000, 4096, 8192, 16384}) {
+        std::vector<float> x(n);
+        for (int i = 0; i < n; ++i) x[i] = std::sin(0.013f * i) * 3.0f + std::cos(0.9f * i) - 0.5f;
+        for (int kMax : {1, 13, 25, 40, n}) {
+            if (kMax > n || (n >= 8192 && kMax == n && n > 8192)) continue;  // keep the O(n^2) reference affordable
+            for (bool ortho : {true, false}) {
+                auto got = speech::dsp::dctII(x, kMax, ortho);
+                auto ref = naiveDct(x, kMax, ortho);
+                ASSERT_EQ(got.size(), static_cast<size_t>(kMax));
+                double scale = 1.0;
+                for (double v : ref) scale = std::max(scale, std::fabs(v));
+                for (int k = 0; k < kMax; ++k) ASSERT_TRUE(std::fabs(got[k] - ref[k]) < 2e-5 * scale);
+            }
+        }
+    }
+}
+
 // ---- STFT -------------------------------------------------------------
 
 UTEST(FastPaths, SpectrogramMatchesNestedStft) {

@@ -237,6 +237,24 @@ def test_window_matches_librosa(name, librosa_name, atol):
     np.testing.assert_allclose(got, ref, rtol=0, atol=atol)
 
 
+# --- DCT ----------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("n", "k"),
+    [(26, 13), (64, 64), (100, 40), (512, 13), (512, 512), (1000, 1000), (4096, 4096), (8192, 100), (16384, 16384)],
+)
+@pytest.mark.parametrize("orthonormal", [True, False])
+def test_dct_matches_scipy(n, k, orthonormal):
+    rng = np.random.default_rng(n + k)
+    x = rng.standard_normal(n).astype(np.float32)
+    got = np.asarray(libspeech.dct(x.tolist(), k, orthonormal))
+    ref = scipy_fft.dct(x.astype(np.float64), type=2, norm="ortho" if orthonormal else None)[:k]
+    assert got.shape == ref.shape
+    # float32 FFT/accumulation: relative to the largest output
+    assert np.abs(got - ref).max() <= 2e-5 * max(1.0, np.abs(ref).max())
+
+
 # --- STFT ---------------------------------------------------------------------------
 
 

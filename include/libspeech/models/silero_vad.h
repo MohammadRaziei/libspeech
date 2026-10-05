@@ -57,7 +57,7 @@ class SPEECH_API SileroVadModel : public ONNXModel {
 
    public:
     // Constructor: sets model path, sample rate, window size (ms), and other parameters.
-    SileroVadModel(const std::string& model_path = "silero_vad.onnx",
+    SileroVadModel(const std::string& model_path = "silero-vad.onnx",
                    const int sample_rate = 16000, int window_frame_size = 32,
                    float threshold = 0.5, int min_silence_duration_ms = 100,
                    int speech_pad_ms = 30, int min_speech_duration_ms = 250,

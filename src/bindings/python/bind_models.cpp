@@ -36,7 +36,7 @@ NB_MODULE(NB_MODULE_NAME, m) {
 
     nb::class_<speech::models::SileroVadModel>(m, "SileroVad")
         .def(nb::init<const std::string&, int, int, float, int, int, int, float>(),
-             nb::arg("model_path") = "silero_vad.onnx",
+             nb::arg("model_path") = "silero-vad.onnx",
              nb::arg("sample_rate") = 16000,
              nb::arg("window_frame_size") = 32,
              nb::arg("threshold") = 0.5f,
