@@ -1,45 +1,42 @@
 //
-// Created by mohammad on 3/19/25.
+// Facebook (demucs DNS64) denoiser backend.
 //
 
 #ifndef LIBSPEECH_FACEBOOK_DENOISER_H
 #define LIBSPEECH_FACEBOOK_DENOISER_H
 
-
-#include "libspeech/models/onnx_model.h"
-#include "libspeech/models/denoiser.h"
-#include "libspeech/export.h"
+#include <cstddef>
+#include <memory>
+#include <string>
 #include <vector>
+
+#include "libspeech/export.h"
+#include "libspeech/models/denoiser.h"
 
 namespace speech::models {
 
 /**
- * FacebookDenoiser class: Inherits from ONNXModel and provides functionality for denoising audio.
+ * Facebook (demucs DNS64) denoiser. Normally created through Denoiser::Create("facebook", ...), but can be
+ * constructed directly. Not copyable; see Denoiser for the process()/close() contract.
  */
-class SPEECH_API FacebookDenoiser : public ONNXModel, public Denoiser {
+class SPEECH_API FacebookDenoiser final : public Denoiser {
    public:
     /**
-     * Constructor for FacebookDenoiser.
-     * @param url The URL of the ONNX model file to download.
+     * @param url Model file name or URL of the ONNX model (downloaded to the cache dir on first use).
      * @param sample_rate The sample rate (Hz) the model expects its input at. Defaults to 16000.
+     * @param num_threads ONNX Runtime intra-op threads: 1 (default), or 0 for one per hardware thread.
      */
-    FacebookDenoiser(const std::string& url, const int sample_rate=16000);
+    explicit FacebookDenoiser(const std::string& url, int sample_rate = 16000, int num_threads = 1);
 
-    /**
-     * Destructor for FacebookDenoiser.
-     */
-    virtual ~FacebookDenoiser();
+    ~FacebookDenoiser() override;
 
-    /**
-     * Processes an input audio tensor using the denoiser model.
-     * @param input_audio A vector of floats representing the input audio (normalized between -1 and 1).
-     * @return A vector of floats representing the denoised audio.
-     */
-    std::vector<float> process(const std::vector<float>& input_audio) override;
+   protected:
+    std::vector<float> processImpl(const float* data, std::size_t size) override;
+    void closeImpl() noexcept override;
 
-    /** Releases the ONNX Runtime session; see Denoiser::close(). */
-    void close() override { close_session(); }
-
+   private:
+    struct Impl;  // ONNX Runtime state, defined in the .cpp
+    std::unique_ptr<Impl> impl_;
 };
 
 }  // namespace speech::models

@@ -95,8 +95,11 @@ mfcc = libspeech.MFCC(libspeech.MFCCParams())
 coefficients = mfcc.compute(resampled.data(0))   # [num_frames][num_coefficients]
 
 # --- Speech models ---
-denoiser = libspeech.Denoiser.create("facebook", "facebook_denoiser.onnx")
-clean = denoiser.process(resampled.data(0))
+# `with` frees the model's memory on exit (or call denoiser.close()). process() takes a list or a
+# 1-D NumPy array (and returns the same kind) and lets other Python threads run while it works.
+# num_threads: 1 (default), or 0 = one ONNX Runtime thread per hardware thread.
+with libspeech.Denoiser.create("facebook", "facebook_denoiser.onnx", num_threads=1) as denoiser:
+    clean = denoiser.process(resampled.data(0))
 
 vad = libspeech.SileroVad()
 vad.process(resampled.data(0))
@@ -121,7 +124,8 @@ speech::dsp::MFCC mfcc(params);
 auto coefficients = mfcc.compute(resampled.data(0));
 
 auto denoiser = speech::models::Denoiser::Create("facebook", "facebook_denoiser.onnx");
-auto clean = denoiser->process(resampled.data(0));
+auto clean = denoiser->process(resampled.data(0));   // also: process(const float*, size_t)
+denoiser->close();                                    // optional: frees the model now, not at destruction
 ```
 
 See [`examples/`](examples/) for complete, runnable programs.

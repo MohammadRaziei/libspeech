@@ -162,6 +162,9 @@ result = "{major}.{minor}.{patch}"
 minversion = "6.0"
 addopts = ["-ra", "--showlocals", "--strict-markers", "--strict-config"]
 xfail_strict = true
+markers = [
+    "models: heavy end-to-end tests that need the real ONNX models (download, ~1 GB RAM); skipped unless run with `-m models` (see tests/python/conftest.py), which only cmake.yml does",
+]
 filterwarnings = [
     "error",
     "ignore:(ast.Str|Attribute s|ast.NameConstant|ast.Num) is deprecated:DeprecationWarning:_pytest",  # Python 3.12

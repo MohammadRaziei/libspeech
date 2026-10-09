@@ -7,7 +7,8 @@ of the plain-data SpeechTimestamp helper.
 
 from __future__ import annotations
 
-from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
@@ -41,20 +42,57 @@ def test_silero_vad_rejects_missing_model():
         libspeech.SileroVad(model_path="this_model_definitely_does_not_exist.onnx")
 
 
-_FB_MODEL = Path.home() / ".libspeech" / "facebook-denoiser-dns64.onnx"
+def test_denoiser_create_rejects_negative_num_threads():
+    with pytest.raises(ValueError):
+        libspeech.Denoiser.create("facebook", "foo.onnx", num_threads=-1)
 
 
-@pytest.mark.skipif(not _FB_MODEL.exists(), reason="needs facebook-denoiser-dns64.onnx in ~/.libspeech")
-def test_denoiser_close_and_destroy():
-    # Regression: Denoiser.create() used to fail to convert its return value, and destroying
-    # the object aborted the process (free(): invalid pointer).
-    d = libspeech.Denoiser.create("facebook", str(_FB_MODEL))
-    audio = [0.0] * 1600
-    assert len(d.process(audio)) == len(audio)
-    d.close()
-    d.close()  # idempotent
-    with pytest.raises(RuntimeError):
-        d.process(audio)
-    del d
-    with libspeech.Denoiser.create("facebook", str(_FB_MODEL)) as d2:
-        assert len(d2.process(audio)) == len(audio)
+# Heavy test: needs the real model, so it is marked `models` and skipped unless run with
+# `pytest -m models` (cmake.yml). It is kept as small as possible while still covering what broke:
+# two model loads and ONE real inference (the model needs seconds per call whatever the clip
+# length), run in a subprocess so a crash is reported as a failure instead of killing pytest.
+_DENOISER_SCRIPT = """
+import gc
+import numpy as np
+import libspeech
+
+MODEL = "facebook-denoiser-dns64.onnx"   # downloaded to ~/.libspeech on first use
+x = (0.05 * np.random.default_rng(0).standard_normal(4000)).astype(np.float32)
+
+d = libspeech.Denoiser.create("facebook", MODEL)
+assert d.sample_rate == 16000 and not d.closed
+y = d.process(x)  # the only real inference: NumPy in -> float32 NumPy out, same length
+assert isinstance(y, np.ndarray) and y.dtype == np.float32 and y.shape == x.shape
+try:
+    d.process(np.zeros(0, np.float32))
+    raise SystemExit("empty input did not raise")
+except ValueError:
+    pass
+
+# Destroying a denoiser that is still open used to abort the process ("free(): invalid pointer").
+del d
+gc.collect()
+
+# `with` closes it. Afterwards process() must raise for both input kinds (this also proves the
+# list overload exists, without running the model), close() is idempotent, and the closed object
+# is left alive on purpose so the interpreter has to shut down cleanly with it.
+with libspeech.Denoiser.create("facebook", MODEL) as d2:
+    pass
+assert d2.closed
+for bad in (x, x.tolist()):
+    try:
+        d2.process(bad)
+        raise SystemExit("process() after close() did not raise")
+    except RuntimeError:
+        pass
+d2.close()
+"""
+
+
+@pytest.mark.models
+def test_denoiser_end_to_end_and_clean_shutdown():
+    r = subprocess.run(
+        [sys.executable, "-c", _DENOISER_SCRIPT],
+        capture_output=True, text=True, timeout=300, check=False,
+    )
+    assert r.returncode == 0, f"exit={r.returncode}\n{r.stderr[-1200:]}"

@@ -1,42 +1,69 @@
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/string.h>
-#include <nanobind/stl/shared_ptr.h>
+#include <nanobind/stl/unique_ptr.h>
 #include <nanobind/stl/vector.h>
 
 #include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "libspeech/models/denoiser.h"
 #include "libspeech/models/silero_vad.h"
+#include "ndarray_util.h"
 
 namespace nb = nanobind;
 
 NB_MODULE(NB_MODULE_NAME, m) {
     // --- speech::models::Denoiser ---------------------------------------------------------
     // Abstract interface: no public constructor is exposed, matching the
-    // C++ API -- the only way to get one is speech::models::Denoiser.create(...).
+    // C++ API -- the only way to get one is Denoiser.create(...).
+    //
+    // `create` hands Python a unique_ptr<Denoiser>. That is only sound because every backend
+    // derives from Denoiser alone (single inheritance), so the Denoiser* is the start of the
+    // allocation: nanobind runs ~T() and then operator delete() on exactly that pointer. With the
+    // old (ONNXModel, Denoiser) multiple inheritance it sat at offset 200 and freeing it aborted
+    // with "free(): invalid pointer". test_denoiser_close_and_destroy guards this invariant.
     nb::class_<speech::models::Denoiser>(m, "Denoiser")
-        // Returned as shared_ptr, not unique_ptr. With unique_ptr, destroying the Python
-        // object aborted with "free(): invalid pointer" for both backends. Likely cause
-        // (inferred, not proven): the backends inherit (ONNXModel, Denoiser), so the Denoiser
-        // subobject is not at the start of the allocation and the wrong address got freed.
-        // The shared_ptr keeps its own deleter for the full object.
         .def_static("create",
-                    [](const std::string& backend, const std::string& model_path, int sample_rate) {
-                        return std::shared_ptr<speech::models::Denoiser>(
-                            speech::models::Denoiser::Create(backend, model_path, sample_rate));
-                    },
-                    "Creates a denoiser backend.",
-                    nb::arg("backend"), nb::arg("model_path"), nb::arg("sample_rate") = 16000)
+                    &speech::models::Denoiser::Create,
+                    "Creates a denoiser backend ('facebook' or 'speechbrain'). model_path may be a "
+                    "local file or a URL (weights are downloaded on first use). num_threads is the "
+                    "ONNX Runtime intra-op thread count: 1 (default), or 0 for one per hardware thread.",
+                    nb::arg("backend"), nb::arg("model_path"), nb::arg("sample_rate") = 16000,
+                    nb::arg("num_threads") = 1)
+        // NumPy first so arrays take the zero-copy path; float64 arrays are converted to float32.
+        // The GIL is released while the model runs, so other Python threads keep going.
+        .def("process",
+             [](speech::models::Denoiser& self, speech::py::InArray1D input_audio) {
+                 std::vector<float> out;
+                 {
+                     nb::gil_scoped_release release;
+                     out = self.process(input_audio.data(), input_audio.size());
+                 }
+                 auto* owner = new std::vector<float>(std::move(out));
+                 nb::capsule keep(owner, [](void* p) noexcept { delete static_cast<std::vector<float>*>(p); });
+                 return speech::py::OutArray1D(owner->data(), {owner->size()}, keep);
+             },
+             "Denoises mono audio given as a 1-D NumPy array ([-1, 1]-normalized). Returns a "
+             "float32 NumPy array of the same length. Raises RuntimeError if the denoiser is closed.",
+             nb::arg("input_audio"))
+        .def("process",
+             [](speech::models::Denoiser& self, const std::vector<float>& input_audio) {
+                 nb::gil_scoped_release release;
+                 return self.process(input_audio);
+             },
+             "Denoises mono audio (a list of [-1, 1]-normalized floats). "
+             "Returns denoised audio, the same length as the input.",
+             nb::arg("input_audio"))
         .def("close", &speech::models::Denoiser::close,
              "Releases the model and its memory right away. Safe to call more than once; "
              "process() raises RuntimeError afterwards.")
+        .def_prop_ro("closed", &speech::models::Denoiser::closed, "True once close() was called.")
+        .def_prop_ro("sample_rate", [](const speech::models::Denoiser& d) { return d.sample_rate; },
+                     "Sample rate (Hz) the model expects its input at.")
         .def("__enter__", [](nb::handle self) { return self; })
-        .def("__exit__", [](speech::models::Denoiser& self, nb::args) { self.close(); })
-        .def("process", &speech::models::Denoiser::process,
-             "Denoises mono audio (a list of [-1, 1]-normalized floats). "
-             "Returns denoised audio, the same length as the input.",
-             nb::arg("input_audio"));
+        .def("__exit__", [](speech::models::Denoiser& self, nb::args) { self.close(); });
 
     // --- speech::models::SileroVadModel -----------------------------------------------------
     nb::class_<speech::models::timestamp_t>(m, "SpeechTimestamp")

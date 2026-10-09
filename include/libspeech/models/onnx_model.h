@@ -53,12 +53,6 @@ class SPEECH_API ONNXModel : public BaseModel {
      */
     void init_engine_threads(int inter_threads, int intra_threads);
 
-    /**
-     * Releases the ONNX Runtime session and the memory it holds. Idempotent.
-     * The model cannot run inference afterwards.
-     */
-    void close_session();
-
 public:
     const int sample_rate;
 };

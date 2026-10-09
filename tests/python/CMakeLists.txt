@@ -50,6 +50,19 @@ if(TARGET speech_io_py)
         add_python_test(simd)
         add_python_test(librosa_compat)   # needs the `test` extra (librosa, soundfile, scipy); skips itself without
 
+        # Heavy end-to-end Denoiser test (real ONNX model: download + ~1 GB RAM). It is marked
+        # `models`, so every normal pytest run skips it (tests/python/conftest.py) -- the wheel
+        # tests in wheels.yml / cibuildwheel, speech_coverage_python, a plain local run. It runs
+        # only when asked for, via this target, which cmake.yml builds. Deliberately NOT part of
+        # speech_test_python or ctest.
+        add_custom_target(speech_test_python_models_e2e
+            COMMAND ${CMAKE_COMMAND} -E echo "-- Running Python model tests: pytest -m models"
+            COMMAND ${Python3_EXECUTABLE} -m pytest ${CMAKE_CURRENT_SOURCE_DIR}/test_models.py -m models
+            WORKING_DIRECTORY ${PYTHON_PROJECT_NAME}
+            USES_TERMINAL
+        )
+        add_dependencies(speech_test_python_models_e2e ${PYTHON_BIND_MODULES} speech)
+
         # ---------------------------------------------------------------
         # Python coverage (coverage.py -> lcov, same flow as ctoon's
         # ctoon_coverage_python). Needs `pip install coverage` and

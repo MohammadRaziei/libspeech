@@ -126,6 +126,12 @@ jobs:
     - name: Generate coverage report
       run: cmake --build build --target speech_coverage
 
+    # Heavy end-to-end Denoiser test (downloads the ONNX model, ~1 GB RAM). It carries the
+    # `models` pytest marker, so the normal pytest runs (wheels.yml / cibuildwheel, the coverage
+    # run above) skip it; this is the one place it runs (pytest -m models).
+    - name: Run model tests (pytest -m models)
+      run: cmake --build build --target speech_test_python_models_e2e
+
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v5
       with:
