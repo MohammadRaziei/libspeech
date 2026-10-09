@@ -1,5 +1,6 @@
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/string.h>
+#include <nanobind/stl/shared_ptr.h>
 #include <nanobind/stl/vector.h>
 
 #include <memory>
@@ -15,9 +16,23 @@ NB_MODULE(NB_MODULE_NAME, m) {
     // Abstract interface: no public constructor is exposed, matching the
     // C++ API -- the only way to get one is speech::models::Denoiser.create(...).
     nb::class_<speech::models::Denoiser>(m, "Denoiser")
-        .def_static("create", &speech::models::Denoiser::Create,
-                     "Creates a denoiser backend.",
-                     nb::arg("backend"), nb::arg("model_path"), nb::arg("sample_rate") = 16000)
+        // Returned as shared_ptr, not unique_ptr. With unique_ptr, destroying the Python
+        // object aborted with "free(): invalid pointer" for both backends. Likely cause
+        // (inferred, not proven): the backends inherit (ONNXModel, Denoiser), so the Denoiser
+        // subobject is not at the start of the allocation and the wrong address got freed.
+        // The shared_ptr keeps its own deleter for the full object.
+        .def_static("create",
+                    [](const std::string& backend, const std::string& model_path, int sample_rate) {
+                        return std::shared_ptr<speech::models::Denoiser>(
+                            speech::models::Denoiser::Create(backend, model_path, sample_rate));
+                    },
+                    "Creates a denoiser backend.",
+                    nb::arg("backend"), nb::arg("model_path"), nb::arg("sample_rate") = 16000)
+        .def("close", &speech::models::Denoiser::close,
+             "Releases the model and its memory right away. Safe to call more than once; "
+             "process() raises RuntimeError afterwards.")
+        .def("__enter__", [](nb::handle self) { return self; })
+        .def("__exit__", [](speech::models::Denoiser& self, nb::args) { self.close(); })
         .def("process", &speech::models::Denoiser::process,
              "Denoises mono audio (a list of [-1, 1]-normalized floats). "
              "Returns denoised audio, the same length as the input.",

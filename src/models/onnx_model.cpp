@@ -57,6 +57,10 @@ void ONNXModel::init_engine_threads(int inter_threads, int intra_threads) {
     session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
 }
 
+void ONNXModel::close_session() {
+    session.reset();
+}
+
 ONNXModel::~ONNXModel() {
 
 }

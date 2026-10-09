@@ -28,6 +28,9 @@ FacebookDenoiser::FacebookDenoiser(const std::string& url, const int sample_rate
  * @return A vector of floats representing the denoised audio.
  */
 std::vector<float> FacebookDenoiser::process(const std::vector<float>& input_audio) {
+    if (!session) {
+        throw std::runtime_error("Denoiser is closed.");
+    }
     if (input_audio.empty()) {
         throw std::invalid_argument("Input audio data is empty.");
     }

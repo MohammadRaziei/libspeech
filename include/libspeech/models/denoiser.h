@@ -27,6 +27,13 @@ class SPEECH_API Denoiser {
      */
     virtual std::vector<float> process(const std::vector<float>& input_audio) = 0;
 
+    /**
+     * Releases the underlying inference session (and the memory it holds) right away,
+     * instead of waiting for the object to be destroyed. Idempotent. After close(),
+     * process() throws std::runtime_error.
+     */
+    virtual void close() {}
+
     // Factory: picks a backend by name ("facebook" | "speechbrain").
     static std::unique_ptr<Denoiser> Create(const std::string& backend,
                                              const std::string& url,

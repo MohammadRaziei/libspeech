@@ -7,6 +7,8 @@ of the plain-data SpeechTimestamp helper.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 import libspeech
@@ -37,3 +39,22 @@ def test_silero_vad_rejects_missing_model():
     # has, so this should fail cleanly (a 404 -> RuntimeError), not crash.
     with pytest.raises(RuntimeError):
         libspeech.SileroVad(model_path="this_model_definitely_does_not_exist.onnx")
+
+
+_FB_MODEL = Path.home() / ".libspeech" / "facebook-denoiser-dns64.onnx"
+
+
+@pytest.mark.skipif(not _FB_MODEL.exists(), reason="needs facebook-denoiser-dns64.onnx in ~/.libspeech")
+def test_denoiser_close_and_destroy():
+    # Regression: Denoiser.create() used to fail to convert its return value, and destroying
+    # the object aborted the process (free(): invalid pointer).
+    d = libspeech.Denoiser.create("facebook", str(_FB_MODEL))
+    audio = [0.0] * 1600
+    assert len(d.process(audio)) == len(audio)
+    d.close()
+    d.close()  # idempotent
+    with pytest.raises(RuntimeError):
+        d.process(audio)
+    del d
+    with libspeech.Denoiser.create("facebook", str(_FB_MODEL)) as d2:
+        assert len(d2.process(audio)) == len(audio)

@@ -37,6 +37,9 @@ class SPEECH_API FacebookDenoiser : public ONNXModel, public Denoiser {
      */
     std::vector<float> process(const std::vector<float>& input_audio) override;
 
+    /** Releases the ONNX Runtime session; see Denoiser::close(). */
+    void close() override { close_session(); }
+
 };
 
 }  // namespace speech::models

@@ -35,6 +35,9 @@ SpeechBrainDenoiser::SpeechBrainDenoiser(const std::string& url, const int sampl
  * @return A vector of floats representing the denoised audio.
  */
 std::vector<float> SpeechBrainDenoiser::process(const std::vector<float>& input_audio) {
+    if (!session) {
+        throw std::runtime_error("Denoiser is closed.");
+    }
     if (input_audio.empty()) {
         throw std::invalid_argument("Input audio data is empty.");
     }
