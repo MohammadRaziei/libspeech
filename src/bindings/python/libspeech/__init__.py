@@ -98,7 +98,13 @@ from .speech_dsp_py import (
 # names (speech_dsp/speech_io/speech_models -> speech_dsp_py/speech_io_py/
 # speech_models_py) so the two naming schemes stay in sync.
 from .speech_io_py import Audio
-from .speech_models_py import Denoiser, SileroVad, SpeechTimestamp
+from .speech_models_py import (
+    Denoiser,
+    SileroVad,
+    SpeechTimestamp,
+    get_log_level,
+    set_log_level,
+)
 
 __all__ = [
     "FFT",
@@ -113,6 +119,8 @@ __all__ = [
     "WindowType",
     "__version__",
     "dct",
+    "get_log_level",
+    "set_log_level",
     "set_simd_enabled",
     "simd_backend",
     "simd_enabled",

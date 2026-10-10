@@ -94,6 +94,14 @@ resampled.save("sample_16k_mono.wav")
 mfcc = libspeech.MFCC(libspeech.MFCCParams())
 coefficients = mfcc.compute(resampled.data(0))   # [num_frames][num_coefficients]
 
+# With NumPy arrays (float32 in, float32 NumPy out, no list conversion) every transform is fast:
+x = resampled.to_numpy()                 # float32 1-D array (any float32 array works)
+stft = libspeech.STFT(9, libspeech.WindowType.hann, 128)
+re, im = stft.stft(x, onesided=True)    # (frames, 257); onesided=False gives all 512 bins
+y = stft.istft(re, im)                  # back to a signal; accepts 512 or 257 columns
+fft = libspeech.FFT(12)
+spectrum_re, spectrum_im = fft.forward(x[:4096])   # real input uses a real-FFT; also inverse/dct/idct
+
 # --- Speech models ---
 # `with` frees the model's memory on exit (or call denoiser.close()). process() takes a list or a
 # 1-D NumPy array (and returns the same kind) and lets other Python threads run while it works.
@@ -129,6 +137,28 @@ denoiser->close();                                    // optional: frees the mod
 ```
 
 See [`examples/`](examples/) for complete, runnable programs.
+
+### Logging
+
+libspeech is quiet by default: it only writes warnings and errors to stderr. Turn the detail up (or
+everything off) from Python, C++, or the environment:
+
+```python
+import libspeech
+libspeech.set_log_level("debug")   # trace | debug | info | warning (default) | error | off
+libspeech.get_log_level()          # "debug"
+```
+
+```cpp
+#include "libspeech/utils/log.h"
+speech::utils::setLogLevel(speech::utils::LogLevel::Off);
+```
+
+```bash
+LIBSPEECH_LOG=debug python my_script.py   # the starting level; set_log_level() overrides it
+```
+
+Lines look like `2026-10-09 12:00:00.123 [debug] (speech::dsp::FFT) Created FFT: ...`.
 
 ## 🧪 Testing
 

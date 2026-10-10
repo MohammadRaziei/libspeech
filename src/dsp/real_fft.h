@@ -21,12 +21,21 @@ namespace speech::dsp::rfft_impl {
 
 class RealFrameFFT {
    public:
-    // Supported frame lengths: powers of two in [kMinLength, kMaxLength]
-    // (the kernel keeps its split re/im work arrays on the stack).
+    // Frame lengths used by STFT/MFCC: powers of two in [kMinLength, kMaxLength]. Their work
+    // arrays live on the stack (and so does the one in power()), which is what keeps the
+    // per-frame hot path allocation-free and safe on threads with small stacks.
     static constexpr int kMinLength = 16;
     static constexpr int kMaxLength = 8192;
     static bool supports(int fftLength) {
         return fftLength >= kMinLength && fftLength <= kMaxLength &&
+               (fftLength & (fftLength - 1)) == 0;
+    }
+
+    // Wider range for callers that transform one big frame at a time (speech::dsp::FFT): above
+    // kMaxLength the work arrays come from the heap, per call. power() is not available there.
+    static constexpr int kMaxLargeLength = 1 << 17;  // the bit-reversal table holds 16-bit indices
+    static bool supportsLarge(int fftLength) {
+        return fftLength >= kMinLength && fftLength <= kMaxLargeLength &&
                (fftLength & (fftLength - 1)) == 0;
     }
 
@@ -41,6 +50,17 @@ class RealFrameFFT {
 
     // |X[k]|^2 for k in [0, numBins()). power: numBins() floats, fully overwritten.
     void power(const float* frame, float* power) const;
+
+    // Inverse of spectrum() WITHOUT the window: rebuilds the real frame x[0, fftLength) whose
+    // one-sided spectrum is (re, im) -- numBins() floats each -- including the 1/fftLength
+    // scaling, so inverse(spectrum(x)) returns x when the window is all ones. The imaginary parts of the
+    // DC and Nyquist bins belong to no real signal and are ignored. `frame` is fully
+    // overwritten and must not alias re/im. Same structure as the forward kernel: one
+    // fftLength/2-point complex FFT instead of an fftLength-point one.
+    void inverse(const float* re, const float* im, float* frame) const;
+
+    // The fftLength analysis-window weights this engine was built with.
+    [[nodiscard]] const float* window() const { return window_.data(); }
 
    private:
     int n_;

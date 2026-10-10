@@ -48,6 +48,9 @@ add_executable(test_cpp_dsp
 )
 target_include_directories(test_cpp_dsp PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/utest)
 target_link_libraries(test_cpp_dsp PRIVATE speech_dsp)
+# The istft tests compare against AudioFlux's own C kernel (stftObj_istft), whose header lives in the
+# private AudioFlux source dir.
+target_include_directories(test_cpp_dsp PRIVATE ${PROJECT_SOURCE_DIR}/src/third_party/audioflux/src)
 
 add_test(NAME cpp_dsp COMMAND test_cpp_dsp)
 

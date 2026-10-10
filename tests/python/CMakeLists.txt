@@ -45,6 +45,7 @@ if(TARGET speech_io_py)
 
         add_python_test(audio)
         add_python_test(models)
+        add_python_test(logging)
         add_python_test(dsp)
         add_python_test(numpy_api)
         add_python_test(simd)

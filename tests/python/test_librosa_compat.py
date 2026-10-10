@@ -285,6 +285,24 @@ def test_full_stft_is_librosas_spectrum_plus_its_conjugate_mirror():
     assert np.abs(full[257:] - np.conj(ref[1:256][::-1])).max() <= 1e-5 * np.abs(ref).max()
 
 
+@pytest.mark.parametrize(("radix2_exp", "hop"), [(9, 128), (10, 256)])
+def test_istft_matches_librosa(radix2_exp, hop):
+    x = noisy_speechlike()
+    n_fft = 1 << radix2_exp
+    stft = libspeech.STFT(radix2_exp, libspeech.WindowType.hann, hop)
+    re, im = stft.stft(x, onesided=True)
+
+    ours = stft.istft(re, im)  # weighted overlap-add, the default
+    ref = librosa.istft((re + 1j * im).T, hop_length=hop, win_length=n_fft, n_fft=n_fft, window="hann", center=False)
+
+    assert ours.shape == ref.shape
+    # Compared away from the first/last n_fft samples: there the window sum-of-squares is ~0 and
+    # the two libraries normalize differently (librosa divides by almost nothing, libspeech
+    # leaves samples below a 1e-6 floor alone) -- a boundary effect, not a difference in the maths.
+    inner = slice(n_fft, -n_fft)
+    assert np.abs(ours[inner] - ref[inner]).max() <= 2e-5 * max(1.0, np.abs(ref[inner]).max())
+
+
 # --- MFCC ---------------------------------------------------------------------------
 
 

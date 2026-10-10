@@ -3,6 +3,7 @@
 
 #include "libspeech/models/silero_vad.h" // Include the SileroVAD model header
 #include "libspeech/utils/utils.h"           // For downloadFile utility
+#include "libspeech/utils/log.h"             // For setLogLevel
 
 #include "libspeech/models/facebook_denoiser.h"
 #include "libspeech/models/speechbrain_denoiser.h"
@@ -41,6 +42,7 @@ int main0() {
 
 int main2() {
     AixLog::Log::init<AixLog::SinkCout>(AixLog::Severity::trace);
+    speech::utils::setLogLevel(speech::utils::LogLevel::Trace);  // libspeech itself is quiet (warnings only) by default
     try {
 
         // Initialize the SileroVAD model
@@ -90,6 +92,7 @@ int main2() {
 int main5() {
     try {
         AixLog::Log::init<AixLog::SinkCout>(AixLog::Severity::trace);
+        speech::utils::setLogLevel(speech::utils::LogLevel::Trace);  // libspeech itself is quiet (warnings only) by default
 
         // Define the model URL and base directory.
 
@@ -173,6 +176,7 @@ int main1() {
 
 int main4() {
     AixLog::Log::init<AixLog::SinkCout>(AixLog::Severity::trace);
+    speech::utils::setLogLevel(speech::utils::LogLevel::Trace);  // libspeech itself is quiet (warnings only) by default
     try {
 
         // Initialize the SileroVAD model
@@ -222,6 +226,7 @@ int main4() {
 int main() {
     try {
         AixLog::Log::init<AixLog::SinkCout>(AixLog::Severity::trace);
+        speech::utils::setLogLevel(speech::utils::LogLevel::Trace);  // libspeech itself is quiet (warnings only) by default
 
         // Define the model URL and base directory.
 

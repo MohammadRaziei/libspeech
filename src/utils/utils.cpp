@@ -4,12 +4,14 @@
 #include <fstream>
 #include <iostream>
 #include <cstdlib>
+#include <stdexcept>
 
 #include <httpp/download.hpp>
 
 #include "libspeech/utils/utils.h"
 
 #include "aixlog.hpp"
+#include "libspeech/detail/log.h"
 
 
 namespace {
@@ -49,7 +51,7 @@ std::filesystem::path speech::utils::getDefaultModelCacheDir() {
     // crashing (constructing a std::filesystem::path from a null pointer,
     // e.g. `std::filesystem::path(getenv("HOME"))` when HOME is unset, is
     // undefined behavior -- this is exactly the bug being fixed here).
-    LOG(WARNING) << TAG("speech::utils::getDefaultModelCacheDir")
+    SPEECH_LOG(WARNING) << TAG("speech::utils::getDefaultModelCacheDir")
                  << "Could not determine the user's home directory (HOME/USERPROFILE/"
                     "HOMEDRIVE+HOMEPATH all unset); falling back to the system temp "
                     "directory for downloaded model weights."
@@ -69,7 +71,7 @@ std::filesystem::path speech::utils::downloadFile(const std::string& url, const 
 
     // Check if the file already exists and force is false
     if (!force && std::filesystem::exists(finalOutputPath)) {
-        LOG(INFO) << TAG(kTag) << COND(!quiet)
+        SPEECH_LOG(INFO) << TAG(kTag) << COND(!quiet)
                   << "File already exists: " << finalOutputPath << ". Skipping download." << std::endl;
         return finalOutputPath;
     }
@@ -78,7 +80,7 @@ std::filesystem::path speech::utils::downloadFile(const std::string& url, const 
     std::filesystem::path parentDir = finalOutputPath.parent_path();
     if (!parentDir.empty() && !std::filesystem::exists(parentDir)) {
         if (!std::filesystem::create_directories(parentDir)) {
-            LOG(INFO) << TAG(kTag) << COND(!quiet)
+            SPEECH_LOG(INFO) << TAG(kTag) << COND(!quiet)
                       << "Error: Could not create directory: " << parentDir << std::endl;
             return {};  // Return an empty path on failure
         }
@@ -103,15 +105,40 @@ std::filesystem::path speech::utils::downloadFile(const std::string& url, const 
                                       .run();
 
     if (!quiet) {
-        LOG(INFO) << TAG(kTag) << "\nDownload completed: " << finalOutputPath << std::endl;
+        SPEECH_LOG(INFO) << TAG(kTag) << "\nDownload completed: " << finalOutputPath << std::endl;
     }
 
     if (!res.ok) {
-        LOG(ERROR) << TAG(kTag) << COND(!quiet)
+        SPEECH_LOG(ERROR) << TAG(kTag) << COND(!quiet)
                   << "Error: Failed to download file. httpp error: " << res.error
                   << " (status " << res.status << ")" << std::endl;
         return {};
     }
 
     return finalOutputPath;
+}
+
+// --- log level ----------------------------------------------------------------------------------
+// The state itself lives in libspeech/detail/log.h (inline, shared by every library bundled into
+// libspeech.so); these exported functions are the only way code outside the library reaches it.
+
+void speech::utils::setLogLevel(LogLevel level) noexcept {
+    speech::detail::levelStorage().store(static_cast<int>(level), std::memory_order_relaxed);
+}
+
+speech::utils::LogLevel speech::utils::getLogLevel() noexcept {
+    return speech::detail::currentLevel();
+}
+
+speech::utils::LogLevel speech::utils::parseLogLevel(const std::string& name) {
+    LogLevel level = LogLevel::Warning;
+    if (!speech::detail::tryParseLevel(name, level)) {
+        throw std::invalid_argument("Unknown log level '" + name +
+                                    "' (use trace, debug, info, warning, error or off).");
+    }
+    return level;
+}
+
+const char* speech::utils::logLevelName(LogLevel level) noexcept {
+    return speech::detail::levelName(level);
 }

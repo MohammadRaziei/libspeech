@@ -10,6 +10,7 @@
 #include <stdexcept>
 
 #include "aixlog.hpp"
+#include "libspeech/detail/log.h"
 #include "dsp/resample_algorithm.h"  // Vendored AudioFlux C header (src/third_party/audioflux)
 #include "simd_internal.h"
 
@@ -565,7 +566,7 @@ Resample::Resample(int sourceRate, int targetRate)
     // behavior can use the extended constructor with isScale=true.
     // Full write-up: /audioflux_issues.md (Issue 2).
     if (isIdentity) {
-        LOG(DEBUG) << TAG(kTag) << "Source/target rate both " << sourceRate
+        SPEECH_LOG(DEBUG) << TAG(kTag) << "Source/target rate both " << sourceRate
                    << "Hz; using identity passthrough (skipping AudioFlux)." << std::endl;
         return;
     }
@@ -574,7 +575,7 @@ Resample::Resample(int sourceRate, int targetRate)
         ensureAudioFlux();
         buildPolyphaseFromTables();
     }
-    LOG(DEBUG) << TAG(kTag) << "Created resampler: " << sourceRate << "Hz -> " << targetRate
+    SPEECH_LOG(DEBUG) << TAG(kTag) << "Created resampler: " << sourceRate << "Hz -> " << targetRate
                << "Hz." << std::endl;
 }
 
@@ -600,7 +601,7 @@ Resample::Resample(int sourceRate, int targetRate, int zeroNum, int nbit, Window
     params_.isContinue = isContinue;
 
     if (isIdentity) {
-        LOG(DEBUG) << TAG(kTag) << "Source/target rate both " << sourceRate
+        SPEECH_LOG(DEBUG) << TAG(kTag) << "Source/target rate both " << sourceRate
                    << "Hz; using identity passthrough (skipping AudioFlux)." << std::endl;
         return;
     }
@@ -609,7 +610,7 @@ Resample::Resample(int sourceRate, int targetRate, int zeroNum, int nbit, Window
         ensureAudioFlux();           // continuous / isScale / non-Kaiser window: AudioFlux's tables
         buildPolyphaseFromTables();
     }
-    LOG(DEBUG) << TAG(kTag) << "Created resampler (custom window): " << sourceRate << "Hz -> "
+    SPEECH_LOG(DEBUG) << TAG(kTag) << "Created resampler (custom window): " << sourceRate << "Hz -> "
                << targetRate << "Hz." << std::endl;
 }
 
@@ -633,7 +634,7 @@ void Resample::ensureAudioFlux() {
                                        &isScale, &isContinue);
     }
     if (rc != 0) {
-        LOG(ERROR) << TAG(kTag) << "Failed to create resample object (" << params_.sourceRate
+        SPEECH_LOG(ERROR) << TAG(kTag) << "Failed to create resample object (" << params_.sourceRate
                    << "Hz -> " << params_.targetRate << "Hz)." << std::endl;
         throw std::runtime_error("Failed to create resample object.");
     }
@@ -646,7 +647,7 @@ Resample::~Resample() {
 
 void Resample::setSampleRateRatio(float ratio) {
     if (isIdentity) {
-        LOG(DEBUG) << TAG(kTag)
+        SPEECH_LOG(DEBUG) << TAG(kTag)
                    << "setSampleRateRatio() ignored: resampler is in identity passthrough mode."
                    << std::endl;
         return;
@@ -654,7 +655,7 @@ void Resample::setSampleRateRatio(float ratio) {
     ensureAudioFlux();
     poly_.reset();  // arbitrary float ratio: no rational phase structure
     resampleObj_setSamplateRatio(resampleObj, ratio);
-    LOG(DEBUG) << TAG(kTag) << "Sample rate ratio set to " << ratio << std::endl;
+    SPEECH_LOG(DEBUG) << TAG(kTag) << "Sample rate ratio set to " << ratio << std::endl;
 }
 
 void Resample::enableContinuous(bool flag) {
@@ -671,14 +672,14 @@ detail::UninitVector<float> Resample::resampleFlat(const float* data, std::size_
         return detail::UninitVector<float>(data, data + n);
     }
     if (n == 0) {
-        LOG(DEBUG) << TAG(kTag) << "resample() called with empty input; returning empty output."
+        SPEECH_LOG(DEBUG) << TAG(kTag) << "resample() called with empty input; returning empty output."
                    << std::endl;
         return {};
     }
 
     if (poly_) {
         auto out = resamplePolyphase(data, n);
-        LOG(DEBUG) << TAG(kTag) << "Resampled " << n << " -> " << out.size()
+        SPEECH_LOG(DEBUG) << TAG(kTag) << "Resampled " << n << " -> " << out.size()
                    << " samples (polyphase)." << std::endl;
         return out;
     }
@@ -686,7 +687,7 @@ detail::UninitVector<float> Resample::resampleFlat(const float* data, std::size_
     ensureAudioFlux();
     const int inputLength = static_cast<int>(n);
     const int outputLength = resampleObj_calDataLength(resampleObj, inputLength);
-    LOG(TRACE) << TAG(kTag) << "calDataLength(" << inputLength << ") -> expected output length "
+    SPEECH_LOG(TRACE) << TAG(kTag) << "calDataLength(" << inputLength << ") -> expected output length "
                << outputLength << std::endl;
 
     // The direct AudioFlux kernel ACCUMULATES into its output (dataArr2[i] += ...),
@@ -697,12 +698,12 @@ detail::UninitVector<float> Resample::resampleFlat(const float* data, std::size_
     const int actual = resampleObj_resample(resampleObj, const_cast<float*>(data), inputLength,
                                             out.data());
     if (actual <= 0) {
-        LOG(ERROR) << TAG(kTag) << "Resampling produced no output (input length=" << inputLength
+        SPEECH_LOG(ERROR) << TAG(kTag) << "Resampling produced no output (input length=" << inputLength
                    << ")." << std::endl;
         throw std::runtime_error("Resampling failed or produced no output.");
     }
     out.resize(static_cast<std::size_t>(actual));
-    LOG(DEBUG) << TAG(kTag) << "Resampled " << inputLength << " -> " << actual << " samples."
+    SPEECH_LOG(DEBUG) << TAG(kTag) << "Resampled " << inputLength << " -> " << actual << " samples."
                << std::endl;
     return out;
 }

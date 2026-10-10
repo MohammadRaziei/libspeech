@@ -21,6 +21,7 @@
 #include "libspeech/dsp/resample.h"
 
 #include "aixlog.hpp"
+#include "libspeech/detail/log.h"
 
 
 namespace speech::io {
@@ -63,7 +64,7 @@ bool speech::io::AudioImpl::loadWithMiniaudio(const std::filesystem::path& fileP
 
     ma_decoder decoder;
     if (ma_decoder_init_file(filePath.string().c_str(), &config, &decoder) != MA_SUCCESS) {
-        LOG(ERROR) << TAG("speech::io::Audio") << "Failed to open " << formatName << " file: " << filePath << std::endl;
+        SPEECH_LOG(ERROR) << TAG("speech::io::Audio") << "Failed to open " << formatName << " file: " << filePath << std::endl;
         return false;
     }
 
@@ -97,7 +98,7 @@ bool speech::io::AudioImpl::loadWithMiniaudio(const std::filesystem::path& fileP
 
     ma_decoder_uninit(&decoder);
     loaded = true;
-    LOG(DEBUG) << TAG("speech::io::Audio") << "Loaded " << formatName << ": " << filePath << ", Sample Rate: " << sampleRate << ", Channels: " << channels << std::endl;
+    SPEECH_LOG(DEBUG) << TAG("speech::io::Audio") << "Loaded " << formatName << ": " << filePath << ", Sample Rate: " << sampleRate << ", Channels: " << channels << std::endl;
     return true;
 }
 
@@ -120,13 +121,13 @@ bool speech::io::AudioImpl::loadFLAC(const std::filesystem::path& filePath) {
 bool speech::io::AudioImpl::loadBin(const std::filesystem::path& filePath) {
     std::ifstream file(filePath, std::ios::binary | std::ios::ate);
     if (!file) {
-        LOG(ERROR) << TAG("speech::io::Audio") << "Failed to open BIN file: " << filePath << std::endl;
+        SPEECH_LOG(ERROR) << TAG("speech::io::Audio") << "Failed to open BIN file: " << filePath << std::endl;
         return false;
     }
     std::streamsize size = file.tellg();
     file.seekg(0, std::ios::beg);
     if (size % sizeof(float) != 0) {
-        LOG(ERROR) << TAG("speech::io::Audio") << "Invalid BIN file format: " << filePath << std::endl;
+        SPEECH_LOG(ERROR) << TAG("speech::io::Audio") << "Invalid BIN file format: " << filePath << std::endl;
         return false;
     }
     size_t totalSamples = size / sizeof(float);
@@ -145,21 +146,21 @@ bool speech::io::AudioImpl::loadBin(const std::filesystem::path& filePath) {
 
     file.close();
     loaded = true;
-    LOG(DEBUG) << TAG("speech::io::Audio") << "Loaded BIN: " << filePath << ", Total Samples: " << totalSamples << std::endl;
+    SPEECH_LOG(DEBUG) << TAG("speech::io::Audio") << "Loaded BIN: " << filePath << ", Total Samples: " << totalSamples << std::endl;
     return true;
 }
 
 // **Load Audio from Vector**
 bool speech::io::AudioImpl::loadVector(const std::vector<std::vector<float>>& inputData, int inputSampleRate) {
     if (inputData.empty() || inputSampleRate <= 0) {
-        LOG(ERROR) << TAG("speech::io::Audio") << "Invalid audio data provided to loadVector!" << std::endl;
+        SPEECH_LOG(ERROR) << TAG("speech::io::Audio") << "Invalid audio data provided to loadVector!" << std::endl;
         return false;
     }
     audioData = inputData;
     sampleRate = inputSampleRate;
     channels = inputData.size();
     loaded = true;
-    LOG(DEBUG) << TAG("speech::io::Audio") << "Loaded audio from vector, Sample Rate: " << sampleRate << ", Channels: " << channels << std::endl;
+    SPEECH_LOG(DEBUG) << TAG("speech::io::Audio") << "Loaded audio from vector, Sample Rate: " << sampleRate << ", Channels: " << channels << std::endl;
     return true;
 }
 
@@ -201,7 +202,7 @@ void simulateWorkWithProgressBar(double durationInSeconds) {
 
 void speech::io::AudioImpl::play(){
 //    if (audioData.empty()) {
-//        LOG(ERROR) << TAG("speech::io::Audio") << "No audio loaded to play!" << std::endl;
+//        SPEECH_LOG(ERROR) << TAG("speech::io::Audio") << "No audio loaded to play!" << std::endl;
 //        return;
 //    }
 
@@ -214,12 +215,12 @@ void speech::io::AudioImpl::play(){
 
     ma_device device;
     if (ma_device_init(NULL, &deviceConfig, &device) != MA_SUCCESS) {
-        LOG(ERROR) << TAG("speech::io::Audio") << "Failed to initialize audio device!" << std::endl;
+        SPEECH_LOG(ERROR) << TAG("speech::io::Audio") << "Failed to initialize audio device!" << std::endl;
         return;
     }
 
     if (ma_device_start(&device) != MA_SUCCESS) {
-        LOG(ERROR) << TAG("speech::io::Audio") << "Failed to start audio playback!" << std::endl;
+        SPEECH_LOG(ERROR) << TAG("speech::io::Audio") << "Failed to start audio playback!" << std::endl;
         ma_device_uninit(&device);
         return;
     }
@@ -232,7 +233,7 @@ void speech::io::AudioImpl::play(){
 // **Save as WAV**
 bool speech::io::AudioImpl::saveWAV(const std::filesystem::path& outputPath) {
     if (!loaded) {
-        LOG(WARNING) << TAG("speech::io::Audio") << "No audio loaded to save!" << std::endl;
+        SPEECH_LOG(WARNING) << TAG("speech::io::Audio") << "No audio loaded to save!" << std::endl;
         return false;
     }
 
@@ -250,14 +251,14 @@ bool speech::io::AudioImpl::saveWAV(const std::filesystem::path& outputPath) {
 
     ma_encoder encoder;
     if (ma_encoder_init_file(outputPath.string().c_str(), &config, &encoder) != MA_SUCCESS) {
-        LOG(ERROR) << TAG("speech::io::Audio") << "Failed to save WAV file: " << outputPath << std::endl;
+        SPEECH_LOG(ERROR) << TAG("speech::io::Audio") << "Failed to save WAV file: " << outputPath << std::endl;
         return false;
     }
 
     ma_uint64 framesWritten = 0;
     ma_encoder_write_pcm_frames(&encoder, interleavedData.data(), numFrames, &framesWritten);
     ma_encoder_uninit(&encoder);
-    LOG(DEBUG) << TAG("speech::io::Audio") << "Saved WAV file: " << outputPath << std::endl;
+    SPEECH_LOG(DEBUG) << TAG("speech::io::Audio") << "Saved WAV file: " << outputPath << std::endl;
     return true;
 }
 
@@ -294,7 +295,7 @@ void speech::io::AudioImpl::to_mono() {
     // Update the number of channels.
     channels = 1;
 
-    LOG(DEBUG) << TAG("speech::io::Audio") << "Converted to mono audio." << std::endl;
+    SPEECH_LOG(DEBUG) << TAG("speech::io::Audio") << "Converted to mono audio." << std::endl;
 }
 
 
@@ -320,7 +321,7 @@ speech::io::Audio::~Audio() = default;
 // **Load Audio File**
 bool speech::io::Audio::load(const std::filesystem::path& filePath) {
     if (!std::filesystem::exists(filePath)) {
-        LOG(ERROR) << TAG("speech::io::Audio") << "File not found: " << filePath << std::endl;
+        SPEECH_LOG(ERROR) << TAG("speech::io::Audio") << "File not found: " << filePath << std::endl;
         return false;
     }
     std::string extension = filePath.extension().string();
@@ -335,7 +336,7 @@ bool speech::io::Audio::load(const std::filesystem::path& filePath) {
     if (it != loaders.end()) {
         return (pImpl.get()->*(it->second))(filePath);
     }
-    LOG(ERROR) << TAG("speech::io::Audio") << "Unsupported file format: " << filePath << std::endl;
+    SPEECH_LOG(ERROR) << TAG("speech::io::Audio") << "Unsupported file format: " << filePath << std::endl;
     return false;
 }
 
@@ -399,7 +400,7 @@ speech::io::Audio speech::io::Audio::to_mono() {
 
 std::vector<float> speech::io::Audio::data(int index) const {
     if (index < 0 || index >= pImpl->channels) {
-        LOG(ERROR) << TAG("speech::io::Audio") <<
+        SPEECH_LOG(ERROR) << TAG("speech::io::Audio") <<
             "Invalid channel index: " + std::to_string(index) << std::endl;
         throw std::out_of_range("Invalid channel index: " + std::to_string(index));
     }
@@ -412,7 +413,7 @@ size_t speech::io::Audio::size() const {
 
 const float* speech::io::Audio::channelData(int index, size_t* length) const {
     if (index < 0 || index >= pImpl->channels || index >= static_cast<int>(pImpl->audioData.size())) {
-        LOG(ERROR) << TAG("speech::io::Audio") <<
+        SPEECH_LOG(ERROR) << TAG("speech::io::Audio") <<
             "Invalid channel index: " + std::to_string(index) << std::endl;
         throw std::out_of_range("Invalid channel index: " + std::to_string(index));
     }

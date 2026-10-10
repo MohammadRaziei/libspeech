@@ -2,6 +2,7 @@
 #include <stdexcept>
 #include "libspeech/utils/utils.h"
 #include "aixlog.hpp"
+#include "libspeech/detail/log.h"
 
 namespace speech::models {
 
@@ -24,21 +25,21 @@ BaseModel::BaseModel(const std::string& url, const std::filesystem::path& base_d
 
 void BaseModel::download_model() {
     try {
-        LOG(DEBUG) << TAG("speech::models::BaseModel") << "Downloading model from: " << url << std::endl;
+        SPEECH_LOG(DEBUG) << TAG("speech::models::BaseModel") << "Downloading model from: " << url << std::endl;
 
         // Download directly into the target directory
         std::filesystem::path fileName = speech::utils::downloadFile(url, model_path, false, false);
 
         if (fileName.empty()) {
-            LOG(DEBUG) << TAG("speech::models::BaseModel") << "Failed to download the model." << std::endl;
+            SPEECH_LOG(DEBUG) << TAG("speech::models::BaseModel") << "Failed to download the model." << std::endl;
             throw std::runtime_error("Failed to download the model.");
         }
 
         // Set the model path
         model_path = model_path / fileName.filename();
-        LOG(INFO) << TAG("speech::models::BaseModel") << "Model saved to: " << model_path << std::endl;
+        SPEECH_LOG(INFO) << TAG("speech::models::BaseModel") << "Model saved to: " << model_path << std::endl;
     } catch (const std::exception& e) {
-        LOG(ERROR) << TAG("speech::models::BaseModel") << "Error downloading model: " << e.what() << std::endl;
+        SPEECH_LOG(ERROR) << TAG("speech::models::BaseModel") << "Error downloading model: " << e.what() << std::endl;
         throw;
     }
 }

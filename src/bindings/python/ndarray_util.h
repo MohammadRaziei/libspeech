@@ -19,6 +19,7 @@ namespace speech::py {
 
 using FloatVec = speech::detail::UninitVector<float>;
 using InArray1D = nb::ndarray<const float, nb::ndim<1>, nb::c_contig, nb::device::cpu>;
+using InArray2D = nb::ndarray<const float, nb::ndim<2>, nb::c_contig, nb::device::cpu>;
 using OutArray1D = nb::ndarray<nb::numpy, float, nb::ndim<1>>;
 using OutArray2D = nb::ndarray<nb::numpy, float, nb::ndim<2>>;
 

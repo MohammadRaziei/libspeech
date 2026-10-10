@@ -10,11 +10,23 @@
 
 #include "libspeech/models/denoiser.h"
 #include "libspeech/models/silero_vad.h"
+#include "libspeech/utils/log.h"
 #include "ndarray_util.h"
 
 namespace nb = nanobind;
 
 NB_MODULE(NB_MODULE_NAME, m) {
+    // --- logging -----------------------------------------------------------------------------
+    m.def("set_log_level",
+          [](const std::string& level) { speech::utils::setLogLevel(speech::utils::parseLogLevel(level)); },
+          "Sets how much libspeech writes to stderr: 'trace', 'debug', 'info', 'warning' (the default), "
+          "'error' or 'off' (case-insensitive). Before the first call the level can also be set with the "
+          "LIBSPEECH_LOG environment variable. Raises ValueError for an unknown level.",
+          nb::arg("level"));
+    m.def("get_log_level",
+          [] { return std::string(speech::utils::logLevelName(speech::utils::getLogLevel())); },
+          "The current log level, e.g. 'warning'.");
+
     // --- speech::models::Denoiser ---------------------------------------------------------
     // Abstract interface: no public constructor is exposed, matching the
     // C++ API -- the only way to get one is Denoiser.create(...).

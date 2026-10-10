@@ -111,6 +111,153 @@ def test_numpy_result_outlives_the_producing_objects():
 
 # --- MFCC ---------------------------------------------------------------
 
+# --- FFT ------------------------------------------------------------------
+
+@pytest.mark.parametrize("radix2_exp", [4, 9, 13, 16])  # 16 uses the heap-scratch path (> 8192)
+def test_fft_numpy_forward_matches_numpys_fft(radix2_exp):
+    n = 1 << radix2_exp
+    x = _noise(n, seed=radix2_exp)
+    re, im = libspeech.FFT(radix2_exp).forward(x)
+
+    assert re.dtype == np.float32
+    assert im.dtype == np.float32
+    assert re.shape == (n,)
+    ref = np.fft.fft(x.astype(np.float64))
+    scale = np.abs(ref).max()
+    assert np.abs(re - ref.real).max() < 1e-4 * scale
+    assert np.abs(im - ref.imag).max() < 1e-4 * scale
+
+
+def test_fft_numpy_equals_the_list_api():
+    fft = libspeech.FFT(10)
+    x, y = _noise(1024, seed=1), _noise(1024, seed=2)
+    for args in ((x,), (x, y)):  # real-only (fast path) and complex
+        re_a, im_a = fft.forward(*args)
+        re_l, im_l = fft.forward(*(a.tolist() for a in args))
+        assert np.abs(re_a - np.asarray(re_l, dtype=np.float32)).max() < 1e-3
+        assert np.abs(im_a - np.asarray(im_l, dtype=np.float32)).max() < 1e-3
+
+
+def test_fft_numpy_inverse_round_trips_and_matches_numpy():
+    fft = libspeech.FFT(11)
+    x, y = _noise(2048, seed=3), _noise(2048, seed=4)
+    re, im = fft.forward(x, y)
+    back_re, back_im = fft.inverse(re, im)
+    assert np.abs(back_re - x).max() < 1e-4
+    assert np.abs(back_im - y).max() < 1e-4
+
+    ref = np.fft.ifft(x.astype(np.float64) + 1j * y)
+    inv_re, inv_im = fft.inverse(x, y)
+    assert np.abs(inv_re - ref.real).max() < 1e-4 * np.abs(ref).max()
+    assert np.abs(inv_im - ref.imag).max() < 1e-4 * np.abs(ref).max()
+
+
+def test_fft_numpy_dct_round_trips_and_idct_keeps_its_input():
+    fft = libspeech.FFT(9)
+    x = _noise(512, seed=5)
+    for is_norm in (True, False):
+        c = fft.dct(x, is_norm)
+        assert c.dtype == np.float32
+        assert np.abs(np.asarray(fft.dct(x.tolist(), is_norm), dtype=np.float32) - c).max() < 1e-3
+        kept = c.copy()
+        back = fft.idct(c, is_norm)
+        assert np.array_equal(c, kept)  # idct must not modify its input
+        assert np.abs(back - x).max() < 1e-4
+
+
+def test_fft_numpy_accepts_float64_and_non_contiguous_input():
+    fft = libspeech.FFT(9)
+    x = _noise(512, seed=6)
+    ref_re, ref_im = fft.forward(x)
+    re64, im64 = fft.forward(x.astype(np.float64))
+    assert np.array_equal(re64, ref_re)
+    assert np.array_equal(im64, ref_im)
+    strided = np.zeros(1024, dtype=np.float32)
+    strided[::2] = x
+    s_re, _ = fft.forward(strided[::2])
+    assert np.array_equal(s_re, ref_re)
+
+
+def test_fft_numpy_validates_lengths():
+    fft = libspeech.FFT(6)
+    ok, short = _noise(64), _noise(63)
+    with pytest.raises(ValueError):
+        fft.forward(short)
+    with pytest.raises(ValueError):
+        fft.forward(ok, short)
+    with pytest.raises(ValueError):
+        fft.inverse(ok, short)
+    with pytest.raises(ValueError):
+        fft.dct(short)
+    with pytest.raises(ValueError):
+        fft.idct(short)
+
+
+# --- inverse STFT ---------------------------------------------------------
+
+def _noise(n: int, seed: int = 0) -> np.ndarray:
+    return (0.3 * np.random.default_rng(seed).standard_normal(n)).astype(np.float32)
+
+
+@pytest.mark.parametrize("onesided", [False, True])
+@pytest.mark.parametrize("method_type", [0, 1])
+def test_istft_numpy_round_trips_the_stft(onesided, method_type):
+    x = _noise(512 * 12)
+    stft = libspeech.STFT(9, libspeech.WindowType.hann)
+    re, im = stft.stft(x, onesided=onesided)
+    y = stft.istft(re, im, method_type)
+
+    assert isinstance(y, np.ndarray)
+    assert y.dtype == np.float32
+    assert y.ndim == 1
+    assert y.shape[0] == stft.cal_data_length(re.shape[0])
+    # away from the first/last fft_length samples, where the window tapers to zero
+    assert np.abs(y[512:-512] - x[512 : len(y) - 512]).max() < 2e-4
+
+
+def test_istft_numpy_equals_the_list_api():
+    x = _noise(256 * 10, seed=1)
+    stft = libspeech.STFT(8, libspeech.WindowType.hann, 64)
+    re, im = stft.stft(x)
+    from_lists = stft.istft(re.tolist(), im.tolist())
+    from_arrays = stft.istft(re, im)
+    assert isinstance(from_lists, list)
+    assert np.abs(np.asarray(from_lists, dtype=np.float32) - from_arrays).max() < 1e-6
+
+
+def test_istft_numpy_accepts_float64_and_non_contiguous_input():
+    x = _noise(512 * 6, seed=2)
+    stft = libspeech.STFT(9, libspeech.WindowType.hann)
+    re, im = stft.stft(x, onesided=True)
+    ref = stft.istft(re, im)
+    assert np.array_equal(stft.istft(re.astype(np.float64), im.astype(np.float64)), ref)
+    assert np.array_equal(stft.istft(np.asfortranarray(re), np.asfortranarray(im)), ref)
+
+
+def test_istft_numpy_result_is_independent_of_its_inputs():
+    stft = libspeech.STFT(9, libspeech.WindowType.hann)
+    re, im = stft.stft(_noise(512 * 6, seed=3), onesided=True)
+    y = stft.istft(re, im)
+    expected = y.copy()
+    del re, im, stft
+    gc.collect()
+    assert np.array_equal(y, expected)
+
+
+def test_istft_numpy_validates_its_arguments():
+    stft = libspeech.STFT(9, libspeech.WindowType.hann)
+    re, im = stft.stft(_noise(512 * 6, seed=4), onesided=True)  # (frames, 257)
+
+    with pytest.raises(ValueError):
+        stft.istft(re, im[:-1])  # shapes differ
+    with pytest.raises(ValueError):
+        stft.istft(re[:, :100], im[:, :100])  # neither 512 nor 257 columns
+    with pytest.raises(ValueError):
+        stft.istft(re, im, 2)  # method_type must be 0 or 1
+    with pytest.raises(ValueError):
+        stft.istft(re[:0], im[:0])  # no frames
+
+
 def test_mfcc_numpy_equals_list_api():
     x = speech_like(16000, 16000)
     m = libspeech.MFCC(mfcc_params()).compute(x)

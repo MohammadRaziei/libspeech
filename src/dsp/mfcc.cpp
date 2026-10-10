@@ -5,6 +5,7 @@
 #include <stdexcept>
 
 #include "aixlog.hpp"
+#include "libspeech/detail/log.h"
 #include "libspeech/dsp/dct.h"
 #include "libspeech/dsp/stft.h"
 
@@ -22,12 +23,12 @@ float melToHz(float mel) { return 700.0f * (std::pow(10.0f, mel / 2595.0f) - 1.0
 
 MFCC::MFCC(Params params) : params_(params) {
     if (params_.numMelFilters < 2) {
-        LOG(ERROR) << TAG(kTag) << "numMelFilters must be >= 2 (got " << params_.numMelFilters
+        SPEECH_LOG(ERROR) << TAG(kTag) << "numMelFilters must be >= 2 (got " << params_.numMelFilters
                    << ")." << std::endl;
         throw std::invalid_argument("numMelFilters must be >= 2.");
     }
     if (params_.numCoefficients < 1 || params_.numCoefficients > params_.numMelFilters) {
-        LOG(ERROR) << TAG(kTag) << "numCoefficients must be in [1, numMelFilters] (got "
+        SPEECH_LOG(ERROR) << TAG(kTag) << "numCoefficients must be in [1, numMelFilters] (got "
                    << params_.numCoefficients << " with numMelFilters=" << params_.numMelFilters
                    << ")." << std::endl;
         throw std::invalid_argument("numCoefficients must be in [1, numMelFilters].");
@@ -76,7 +77,7 @@ MFCC::MFCC(Params params) : params_(params) {
     dct_ = std::make_unique<DctII>(params_.numMelFilters, params_.numCoefficients,
                                    /*orthonormal=*/true);
 
-    LOG(DEBUG) << TAG(kTag) << "Created MFCC: sampleRate=" << params_.sampleRate
+    SPEECH_LOG(DEBUG) << TAG(kTag) << "Created MFCC: sampleRate=" << params_.sampleRate
                << ", numMelFilters=" << params_.numMelFilters
                << ", numCoefficients=" << params_.numCoefficients
                << ", fftLength=" << fftLength << std::endl;
@@ -179,7 +180,7 @@ MfccMatrix MFCC::computeFlat(const float* signal, std::size_t n) {
         }
     }
 
-    LOG(DEBUG) << TAG(kTag) << "Computed MFCC: " << n << " samples -> " << numFrames
+    SPEECH_LOG(DEBUG) << TAG(kTag) << "Computed MFCC: " << n << " samples -> " << numFrames
                << " frames x " << numCoef << " coefficients." << std::endl;
     return out;
 }

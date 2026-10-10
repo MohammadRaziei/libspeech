@@ -7,6 +7,7 @@
 #include <unordered_map>
 
 #include "aixlog.hpp"
+#include "libspeech/detail/log.h"
 #include "real_fft.h"
 
 namespace speech::dsp {
@@ -83,13 +84,13 @@ void dctDirect(const float* x, int n, int kMax, double* sums) {
 std::vector<float> dctII(const std::vector<float>& input, int numOutputs, bool orthonormal) {
     const int n = static_cast<int>(input.size());
     if (n <= 0) {
-        LOG(ERROR) << TAG(kTag) << "dctII() called with empty input." << std::endl;
+        SPEECH_LOG(ERROR) << TAG(kTag) << "dctII() called with empty input." << std::endl;
         throw std::invalid_argument("dctII() input must not be empty.");
     }
 
     const int k_max = (numOutputs < 0) ? n : numOutputs;
     if (k_max <= 0 || k_max > n) {
-        LOG(ERROR) << TAG(kTag) << "numOutputs=" << numOutputs << " out of range for input of length "
+        SPEECH_LOG(ERROR) << TAG(kTag) << "numOutputs=" << numOutputs << " out of range for input of length "
                    << n << std::endl;
         throw std::invalid_argument("numOutputs must be in [1, input.size()].");
     }

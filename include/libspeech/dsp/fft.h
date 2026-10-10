@@ -11,6 +11,7 @@
 #ifndef LIBSPEECH_DSP_FFT_H
 #define LIBSPEECH_DSP_FFT_H
 
+#include <memory>
 #include <utility>
 #include <vector>
 
@@ -21,6 +22,10 @@
 struct OpaqueFFT;
 
 namespace speech::dsp {
+
+namespace rfft_impl {
+class RealFrameFFT;  // private real-input FFT engine (src/dsp/real_fft.h)
+}
 
 /**
  * FFT: fixed-size power-of-2 FFT/IFFT, plus DCT-II/IDCT-III sharing the same
@@ -63,9 +68,31 @@ class SPEECH_API FFT {
     // its input in place, so we pass it a copy internally).
     std::vector<float> idct(const std::vector<float>& data, bool isNorm = true);
 
+    // ---- Copy-free forms -------------------------------------------------
+    // Raw-buffer versions of the four transforms above: every input holds size() floats, every
+    // output buffer holds size() floats and is fully overwritten (so uninitialized memory is
+    // fine). Inputs and outputs must not overlap. Like the vector forms, a call is not
+    // thread-safe on one FFT object: use one object per thread.
+
+    // `imag` may be nullptr (real-only input). A real-only input of 16..131072 samples runs on
+    // the real-input FFT engine (half the work of a complex FFT; the upper half of the spectrum
+    // is the exact conjugate mirror of the lower half); anything else goes through AudioFlux.
+    void forwardInto(const float* real, const float* imag, float* outReal, float* outImag);
+
+    // Full complex inverse FFT.
+    void inverseInto(const float* real, const float* imag, float* outReal, float* outImag);
+
+    void dctInto(const float* data, float* out, bool isNorm = true);
+
+    // Does not modify `data` (a scratch copy goes to AudioFlux, see idct()).
+    void idctInto(const float* data, float* out, bool isNorm = true);
+
    private:
     ::OpaqueFFT* fftObj_;
     int length_;
+    // Real-input engine (rectangular window) for real-only forward transforms; null when the
+    // length is outside its range, in which case AudioFlux's complex FFT does the work.
+    std::unique_ptr<rfft_impl::RealFrameFFT> rfft_;
 };
 
 }  // namespace speech::dsp

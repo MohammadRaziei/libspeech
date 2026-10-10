@@ -102,14 +102,33 @@ class SPEECH_API STFT {
     std::pair<std::vector<std::vector<float>>, std::vector<std::vector<float>>> stft(
         const std::vector<float>& data);
 
-    // Reconstructs a signal from a real/imag spectrogram via weighted
-    // overlap-add (methodType=0, AudioFlux's default) or plain overlap-add
-    // (methodType=1). Output length is calDataLength(real.size()).
-    // NOTE: reconstruction is only accurate away from the very first/last
-    // fftLength samples -- the analysis window necessarily tapers to (near)
-    // zero at signal boundaries, which no amount of normalization can fully
-    // undo. This is a property of windowed STFT in general, not an
-    // AudioFlux-specific issue.
+    // Inverse of stftInto()/stftOnesidedInto(): reconstructs a signal from flat, frame-major
+    // real/imag planes by overlap-add of the inverse-transformed frames.
+    //   methodType 0 (default): weighted overlap-add, each frame multiplied by the window again and
+    //                           the sum divided by the summed squared window (AudioFlux's default);
+    //   methodType 1: plain overlap-add, divided by the summed window.
+    //   Any other value throws std::invalid_argument.
+    // onesided=false: numFrames * fftLength bins per plane (the full spectrum, as stft() returns);
+    // onesided=true:  numFrames * (fftLength/2 + 1) bins, treated as a real signal's spectrum.
+    // Like AudioFlux's kernel this returns the REAL PART of the inverse transform, so a full
+    // spectrum that is not conjugate-symmetric (e.g. one edited bin by bin) is accepted too.
+    // `out` must hold calDataLength(numFrames) floats and is fully overwritten.
+    // NOTE: reconstruction is only accurate away from the very first/last fftLength samples --
+    // the analysis window tapers to (near) zero at the signal boundaries, which no normalization
+    // can fully undo. This is a property of windowed STFT in general, not an AudioFlux issue.
+    void istftInto(const float* real, const float* imag, int numFrames, bool onesided,
+                   int methodType, float* out);
+
+    // Same, allocating the (uninitialized, then fully written) output.
+    detail::UninitVector<float> istft(const float* real, const float* imag, int numFrames,
+                                       bool onesided, int methodType = 0);
+
+    // Same, from a Spectrogram (as returned by spectrogram()); onesided is inferred from
+    // spec.numBins.
+    detail::UninitVector<float> istft(const Spectrogram& spec, int methodType = 0);
+
+    // Legacy nested-vector form (full spectrum only, source-compatible): the flat overloads above
+    // avoid its per-frame copies. Output length is calDataLength(real.size()).
     std::vector<float> istft(const std::vector<std::vector<float>>& real,
                               const std::vector<std::vector<float>>& imag, int methodType = 0);
 
