@@ -25,13 +25,13 @@ template<typename... Args>
 }
 
 // Function to download a file from a given URL and save it in a specified folder
-SPEECH_API std::filesystem::path downloadFile(const std::string& url,
-                                   const std::filesystem::path& outputPath,
+SPEECH_API std::filesystem::path download_file(const std::string& url,
+                                   const std::filesystem::path& output_path,
                                    bool force, bool quiet);
 
 
 // Function to get the system's temporary directory as a filesystem::path
-SPEECH_API std::filesystem::path getTempDirectory();
+SPEECH_API std::filesystem::path get_temp_directory();
 
 // Cross-platform default cache directory for downloaded model weights
 // (<home>/.libspeech). Checks HOME (Unix/macOS), then USERPROFILE and
@@ -40,6 +40,6 @@ SPEECH_API std::filesystem::path getTempDirectory();
 // returns nullptr on essentially all Windows systems (HOME isn't a
 // standard Windows env var), and constructing a std::filesystem::path from
 // a null pointer is undefined behavior.
-SPEECH_API std::filesystem::path getDefaultModelCacheDir();
+SPEECH_API std::filesystem::path get_default_model_cache_dir();
 }
 #endif  // LIBSPEECH_UTILS_H

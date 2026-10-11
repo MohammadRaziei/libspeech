@@ -12,25 +12,25 @@
 // Forward declaration for the implementation class
 namespace speech::io{
 
-class AudioImpl;
+class audio_impl;
 
-class SPEECH_API Audio {
+class SPEECH_API audio {
    public:
-    Audio();
-    Audio(const Audio& other);
-    ~Audio();
-    Audio& operator=(const Audio&);
+    audio();
+    audio(const audio& other);
+    ~audio();
+    audio& operator=(const audio&);
 
-    bool load(const std::filesystem::path& filePath);
-    bool load(const std::vector<std::vector<float>>& inputData, int sampleRate);
+    bool load(const std::filesystem::path& file_path);
+    bool load(const std::vector<std::vector<float>>& input_data, int sample_rate);
 
 
     void play() const;
-    bool save(const std::filesystem::path& outputPath);
+    bool save(const std::filesystem::path& output_path);
 
-    [[nodiscard]] Audio to_mono();
+    [[nodiscard]] audio to_mono();
 
-    [[nodiscard]] Audio resample(int targetSampleRate) const;
+    [[nodiscard]] audio resample(int target_sample_rate) const;
 
     [[nodiscard]] std::vector<std::vector<float>> data() const;
     [[nodiscard]] std::vector<float> data(int index) const;
@@ -38,14 +38,14 @@ class SPEECH_API Audio {
     // Borrowed, copy-free view of one channel: returns a pointer to its samples
     // and stores the sample count in *length. Valid until this Audio is next
     // modified (load/assign). Throws std::out_of_range on a bad channel index.
-    [[nodiscard]] const float* channelData(int index, size_t* length) const;
+    [[nodiscard]] const float* channel_data(int index, size_t* length) const;
     [[nodiscard]] int channels() const;
     [[nodiscard]] int sample_rate() const;
     [[nodiscard]] double duration() const;
     [[nodiscard]] size_t size() const;
 
    private:
-    std::unique_ptr<AudioImpl> pImpl;
+    std::unique_ptr<audio_impl> impl_;
 };
 }  // namespace speech::io
 

@@ -15,19 +15,19 @@
 // default test suite -- see checklist.md for the follow-up on integration
 // tests against real model weights.
 
-UTEST(Denoiser, UnknownBackendThrows) {
+UTEST(denoiser, unknown_backend_throws) {
     bool threw = false;
     try {
-        speech::models::Denoiser::Create("not_a_real_backend", "foo.onnx");
+        speech::models::denoiser::create("not_a_real_backend", "foo.onnx");
     } catch (const std::invalid_argument&) {
         threw = true;
     }
     ASSERT_TRUE(threw);
 }
 
-UTEST(Denoiser, UnknownBackendErrorMessageNamesTheBackend) {
+UTEST(denoiser, unknown_backend_error_message_names_the_backend) {
     try {
-        speech::models::Denoiser::Create("bogus_backend_xyz", "foo.onnx");
+        speech::models::denoiser::create("bogus_backend_xyz", "foo.onnx");
         ASSERT_TRUE(false);  // Create() should have thrown before reaching here.
     } catch (const std::invalid_argument& e) {
         std::string message = e.what();
@@ -35,10 +35,10 @@ UTEST(Denoiser, UnknownBackendErrorMessageNamesTheBackend) {
     }
 }
 
-UTEST(Denoiser, EmptyBackendNameThrows) {
+UTEST(denoiser, empty_backend_name_throws) {
     bool threw = false;
     try {
-        speech::models::Denoiser::Create("", "foo.onnx");
+        speech::models::denoiser::create("", "foo.onnx");
     } catch (const std::invalid_argument&) {
         threw = true;
     }
@@ -47,17 +47,17 @@ UTEST(Denoiser, EmptyBackendNameThrows) {
 
 // The backends are single-inheritance implementations of the interface (see the notes in
 // denoiser.h) and a Denoiser owns a model, so it must not be copyable.
-static_assert(std::is_base_of<speech::models::Denoiser, speech::models::FacebookDenoiser>::value, "");
-static_assert(std::is_base_of<speech::models::Denoiser, speech::models::SpeechBrainDenoiser>::value, "");
-static_assert(!std::is_copy_constructible<speech::models::Denoiser>::value, "");
-static_assert(!std::is_copy_assignable<speech::models::Denoiser>::value, "");
-static_assert(!std::is_copy_constructible<speech::models::FacebookDenoiser>::value, "");
+static_assert(std::is_base_of<speech::models::denoiser, speech::models::facebook_denoiser>::value, "");
+static_assert(std::is_base_of<speech::models::denoiser, speech::models::speechbrain_denoiser>::value, "");
+static_assert(!std::is_copy_constructible<speech::models::denoiser>::value, "");
+static_assert(!std::is_copy_assignable<speech::models::denoiser>::value, "");
+static_assert(!std::is_copy_constructible<speech::models::facebook_denoiser>::value, "");
 
 // Rejected before any model download / ONNX Runtime work, so this stays offline.
-UTEST(Denoiser, NegativeNumThreadsThrows) {
+UTEST(denoiser, negative_num_threads_throws) {
     bool threw = false;
     try {
-        speech::models::Denoiser::Create("facebook", "foo.onnx", 16000, -1);
+        speech::models::denoiser::create("facebook", "foo.onnx", 16000, -1);
     } catch (const std::invalid_argument&) {
         threw = true;
     }

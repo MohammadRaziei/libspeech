@@ -19,7 +19,7 @@ typedef std::vector<std::string> StringList;
     TicTocTimerObj.elapsed<std::chrono::unit>(true, #unit, __LINE__, \
                                               __FUNCTION__)
 
-struct TicTocTimer {
+struct tic_toc_timer {
     typedef std::chrono::high_resolution_clock chrono_clock;
     typedef std::chrono::time_point<chrono_clock> time_point;
     typedef std::chrono::microseconds unit;

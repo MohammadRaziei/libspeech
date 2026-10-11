@@ -21,7 +21,7 @@ void operator delete(void* p) noexcept { std::free(p); }
 void operator delete(void* p, std::size_t) noexcept { std::free(p); }
 using clk = std::chrono::high_resolution_clock;
 static double ms_since(clk::time_point a) { return std::chrono::duration<double, std::milli>(clk::now() - a).count(); }
-static std::vector<float> speechLike(int n, int sr) {
+static std::vector<float> speech_like(int n, int sr) {
     std::mt19937 g(1); std::normal_distribution<float> nd(0.f, 0.01f); std::vector<float> s(n);
     for (int i = 0; i < n; ++i) { double t = (double)i / sr; double env = 0.5 * (1 + std::sin(2 * M_PI * 1.5 * t)); s[i] = (float)(env * (0.3 * std::sin(2 * M_PI * 180 * t) + 0.15 * std::sin(2 * M_PI * 1500 * t))) + nd(g); }
     return s;
@@ -29,15 +29,15 @@ static std::vector<float> speechLike(int n, int sr) {
 int main() {
     const int sr = 16000;
     // ---------------- Silero VAD: wrapper vs a bare ONNX Runtime loop doing the identical inferences
-    const int secs = 60; auto wav = speechLike(secs * sr, sr);
+    const int secs = 60; auto wav = speech_like(secs * sr, sr);
     auto t0 = clk::now();
-    speech::models::SileroVadModel vad("silero-vad.onnx", sr);
+    speech::models::silero_vad_model vad("silero-vad.onnx", sr);
     std::printf("SileroVad: construct (session create)            %8.1f ms\n", ms_since(t0));
-    vad.processOnVector(wav);   // warm-up
+    vad.process_on_vector(wav);   // warm-up
     double best = 1e18; unsigned long allocs = 0;
-    for (int r = 0; r < 5; ++r) { g_allocs = 0; auto a = clk::now(); vad.processOnVector(wav); double m = ms_since(a); if (m < best) { best = m; allocs = g_allocs; } }
+    for (int r = 0; r < 5; ++r) { g_allocs = 0; auto a = clk::now(); vad.process_on_vector(wav); double m = ms_since(a); if (m < best) { best = m; allocs = g_allocs; } }
     const int chunks = (secs * sr) / 512;
-    std::printf("SileroVad: processOnVector %d s (%d chunks)       %8.1f ms  = %.1f us/chunk, %.2f allocs/chunk, speech segments: %zu\n", secs, chunks, best, best * 1000 / chunks, (double)allocs / chunks, vad.get_speech_timestamps().size());
+    std::printf("SileroVad: process_on_vector %d s (%d chunks)       %8.1f ms  = %.1f us/chunk, %.2f allocs/chunk, speech segments: %zu\n", secs, chunks, best, best * 1000 / chunks, (double)allocs / chunks, vad.get_speech_timestamps().size());
 
     Ort::Env env(ORT_LOGGING_LEVEL_ERROR, "p"); Ort::SessionOptions so; so.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
     std::string path = std::string(std::getenv("HOME")) + "/.libspeech/silero-vad.onnx";
@@ -62,7 +62,7 @@ int main() {
     std::printf("  => libspeech wrapper overhead on top of ONNX Runtime: %.1f ms (%.1f%%)\n\n", best - rb, 100.0 * (best - rb) / best);
 
     // ---------------- Denoisers
-    const int dsecs = 3; auto noisy = speechLike(dsecs * sr, sr);
+    const int dsecs = 3; auto noisy = speech_like(dsecs * sr, sr);
     auto bench_den = [&](const char* label, auto& den, const char* file) {
         den.process(noisy); double b = 1e18; for (int r = 0; r < 3; ++r) { auto a = clk::now(); auto o = den.process(noisy); b = std::min(b, ms_since(a)); (void)o; }
         Ort::SessionOptions so1; so1.SetIntraOpNumThreads(1); so1.SetInterOpNumThreads(1); so1.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
@@ -73,6 +73,6 @@ int main() {
         run(); double rbb = 1e18; for (int r = 0; r < 3; ++r) { auto a = clk::now(); run(); rbb = std::min(rbb, ms_since(a)); }
         std::printf("%-22s process(%d s): %9.1f ms (real-time factor %.2fx) | bare ORT, same threads: %9.1f ms | wrapper overhead %.2f ms\n", label, dsecs, b, b / (dsecs * 1000.0), rbb, b - rbb);
     };
-    { auto t = clk::now(); speech::models::FacebookDenoiser fd("facebook-denoiser-dns64.onnx", sr); std::printf("Facebook denoiser: construct %.0f ms\n", ms_since(t)); bench_den("Facebook DNS64", fd, "facebook-denoiser-dns64.onnx"); }
-    { auto t = clk::now(); speech::models::SpeechBrainDenoiser sd("speechbrain-sepformer-wham16k-enhancement.onnx", sr); std::printf("SpeechBrain denoiser: construct %.0f ms\n", ms_since(t)); bench_den("SpeechBrain SepFormer", sd, "speechbrain-sepformer-wham16k-enhancement.onnx"); }
+    { auto t = clk::now(); speech::models::facebook_denoiser fd("facebook-denoiser-dns64.onnx", sr); std::printf("Facebook denoiser: construct %.0f ms\n", ms_since(t)); bench_den("Facebook DNS64", fd, "facebook-denoiser-dns64.onnx"); }
+    { auto t = clk::now(); speech::models::speechbrain_denoiser sd("speechbrain-sepformer-wham16k-enhancement.onnx", sr); std::printf("SpeechBrain denoiser: construct %.0f ms\n", ms_since(t)); bench_den("SpeechBrain SepFormer", sd, "speechbrain-sepformer-wham16k-enhancement.onnx"); }
 }

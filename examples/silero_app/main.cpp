@@ -41,30 +41,30 @@ class SpeechController : public oatpp::web::server::api::ApiController {
             std::string url = body->c_str();
 
             // Download and load the audio file
-            std::filesystem::path tempDir = std::filesystem::temp_directory_path();
-            std::filesystem::path fileName = speech::utils::downloadFile(url, tempDir, false, false);
+            std::filesystem::path temp_dir = std::filesystem::temp_directory_path();
+            std::filesystem::path file_name = speech::utils::download_file(url, temp_dir, false, false);
 
-            if (fileName.empty()) {
+            if (file_name.empty()) {
                 throw std::runtime_error("Download failed or file does not exist.");
             }
 
             // Load the audio file
-            speech::io::Audio audio;
-            if (!audio.load(fileName)) {
+            speech::io::audio audio;
+            if (!audio.load(file_name)) {
                 throw std::runtime_error("Failed to load audio file.");
             }
 
             // Initialize the SileroVAD model
-            speech::models::SileroVadModel vad;
+            speech::models::silero_vad_model vad;
 
             // Resample the audio to the required sample rate
             const auto audio16k = audio.to_mono().resample(vad.sample_rate);
 
             // Process the audio
-            vad.processOnVector(audio16k.data(0));
+            vad.process_on_vector(audio16k.data(0));
 
             // Retrieve speech timestamps
-            std::vector<speech::models::timestamp_t> stamps = vad.get_speech_timestamps();
+            std::vector<speech::models::speech_timestamp> stamps = vad.get_speech_timestamps();
 
             // Prepare the response
             auto response = SpeechResponseDto::createShared();

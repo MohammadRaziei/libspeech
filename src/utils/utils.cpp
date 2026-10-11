@@ -16,16 +16,16 @@
 
 namespace {
 
-constexpr const char* kTag = "speech::utils::downloadFile";
+constexpr const char* log_tag = "speech::utils::download_file";
 
 }  // namespace
 
-std::filesystem::path speech::utils::getTempDirectory() {
+std::filesystem::path speech::utils::get_temp_directory() {
     // Use filesystem to get the temp directory
     return std::filesystem::temp_directory_path();
 }
 
-std::filesystem::path speech::utils::getDefaultModelCacheDir() {
+std::filesystem::path speech::utils::get_default_model_cache_dir() {
     // HOME is the standard Unix/macOS env var. On Windows it's generally
     // NOT set -- getenv("HOME") returns nullptr there -- so it must not be
     // the only thing checked.
@@ -34,24 +34,24 @@ std::filesystem::path speech::utils::getDefaultModelCacheDir() {
     }
 
     // USERPROFILE is the standard Windows equivalent (e.g. C:\Users\Name).
-    if (const char* userProfile = std::getenv("USERPROFILE")) {
-        return std::filesystem::path(userProfile) / ".libspeech";
+    if (const char* user_profile = std::getenv("USERPROFILE")) {
+        return std::filesystem::path(user_profile) / ".libspeech";
     }
 
     // Older Windows / some restricted environments only set these two
     // separately (e.g. HOMEDRIVE=C: HOMEPATH=\Users\Name) rather than
     // USERPROFILE.
-    const char* homeDrive = std::getenv("HOMEDRIVE");
-    const char* homePath = std::getenv("HOMEPATH");
-    if (homeDrive && homePath) {
-        return std::filesystem::path(std::string(homeDrive) + homePath) / ".libspeech";
+    const char* home_drive = std::getenv("HOMEDRIVE");
+    const char* home_path = std::getenv("HOMEPATH");
+    if (home_drive && home_path) {
+        return std::filesystem::path(std::string(home_drive) + home_path) / ".libspeech";
     }
 
     // Last resort: fall back to the system temp directory rather than
     // crashing (constructing a std::filesystem::path from a null pointer,
     // e.g. `std::filesystem::path(getenv("HOME"))` when HOME is unset, is
     // undefined behavior -- this is exactly the bug being fixed here).
-    SPEECH_LOG(WARNING) << TAG("speech::utils::getDefaultModelCacheDir")
+    SPEECH_LOG(WARNING) << TAG("speech::utils::get_default_model_cache_dir")
                  << "Could not determine the user's home directory (HOME/USERPROFILE/"
                     "HOMEDRIVE+HOMEPATH all unset); falling back to the system temp "
                     "directory for downloaded model weights."
@@ -60,28 +60,28 @@ std::filesystem::path speech::utils::getDefaultModelCacheDir() {
 }
 
 // Function to download a file
-std::filesystem::path speech::utils::downloadFile(const std::string& url, const std::filesystem::path& outputPath, bool force, bool quiet) {
+std::filesystem::path speech::utils::download_file(const std::string& url, const std::filesystem::path& output_path, bool force, bool quiet) {
     // Check if the output path is a directory
-    std::filesystem::path finalOutputPath = outputPath;
-    if (std::filesystem::is_directory(outputPath)) {
+    std::filesystem::path final_output_path = output_path;
+    if (std::filesystem::is_directory(output_path)) {
         // Extract filename from the URL
-        std::string fileName = std::filesystem::path(url).filename().string();
-        finalOutputPath /= fileName;  // Append filename to the directory path
+        std::string file_name = std::filesystem::path(url).filename().string();
+        final_output_path /= file_name;  // Append filename to the directory path
     }
 
     // Check if the file already exists and force is false
-    if (!force && std::filesystem::exists(finalOutputPath)) {
-        SPEECH_LOG(INFO) << TAG(kTag) << COND(!quiet)
-                  << "File already exists: " << finalOutputPath << ". Skipping download." << std::endl;
-        return finalOutputPath;
+    if (!force && std::filesystem::exists(final_output_path)) {
+        SPEECH_LOG(INFO) << TAG(log_tag) << COND(!quiet)
+                  << "File already exists: " << final_output_path << ". Skipping download." << std::endl;
+        return final_output_path;
     }
 
     // Create the parent directory if it doesn't exist
-    std::filesystem::path parentDir = finalOutputPath.parent_path();
-    if (!parentDir.empty() && !std::filesystem::exists(parentDir)) {
-        if (!std::filesystem::create_directories(parentDir)) {
-            SPEECH_LOG(INFO) << TAG(kTag) << COND(!quiet)
-                      << "Error: Could not create directory: " << parentDir << std::endl;
+    std::filesystem::path parent_dir = final_output_path.parent_path();
+    if (!parent_dir.empty() && !std::filesystem::exists(parent_dir)) {
+        if (!std::filesystem::create_directories(parent_dir)) {
+            SPEECH_LOG(INFO) << TAG(log_tag) << COND(!quiet)
+                      << "Error: Could not create directory: " << parent_dir << std::endl;
             return {};  // Return an empty path on failure
         }
     }
@@ -100,45 +100,45 @@ std::filesystem::path speech::utils::downloadFile(const std::string& url, const 
     // large-body client::request() -- required workarounds that no longer
     // apply; see git history for those if ever needed against an older
     // pinned httpp).
-    httpp::download_result res = httpp::download(url, finalOutputPath.string())
+    httpp::download_result res = httpp::download(url, final_output_path.string())
                                       .enable_progress(!quiet)
                                       .run();
 
     if (!quiet) {
-        SPEECH_LOG(INFO) << TAG(kTag) << "\nDownload completed: " << finalOutputPath << std::endl;
+        SPEECH_LOG(INFO) << TAG(log_tag) << "\n_download completed: " << final_output_path << std::endl;
     }
 
     if (!res.ok) {
-        SPEECH_LOG(ERROR) << TAG(kTag) << COND(!quiet)
+        SPEECH_LOG(ERROR) << TAG(log_tag) << COND(!quiet)
                   << "Error: Failed to download file. httpp error: " << res.error
                   << " (status " << res.status << ")" << std::endl;
         return {};
     }
 
-    return finalOutputPath;
+    return final_output_path;
 }
 
 // --- log level ----------------------------------------------------------------------------------
 // The state itself lives in libspeech/detail/log.h (inline, shared by every library bundled into
 // libspeech.so); these exported functions are the only way code outside the library reaches it.
 
-void speech::utils::setLogLevel(LogLevel level) noexcept {
-    speech::detail::levelStorage().store(static_cast<int>(level), std::memory_order_relaxed);
+void speech::utils::set_log_level(log_level level) noexcept {
+    speech::detail::level_storage().store(static_cast<int>(level), std::memory_order_relaxed);
 }
 
-speech::utils::LogLevel speech::utils::getLogLevel() noexcept {
-    return speech::detail::currentLevel();
+speech::utils::log_level speech::utils::get_log_level() noexcept {
+    return speech::detail::current_level();
 }
 
-speech::utils::LogLevel speech::utils::parseLogLevel(const std::string& name) {
-    LogLevel level = LogLevel::Warning;
-    if (!speech::detail::tryParseLevel(name, level)) {
+speech::utils::log_level speech::utils::parse_log_level(const std::string& name) {
+    log_level level = log_level::warning;
+    if (!speech::detail::try_parse_level(name, level)) {
         throw std::invalid_argument("Unknown log level '" + name +
                                     "' (use trace, debug, info, warning, error or off).");
     }
     return level;
 }
 
-const char* speech::utils::logLevelName(LogLevel level) noexcept {
-    return speech::detail::levelName(level);
+const char* speech::utils::log_level_name(log_level level) noexcept {
+    return speech::detail::level_name(level);
 }

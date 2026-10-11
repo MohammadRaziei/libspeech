@@ -12,7 +12,7 @@ namespace {
 
 std::atomic<bool> g_enabled{true};
 
-bool envForcesGeneric() {
+bool env_forces_generic() {
     if (const char* v = std::getenv("LIBSPEECH_SIMD")) {
         if (std::strcmp(v, "off") == 0 || std::strcmp(v, "0") == 0 ||
             std::strcmp(v, "generic") == 0 || std::strcmp(v, "none") == 0) {
@@ -23,7 +23,7 @@ bool envForcesGeneric() {
 }
 
 #if LS_HAVE_X86_AVX2
-bool cpuHasAvx2Fma() {
+bool cpu_has_avx2_fma() {
 #if LS_COMPILER_GNU_LIKE
     // libgcc / compiler-rt also verify that the OS saves YMM state (XGETBV).
     __builtin_cpu_init();
@@ -45,37 +45,37 @@ bool cpuHasAvx2Fma() {
 #endif
 
 // Best backend this binary + CPU + environment allow; computed once.
-Backend detect() {
-    if (envForcesGeneric()) return Backend::Generic;
+backend detect() {
+    if (env_forces_generic()) return backend::generic;
 #if LS_HAVE_X86_AVX2
-    if (cpuHasAvx2Fma()) return Backend::X86Avx2Fma;
+    if (cpu_has_avx2_fma()) return backend::x86_avx2_fma;
 #endif
 #if LS_HAVE_ARM_NEON
-    return Backend::Arm64Neon;  // Advanced SIMD is mandatory on AArch64
+    return backend::arm64_neon;  // Advanced SIMD is mandatory on AArch64
 #endif
-    return Backend::Generic;
+    return backend::generic;
 }
 
-Backend detected() {
-    static const Backend b = detect();
+backend detected() {
+    static const backend b = detect();
     return b;
 }
 
 }  // namespace
 
-Backend activeBackend() {
-    return g_enabled.load(std::memory_order_relaxed) ? detected() : Backend::Generic;
+backend active_backend() {
+    return g_enabled.load(std::memory_order_relaxed) ? detected() : backend::generic;
 }
 
-const char* backendName() {
-    switch (activeBackend()) {
-        case Backend::X86Avx2Fma: return "avx2+fma";
-        case Backend::Arm64Neon: return "neon";
+const char* backend_name() {
+    switch (active_backend()) {
+        case backend::x86_avx2_fma: return "avx2+fma";
+        case backend::arm64_neon: return "neon";
         default: return "generic";
     }
 }
 
-void setEnabled(bool enabled) { g_enabled.store(enabled, std::memory_order_relaxed); }
-bool isEnabled() { return g_enabled.load(std::memory_order_relaxed); }
+void set_enabled(bool enabled) { g_enabled.store(enabled, std::memory_order_relaxed); }
+bool is_enabled() { return g_enabled.load(std::memory_order_relaxed); }
 
 }  // namespace speech::dsp::simd

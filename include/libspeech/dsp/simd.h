@@ -16,7 +16,7 @@
 // Controls (all optional):
 //   - environment LIBSPEECH_SIMD=off   force the generic kernels
 //     (legacy spelling LIBSPEECH_DISABLE_AVX2=1 still works)
-//   - setEnabled(false) at run time (affects objects/calls created afterwards)
+//   - set_enabled(false) at run time (affects objects/calls created afterwards)
 //
 #ifndef LIBSPEECH_DSP_SIMD_H
 #define LIBSPEECH_DSP_SIMD_H
@@ -25,24 +25,24 @@
 
 namespace speech::dsp::simd {
 
-enum class Backend {
-    Generic,     // portable C++ (the compiler may still auto-vectorize it)
-    X86Avx2Fma,  // hand-written AVX2 + FMA kernels
-    Arm64Neon,   // hand-written AArch64 NEON kernels
+enum class backend {
+    generic,     // portable C++ (the compiler may still auto-vectorize it)
+    x86_avx2_fma,  // hand-written AVX2 + FMA kernels
+    arm64_neon,   // hand-written AArch64 NEON kernels
 };
 
 // The backend kernels will use right now: the best one this binary was compiled
-// with AND this CPU supports, unless disabled by environment or setEnabled().
-SPEECH_API Backend activeBackend();
+// with AND this CPU supports, unless disabled by environment or set_enabled().
+SPEECH_API backend active_backend();
 
-// Short stable name of activeBackend(): "generic", "avx2+fma" or "neon".
-SPEECH_API const char* backendName();
+// Short stable name of active_backend(): "generic", "avx2+fma" or "neon".
+SPEECH_API const char* backend_name();
 
 // Run-time kill switch (default: enabled). Disabling selects the generic
 // kernels for everything constructed or called afterwards: objects that
 // already chose a kernel at construction (STFT, MFCC) keep it. Thread-safe.
-SPEECH_API void setEnabled(bool enabled);
-SPEECH_API bool isEnabled();
+SPEECH_API void set_enabled(bool enabled);
+SPEECH_API bool is_enabled();
 
 }  // namespace speech::dsp::simd
 

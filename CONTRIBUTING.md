@@ -111,17 +111,36 @@ what's already vendored under `src/third_party/`:
 
 ## Style notes
 
+- **Naming follows the standard library.** Everything we define is `snake_case`:
+  types (`stft`, `frame_view`, `complex_spectrogram`), enumerators
+  (`window_type::hann`), functions and methods (`cal_time_length()`,
+  `stft_into()`), variables and parameters. Private data members end in an
+  underscore (`fft_length_`); constants are plain `snake_case` too (`max_length`);
+  macros are `UPPER_CASE`; namespaces and file names are lowercase. This mirrors
+  the Python API one-to-one (`stft.cal_time_length` / `stft::cal_time_length`).
+  Python class names stay `PascalCase` there (`libspeech.STFT`, per PEP 8): they
+  are strings in the bindings, not C++ identifiers. Names that come from other
+  libraries keep their own spelling (`Ort::Session`, AudioFlux's `stftObj_new`,
+  miniaudio's `deviceConfig.sampleRate`) -- do not rename those, and do not let
+  them leak into public headers (see `window_type`, which replaced AudioFlux's
+  `WindowType` for exactly that reason). A type that shares its name with a method
+  does not compile (`stft::stft`), so pick a verb for the method (`compute`).
+  The old camelCase/`PascalCase` names are listed in
+  [`docs/api-renames.md`](docs/api-renames.md).
 - DSP code (`src/dsp/`) stays flat/non-virtual C++ -- no `virtual` methods,
   no inheritance hierarchies. It's called in tight loops; polymorphism's
   vtable indirection has a real, measured cost there. Models code
-  (`src/models/`) uses interfaces (`Denoiser`) where multiple backends
+  (`src/models/`) uses interfaces (`denoiser`) where multiple backends
   genuinely compete -- that's a different situation (a handful of calls,
   not millions) where the cost doesn't matter and the abstraction helps.
-- Logging goes through `aixlog` (`LOG(DEBUG) << TAG("speech::module::Class") << ... << std::endl;`).
-  Use `DEBUG` for normal lifecycle/results, `ERROR` for failures. Reach for
-  `TRACE` only where it exposes an internal computation someone would
-  actually want to inspect when debugging a wrong result -- not on every
-  call; it's easy to make `TRACE` noise that nobody reads.
+- Logging goes through libspeech's own logger (`libspeech/detail/log.h`):
+  `SPEECH_LOG(DEBUG) << TAG(log_tag) << ... << std::endl;` (`TAG`/`COND` are the
+  `aixlog` helpers; the output side is ours and writes to stderr). Use `DEBUG` for
+  normal lifecycle/results, `ERROR` for failures. Reach for `TRACE` only where it
+  exposes an internal computation someone would actually want to inspect when
+  debugging a wrong result -- not on every call; it's easy to make `TRACE` noise
+  that nobody reads. Users control the level with `speech::utils::set_log_level()`,
+  `libspeech.set_log_level()` or `LIBSPEECH_LOG`; the default is `warning`.
 - Prefer a small, real regression test over a comment saying "this used to
   be broken." If you find a bug while adding a feature, add the test that
   would have caught it before fixing the code.

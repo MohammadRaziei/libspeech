@@ -153,7 +153,7 @@ AudioFlux, so waveform amplitude is preserved by default:
 
 ```cpp
 // src/dsp/resample.cpp
-int isScale = 0;  // amplitude-preserving default; see audioflux_issues.md
+int is_scale = 0;  // amplitude-preserving default; see audioflux_issues.md
 ```
 
 The extended constructor (`Resample(sourceRate, targetRate, zeroNum, nbit,
@@ -227,8 +227,8 @@ AudioFlux functions happen to mutate their C arrays internally.
 
 ```cpp
 // src/dsp/fft.cpp
-std::vector<float> inputCopy = data;
-fftObj_idct(fftObj_, inputCopy.data(), output.data(), isNorm ? 1 : 0);
+std::vector<float> input_copy = data;
+fftObj_idct(fft_obj_, input_copy.data(), output.data(), is_norm ? 1 : 0);
 ```
 
 ### Why this isn't filed as an upstream bug
@@ -271,7 +271,7 @@ Fix: compute the phase in `double`, rounding only the final `sin()` result
 to `float`:
 
 ```cpp
-out[i] = std::sin(2.0 * M_PI * freqHz * i / sampleRate);  // double math, float storage
+out[i] = std::sin(2.0 * M_PI * freq_hz * i / sample_rate);  // double math, float storage
 ```
 
 Lesson for future DSP tests: any synthetic-signal generator indexed by a

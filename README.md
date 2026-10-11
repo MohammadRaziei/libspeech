@@ -102,6 +102,11 @@ y = stft.istft(re, im)                  # back to a signal; accepts 512 or 257 c
 fft = libspeech.FFT(12)
 spectrum_re, spectrum_im = fft.forward(x[:4096])   # real input uses a real-FFT; also inverse/dct/idct
 
+# One complex64 array instead of (re, im): the kernels write straight into it, nothing is converted.
+z = stft.stft_complex(x, onesided=True)   # (frames, 257) complex64 -- librosa.stft(...).T
+y = stft.istft(z)                         # accepts the complex64 array as it is
+spectrum = fft.fft(x[:4096])              # complex64, like np.fft.fft (fft.ifft inverts it)
+
 # --- Speech models ---
 # `with` frees the model's memory on exit (or call denoiser.close()). process() takes a list or a
 # 1-D NumPy array (and returns the same kind) and lets other Python threads run while it works.
@@ -122,21 +127,51 @@ for segment in vad.get_speech_timestamps():
 #include "libspeech/dsp/mfcc.h"
 #include "libspeech/models/denoiser.h"
 
-speech::io::Audio audio;
+speech::io::audio audio;
 audio.load("sample.wav");
 auto resampled = audio.to_mono().resample(16000);
 
-speech::dsp::MFCC::Params params;
-params.sampleRate = 16000;
-speech::dsp::MFCC mfcc(params);
+speech::dsp::mfcc::params params;
+params.sample_rate = 16000;
+speech::dsp::mfcc mfcc(params);
 auto coefficients = mfcc.compute(resampled.data(0));
 
-auto denoiser = speech::models::Denoiser::Create("facebook", "facebook_denoiser.onnx");
+auto denoiser = speech::models::denoiser::create("facebook", "facebook_denoiser.onnx");
 auto clean = denoiser->process(resampled.data(0));   // also: process(const float*, size_t)
 denoiser->close();                                    // optional: frees the model now, not at destruction
 ```
 
 See [`examples/`](examples/) for complete, runnable programs.
+
+### Views for C++ (no copies, no allocations)
+
+`speech::span<T>` (a pointer and a length; a C++17 stand-in for `std::span`) and `speech::frame_view<T>`
+(a buffer cut into frames) bundle what the raw-buffer calls otherwise take as loose arguments. A
+`std::vector` converts to a `span` automatically; the pointer forms of every call stay available.
+
+```cpp
+#include "libspeech/dsp/stft.h"
+speech::dsp::stft analysis(9, speech::dsp::window_type::hann, 128);
+
+// Frames of a signal, as the stft cuts them (no copy), and a spectrogram frame by frame:
+for (speech::span<const float> frame : analysis.frames(signal)) { /* N samples */ }
+auto spec = analysis.spectrogram(signal.data(), signal.size(), /*onesided=*/true);
+for (auto frame : spec.frames())              // one spectrum
+    for (std::complex<float> bin : frame)     // one bin: two references, nothing allocated
+        energy += std::norm(bin);
+
+// Straight into interleaved std::complex<float> (= NumPy complex64), then back:
+const int frames = analysis.cal_time_length(signal.size()), bins = analysis.num_bins(true);
+std::vector<std::complex<float>> out(frames * bins);
+analysis.stft_onesided_into(signal, speech::frame_view<std::complex<float>>(out.data(), frames, bins));
+auto back = analysis.istft(speech::frame_view<const std::complex<float>>(out.data(), frames, bins));
+```
+
+Complex data comes in two layouts, and both iterate without allocating. Interleaved storage
+(`complex64`, `std::complex<float>[]`) is a plain `reinterpret_cast` (`speech::as_complex()`), so its
+iterator yields real `std::complex<float>&`. Split planes (all real parts, then all imaginary parts,
+as in `complex_spectrogram`) cannot be reinterpreted, so `split_complex_span` hands out a
+two-reference proxy that converts to and from `std::complex<float>`.
 
 ### Logging
 
@@ -151,7 +186,7 @@ libspeech.get_log_level()          # "debug"
 
 ```cpp
 #include "libspeech/utils/log.h"
-speech::utils::setLogLevel(speech::utils::LogLevel::Off);
+speech::utils::set_log_level(speech::utils::log_level::off);
 ```
 
 ```bash

@@ -24,16 +24,16 @@ namespace speech::models {
  *    behind a private implementation pointer, so a `Denoiser*` always points at the start of the
  *    object. (Language bindings and `delete` through the base rely on that.)
  *  - process()/close() are non-virtual (NVI): argument checks, the "already closed" check and
- *    thread-safety live here once; backends only implement processImpl()/closeImpl().
+ *    thread-safety live here once; backends only implement process_impl()/close_impl().
  *  - Thread-safety: process() may be called concurrently from several threads. close() waits for
  *    running process() calls to finish, then releases the model; it is safe to call repeatedly.
  */
-class SPEECH_API Denoiser {
+class SPEECH_API denoiser {
    public:
-    virtual ~Denoiser();
+    virtual ~denoiser();
 
-    Denoiser(const Denoiser&) = delete;
-    Denoiser& operator=(const Denoiser&) = delete;
+    denoiser(const denoiser&) = delete;
+    denoiser& operator=(const denoiser&) = delete;
 
     /**
      * @param input_audio Mono audio samples normalized to [-1, 1].
@@ -61,7 +61,7 @@ class SPEECH_API Denoiser {
      *                    0 = one per hardware thread. Must not be negative.
      * @throws std::invalid_argument for an unknown backend or a negative num_threads.
      */
-    static std::unique_ptr<Denoiser> Create(const std::string& backend,
+    static std::unique_ptr<denoiser> create(const std::string& backend,
                                              const std::string& url,
                                              int sample_rate = 16000,
                                              int num_threads = 1);
@@ -70,13 +70,13 @@ class SPEECH_API Denoiser {
     const int sample_rate;
 
    protected:
-    explicit Denoiser(int sample_rate);
+    explicit denoiser(int sample_rate);
 
     /** Backend hook: runs the model. Input is already validated; the denoiser is open. */
-    virtual std::vector<float> processImpl(const float* data, std::size_t size) = 0;
+    virtual std::vector<float> process_impl(const float* data, std::size_t size) = 0;
 
     /** Backend hook: frees the model. Called at most once. */
-    virtual void closeImpl() noexcept = 0;
+    virtual void close_impl() noexcept = 0;
 
    private:
     mutable std::shared_mutex mutex_;

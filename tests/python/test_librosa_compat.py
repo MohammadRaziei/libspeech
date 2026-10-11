@@ -285,6 +285,19 @@ def test_full_stft_is_librosas_spectrum_plus_its_conjugate_mirror():
     assert np.abs(full[257:] - np.conj(ref[1:256][::-1])).max() <= 1e-5 * np.abs(ref).max()
 
 
+def test_stft_complex_is_librosas_stft_transposed():
+    x = noisy_speechlike()
+    stft = libspeech.STFT(9, libspeech.WindowType.hann, 128)
+    ours = stft.stft_complex(x, onesided=True)  # (frames, bins)
+    ref = librosa.stft(x, n_fft=512, hop_length=128, win_length=512, window="hann", center=False)  # (bins, frames)
+    assert ours.shape == ref.T.shape
+    assert np.abs(ours - ref.T).max() <= 1e-4 * max(1.0, np.abs(ref).max())
+    # and librosa can invert our spectrogram directly
+    y = libspeech.STFT(9, libspeech.WindowType.hann, 128).istft(ours)
+    y_ref = librosa.istft(ours.T, hop_length=128, win_length=512, n_fft=512, window="hann", center=False)
+    assert np.abs(y[512:-512] - y_ref[512:-512]).max() <= 2e-5 * max(1.0, np.abs(y_ref).max())
+
+
 @pytest.mark.parametrize(("radix2_exp", "hop"), [(9, 128), (10, 256)])
 def test_istft_matches_librosa(radix2_exp, hop):
     x = noisy_speechlike()

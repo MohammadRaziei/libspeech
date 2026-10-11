@@ -89,8 +89,8 @@
 namespace speech::dsp::simd {
 
 // Cheap per-call checks (one atomic load + a cached static).
-inline bool useAvx2Fma() { return activeBackend() == Backend::X86Avx2Fma; }
-inline bool useNeon() { return activeBackend() == Backend::Arm64Neon; }
+inline bool use_avx2_fma() { return active_backend() == backend::x86_avx2_fma; }
+inline bool use_neon() { return active_backend() == backend::arm64_neon; }
 
 }  // namespace speech::dsp::simd
 

@@ -16,18 +16,18 @@
 namespace speech::models {
 
 // Forward declaration of timestamp_t class
-class timestamp_t {
+class speech_timestamp {
    public:
-    timestamp_t(int start = -1, int end = -1, const int sample_rate = 16000)
+    speech_timestamp(int start = -1, int end = -1, const int sample_rate = 16000)
         : start(start), end(end), sample_rate(sample_rate) {}
 
-    timestamp_t& operator=(const timestamp_t& a) {
+    speech_timestamp& operator=(const speech_timestamp& a) {
         start = a.start;
         end = a.end;
         return *this;
     }
 
-    bool operator==(const timestamp_t& a) const {
+    bool operator==(const speech_timestamp& a) const {
         return (start == a.start && end == a.end);
     }
 
@@ -53,21 +53,21 @@ class timestamp_t {
 
 
 
-class SPEECH_API SileroVadModel : public ONNXModel {
+class SPEECH_API silero_vad_model : public onnx_model {
 
    public:
     // Constructor: sets model path, sample rate, window size (ms), and other parameters.
-    SileroVadModel(const std::string& model_path = "silero-vad.onnx",
+    silero_vad_model(const std::string& model_path = "silero-vad.onnx",
                    const int sample_rate = 16000, int window_frame_size = 32,
                    float threshold = 0.5, int min_silence_duration_ms = 100,
                    int speech_pad_ms = 30, int min_speech_duration_ms = 250,
                    float max_speech_duration_s = std::numeric_limits<float>::infinity());
 
     // Process the entire audio input.
-    void processOnVector(const std::vector<float>& input_wav);
+    void process_on_vector(const std::vector<float>& input_wav);
 
     // Returns the detected speech timestamps.
-    const std::vector<timestamp_t> get_speech_timestamps() const;
+    const std::vector<speech_timestamp> get_speech_timestamps() const;
 
     // Public method to reset the internal state.
     void reset();
@@ -99,7 +99,7 @@ class SPEECH_API SileroVadModel : public ONNXModel {
     const int64_t state_node_dims[3] = { 2, 1, 128 };
     const int64_t sr_node_dims[1] = { 1 };
     std::vector<Ort::Value> ort_outputs;
-    std::vector<const char*> output_node_names = { "output", "stateN" };
+    std::vector<const char*> output_node_names = { "output", "state_n" };
 
     // Model configuration parameters
     float threshold;
@@ -116,8 +116,8 @@ class SPEECH_API SileroVadModel : public ONNXModel {
     unsigned int current_sample = 0;
     int prev_end;
     int next_start = 0;
-    std::vector<timestamp_t> speeches;
-    timestamp_t current_speech;
+    std::vector<speech_timestamp> speeches;
+    speech_timestamp current_speech;
 
     // Resets internal state (_state, _context, etc.)
     void reset_states();

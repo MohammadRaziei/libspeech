@@ -19,13 +19,13 @@
 namespace speech::detail {
 
 template <typename T, typename A = std::allocator<T>>
-class DefaultInitAllocator : public A {
-    using Traits = std::allocator_traits<A>;
+class default_init_allocator : public A {
+    using traits = std::allocator_traits<A>;
 
    public:
     template <typename U>
     struct rebind {
-        using other = DefaultInitAllocator<U, typename Traits::template rebind_alloc<U>>;
+        using other = default_init_allocator<U, typename traits::template rebind_alloc<U>>;
     };
 
     using A::A;
@@ -36,12 +36,12 @@ class DefaultInitAllocator : public A {
     }
     template <typename U, typename... Args>
     void construct(U* ptr, Args&&... args) {
-        Traits::construct(static_cast<A&>(*this), ptr, std::forward<Args>(args)...);
+        traits::construct(static_cast<A&>(*this), ptr, std::forward<Args>(args)...);
     }
 };
 
 template <typename T>
-using UninitVector = std::vector<T, DefaultInitAllocator<T>>;
+using uninit_vector = std::vector<T, default_init_allocator<T>>;
 
 }  // namespace speech::detail
 

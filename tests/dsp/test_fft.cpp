@@ -7,72 +7,72 @@
 #include "libspeech/dsp/fft.h"
 
 namespace {
-std::vector<float> makeSine(int n, float cyclesOverN) {
+std::vector<float> make_sine(int n, float cycles_over_n) {
     std::vector<float> out(n);
     for (int i = 0; i < n; ++i) {
-        out[i] = std::sin(2.0 * M_PI * cyclesOverN * i / n);
+        out[i] = std::sin(2.0 * M_PI * cycles_over_n * i / n);
     }
     return out;
 }
 }  // namespace
 
-UTEST(FFT, SizeMatchesRadix2Exp) {
-    speech::dsp::FFT fft(8);  // 2^8 = 256
+UTEST(fft, size_matches_radix2_exp) {
+    speech::dsp::fft fft(8);  // 2^8 = 256
     ASSERT_EQ(fft.size(), 256);
 }
 
-UTEST(FFT, ImpulseHasFlatSpectrum) {
+UTEST(fft, impulse_has_flat_spectrum) {
     // FFT of a unit impulse (delta function) is a constant (all-ones) spectrum.
-    speech::dsp::FFT fft(6);  // length 64
+    speech::dsp::fft fft(6);  // length 64
     std::vector<float> real(64, 0.0f);
     real[0] = 1.0f;
 
-    auto [outReal, outImag] = fft.forward(real);
+    auto [out_real, out_imag] = fft.forward(real);
 
     for (int i = 0; i < 64; ++i) {
-        ASSERT_NEAR(static_cast<double>(outReal[i]), 1.0, 1e-4);
-        ASSERT_NEAR(static_cast<double>(outImag[i]), 0.0, 1e-4);
+        ASSERT_NEAR(static_cast<double>(out_real[i]), 1.0, 1e-4);
+        ASSERT_NEAR(static_cast<double>(out_imag[i]), 0.0, 1e-4);
     }
 }
 
-UTEST(FFT, SineWaveHasEnergyAtExpectedBin) {
+UTEST(fft, sine_wave_has_energy_at_expected_bin) {
     // A pure sine at k cycles over N samples should show up (almost)
     // entirely in FFT bin k (and its mirror at N-k).
     const int n = 64;
     const int k = 5;
-    speech::dsp::FFT fft(6);  // length 64
-    auto real = makeSine(n, static_cast<float>(k));
+    speech::dsp::fft fft(6);  // length 64
+    auto real = make_sine(n, static_cast<float>(k));
 
-    auto [outReal, outImag] = fft.forward(real);
+    auto [out_real, out_imag] = fft.forward(real);
 
-    float magAtK = std::sqrt(outReal[k] * outReal[k] + outImag[k] * outImag[k]);
-    float totalEnergy = 0.0f;
+    float mag_at_k = std::sqrt(out_real[k] * out_real[k] + out_imag[k] * out_imag[k]);
+    float total_energy = 0.0f;
     for (int i = 0; i < n; ++i) {
-        totalEnergy += outReal[i] * outReal[i] + outImag[i] * outImag[i];
+        total_energy += out_real[i] * out_real[i] + out_imag[i] * out_imag[i];
     }
     // Bin k (plus its mirror) should hold the overwhelming majority of the energy.
-    ASSERT_TRUE((2.0f * magAtK * magAtK) / totalEnergy > 0.95f);
+    ASSERT_TRUE((2.0f * mag_at_k * mag_at_k) / total_energy > 0.95f);
 }
 
-UTEST(FFT, ForwardInverseRoundTrip) {
+UTEST(fft, forward_inverse_round_trip) {
     const int n = 64;
-    speech::dsp::FFT fft(6);
-    auto real = makeSine(n, 3.0f);
+    speech::dsp::fft fft(6);
+    auto real = make_sine(n, 3.0f);
     std::vector<float> imag(n, 0.0f);
 
-    auto [freqReal, freqImag] = fft.forward(real);
-    auto [backReal, backImag] = fft.inverse(freqReal, freqImag);
+    auto [freq_real, freq_imag] = fft.forward(real);
+    auto [back_real, back_imag] = fft.inverse(freq_real, freq_imag);
 
     for (int i = 0; i < n; ++i) {
-        ASSERT_NEAR(static_cast<double>(backReal[i]), static_cast<double>(real[i]), 1e-3);
-        ASSERT_NEAR(static_cast<double>(backImag[i]), 0.0, 1e-3);
+        ASSERT_NEAR(static_cast<double>(back_real[i]), static_cast<double>(real[i]), 1e-3);
+        ASSERT_NEAR(static_cast<double>(back_imag[i]), 0.0, 1e-3);
     }
 }
 
-UTEST(FFT, DctIdctRoundTrip) {
+UTEST(fft, dct_idct_round_trip) {
     const int n = 64;
-    speech::dsp::FFT fft(6);
-    auto signal = makeSine(n, 4.0f);
+    speech::dsp::fft fft(6);
+    auto signal = make_sine(n, 4.0f);
 
     auto coeffs = fft.dct(signal, true);
     auto reconstructed = fft.idct(coeffs, true);
@@ -82,40 +82,40 @@ UTEST(FFT, DctIdctRoundTrip) {
     }
 }
 
-UTEST(FFT, IdctDoesNotMutateInput) {
+UTEST(fft, idct_does_not_mutate_input) {
     // Regression test for audioflux_issues.md Issue 3: AudioFlux's
     // fftObj_idct() mutates its input array in place. Our wrapper must copy
     // internally so the caller's vector is untouched.
     const int n = 64;
-    speech::dsp::FFT fft(6);
-    auto signal = makeSine(n, 4.0f);
+    speech::dsp::fft fft(6);
+    auto signal = make_sine(n, 4.0f);
     auto coeffs = fft.dct(signal, true);
-    std::vector<float> coeffsCopy = coeffs;
+    std::vector<float> coeffs_copy = coeffs;
 
     fft.idct(coeffs, true);
 
     for (int i = 0; i < n; ++i) {
-        ASSERT_EQ(coeffs[i], coeffsCopy[i]);
+        ASSERT_EQ(coeffs[i], coeffs_copy[i]);
     }
 }
 
-UTEST(FFT, WrongLengthInputThrows) {
-    speech::dsp::FFT fft(6);  // length 64
-    std::vector<float> wrongSize(32, 0.0f);
+UTEST(fft, wrong_length_input_throws) {
+    speech::dsp::fft fft(6);  // length 64
+    std::vector<float> wrong_size(32, 0.0f);
 
     bool threw = false;
     try {
-        fft.forward(wrongSize);
+        fft.forward(wrong_size);
     } catch (const std::invalid_argument&) {
         threw = true;
     }
     ASSERT_TRUE(threw);
 }
 
-UTEST(FFT, InvalidRadix2ExpThrows) {
+UTEST(fft, invalid_radix2_exp_throws) {
     bool threw = false;
     try {
-        speech::dsp::FFT fft(0);  // out of [1,30] range
+        speech::dsp::fft fft(0);  // out of [1,30] range
     } catch (const std::invalid_argument&) {
         threw = true;
     }

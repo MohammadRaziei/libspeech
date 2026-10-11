@@ -7,19 +7,19 @@
 namespace speech::models {
 
 // Resets internal state (_state, _context, etc.)
-void SileroVadModel::reset_states() {
+void silero_vad_model::reset_states() {
     std::memset(_state.data(), 0, _state.size() * sizeof(float));
     triggered = false;
     temp_end = 0;
     current_sample = 0;
     prev_end = next_start = 0;
     speeches.clear();
-    current_speech = timestamp_t();
+    current_speech = speech_timestamp();
     std::fill(_context.begin(), _context.end(), 0.0f);
 }
 
 // Inference: runs inference on one chunk of input data.
-void SileroVadModel::predict(const std::vector<float>& data_chunk) {
+void silero_vad_model::predict(const std::vector<float>& data_chunk) {
     // Build new input: first context_samples from _context, followed by the current chunk (window_size_samples).
     std::vector<float> new_data(effective_window_size, 0.0f);
     std::copy(_context.begin(), _context.end(), new_data.begin());
@@ -46,8 +46,8 @@ void SileroVadModel::predict(const std::vector<float>& data_chunk) {
         output_node_names.data(), output_node_names.size());
 
     float speech_prob = ort_outputs[0].GetTensorMutableData<float>()[0];
-    float* stateN = ort_outputs[1].GetTensorMutableData<float>();
-    std::memcpy(_state.data(), stateN, size_state * sizeof(float));
+    float* state_n = ort_outputs[1].GetTensorMutableData<float>();
+    std::memcpy(_state.data(), state_n, size_state * sizeof(float));
     current_sample += static_cast<unsigned int>(window_size_samples); // Advance by the original window size.
 
     // Logic for detecting speech segments
@@ -69,7 +69,7 @@ void SileroVadModel::predict(const std::vector<float>& data_chunk) {
         if (prev_end > 0) {
             current_speech.end = prev_end;
             speeches.push_back(current_speech);
-            current_speech = timestamp_t(-1, -1, sample_rate);
+            current_speech = speech_timestamp(-1, -1, sample_rate);
             if (next_start < prev_end)
                 triggered = false;
             else
@@ -80,7 +80,7 @@ void SileroVadModel::predict(const std::vector<float>& data_chunk) {
         } else {
             current_speech.end = current_sample;
             speeches.push_back(current_speech);
-            current_speech = timestamp_t(-1, -1, sample_rate);
+            current_speech = speech_timestamp(-1, -1, sample_rate);
             prev_end = 0;
             next_start = 0;
             temp_end = 0;
@@ -105,7 +105,7 @@ void SileroVadModel::predict(const std::vector<float>& data_chunk) {
                 current_speech.end = temp_end;
                 if (current_speech.end - current_speech.start > min_speech_samples) {
                     speeches.push_back(current_speech);
-                    current_speech = timestamp_t();
+                    current_speech = speech_timestamp();
                     prev_end = 0;
                     next_start = 0;
                     temp_end = 0;
@@ -119,12 +119,12 @@ void SileroVadModel::predict(const std::vector<float>& data_chunk) {
 }
 
 // Constructor: sets model path, sample rate, window size (ms), and other parameters.
-SileroVadModel::SileroVadModel(const std::string& model_path,
+silero_vad_model::silero_vad_model(const std::string& model_path,
                                const int sample_rate, int window_frame_size,
                                float threshold, int min_silence_duration_ms,
                                int speech_pad_ms, int min_speech_duration_ms,
                                float max_speech_duration_s)
-    : ONNXModel(model_path, sample_rate),  threshold(threshold), speech_pad_samples(speech_pad_ms), prev_end(0) {
+    : onnx_model(model_path, sample_rate),  threshold(threshold), speech_pad_samples(speech_pad_ms), prev_end(0) {
     sr_per_ms = sample_rate / 1000;  // e.g., 16000 / 1000 = 16
     window_size_samples = window_frame_size * sr_per_ms; // e.g., 32ms * 16 = 512 samples
     effective_window_size = window_size_samples + context_samples; // e.g., 512 + 64 = 576 samples
@@ -142,7 +142,7 @@ SileroVadModel::SileroVadModel(const std::string& model_path,
 }
 
 // Process the entire audio input.
-void SileroVadModel::processOnVector(const std::vector<float>& input_wav) {
+void silero_vad_model::process_on_vector(const std::vector<float>& input_wav) {
     reset_states();
     audio_length_samples = static_cast<int>(input_wav.size());
 
@@ -157,7 +157,7 @@ void SileroVadModel::processOnVector(const std::vector<float>& input_wav) {
     if (current_speech.start >= 0) {
         current_speech.end = audio_length_samples;
         speeches.push_back(current_speech);
-        current_speech = timestamp_t();
+        current_speech = speech_timestamp();
         prev_end = 0;
         next_start = 0;
         temp_end = 0;
@@ -166,12 +166,12 @@ void SileroVadModel::processOnVector(const std::vector<float>& input_wav) {
 }
 
 // Returns the detected speech timestamps.
-const std::vector<timestamp_t> SileroVadModel::get_speech_timestamps() const {
+const std::vector<speech_timestamp> silero_vad_model::get_speech_timestamps() const {
     return speeches;
 }
 
 // Public method to reset the internal state.
-void SileroVadModel::reset() {
+void silero_vad_model::reset() {
     reset_states();
 }
 

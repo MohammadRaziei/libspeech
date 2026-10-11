@@ -15,7 +15,7 @@ namespace speech::utils {
  * Severity threshold for libspeech's own log output: messages below the level are dropped.
  * Off silences everything.
  */
-enum class LogLevel { Trace = 0, Debug, Info, Warning, Error, Off };
+enum class log_level { trace = 0, debug, info, warning, error, off };
 
 /**
  * Sets the process-wide log level. Thread-safe.
@@ -23,20 +23,20 @@ enum class LogLevel { Trace = 0, Debug, Info, Warning, Error, Off };
  * Until this is called, the level comes from the LIBSPEECH_LOG environment variable
  * (trace | debug | info | warning | error | off), or is Warning if that is unset or invalid.
  */
-SPEECH_API void setLogLevel(LogLevel level) noexcept;
+SPEECH_API void set_log_level(log_level level) noexcept;
 
 /** The current log level. */
-SPEECH_API LogLevel getLogLevel() noexcept;
+SPEECH_API log_level get_log_level() noexcept;
 
 /**
  * Parses a level name, case-insensitively and ignoring surrounding spaces:
  * trace, debug, info, warning (or warn), error, off (or none).
  * @throws std::invalid_argument for anything else.
  */
-SPEECH_API LogLevel parseLogLevel(const std::string& name);
+SPEECH_API log_level parse_log_level(const std::string& name);
 
 /** Lower-case name of a level ("warning", "off", ...). */
-SPEECH_API const char* logLevelName(LogLevel level) noexcept;
+SPEECH_API const char* log_level_name(log_level level) noexcept;
 
 }  // namespace speech::utils
 

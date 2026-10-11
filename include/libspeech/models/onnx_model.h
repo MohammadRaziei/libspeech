@@ -17,7 +17,7 @@ namespace speech::models {
  * ONNXModel serves as a base class for models that use ONNX Runtime.
  * It provides functionality for initializing and managing ONNX sessions.
  */
-class SPEECH_API ONNXModel : public BaseModel {
+class SPEECH_API onnx_model : public base_model {
    protected:
     Ort::Env env;
     Ort::SessionOptions session_options;
@@ -34,12 +34,12 @@ class SPEECH_API ONNXModel : public BaseModel {
      * @param sample_rate The sample rate (Hz) the model expects its input at.
      * @param base_dir The base directory where the model will be stored. Defaults to ~/.libspeech.
      */
-    ONNXModel(const std::string& url, const int sample_rate, const std::filesystem::path& base_dir = speech::utils::getDefaultModelCacheDir());
+    onnx_model(const std::string& url, const int sample_rate, const std::filesystem::path& base_dir = speech::utils::get_default_model_cache_dir());
 
     /**
      * Destructor for ONNXModel.
      */
-    virtual ~ONNXModel();
+    virtual ~onnx_model();
 
     /**
      * Initializes the ONNX Runtime session with the downloaded model.

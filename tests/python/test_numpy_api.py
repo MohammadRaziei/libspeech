@@ -193,6 +193,94 @@ def test_fft_numpy_validates_lengths():
         fft.idct(short)
 
 
+# --- complex64 in / out ---------------------------------------------------
+
+@pytest.mark.parametrize("onesided", [False, True])
+def test_stft_complex_is_the_planar_stft_as_one_complex64_array(onesided):
+    x = _noise(512 * 10)
+    stft = libspeech.STFT(9, libspeech.WindowType.hann, 128)
+    re, im = stft.stft(x, onesided=onesided)
+    z = stft.stft_complex(x, onesided=onesided)
+
+    assert z.dtype == np.complex64
+    assert z.shape == re.shape
+    assert np.array_equal(z.real, re)  # same kernel, only the element stride differs
+    assert np.array_equal(z.imag, im)
+
+
+def test_stft_complex_of_a_too_short_signal_has_no_frames():
+    stft = libspeech.STFT(9, libspeech.WindowType.hann)
+    assert stft.stft_complex(_noise(100), onesided=True).shape == (0, 257)
+    assert stft.stft_complex(_noise(100)).shape == (0, 512)
+
+
+@pytest.mark.parametrize("onesided", [False, True])
+def test_istft_accepts_one_complex64_array(onesided):
+    x = _noise(512 * 12, seed=7)
+    stft = libspeech.STFT(9, libspeech.WindowType.hann)
+    z = stft.stft_complex(x, onesided=onesided)
+    re, im = stft.stft(x, onesided=onesided)
+
+    y = stft.istft(z)
+    assert y.dtype == np.float32
+    assert np.array_equal(y, stft.istft(re, im))  # exactly the two-array result
+    assert np.array_equal(stft.istft(z, 1), stft.istft(re, im, 1))
+    assert np.abs(y[512:-512] - x[512 : len(y) - 512]).max() < 2e-4
+    assert np.array_equal(stft.istft(z.astype(np.complex128)), y)  # converted to complex64
+    assert np.array_equal(stft.istft(np.asfortranarray(z)), y)  # and made contiguous
+
+
+def test_istft_complex_validates_its_arguments():
+    stft = libspeech.STFT(9, libspeech.WindowType.hann)
+    z = stft.stft_complex(_noise(512 * 6, seed=8), onesided=True)
+    with pytest.raises(ValueError):
+        stft.istft(z[:, :100])  # neither 512 nor 257 columns
+    with pytest.raises(ValueError):
+        stft.istft(z, 2)  # method_type must be 0 or 1
+    with pytest.raises(ValueError):
+        stft.istft(z[:0])  # no frames
+
+
+@pytest.mark.parametrize("radix2_exp", [3, 4, 9, 16])  # 3: below the real-FFT range, 16: heap path
+def test_fft_returns_complex64_like_numpy(radix2_exp):
+    n = 1 << radix2_exp
+    x = _noise(n, seed=radix2_exp)
+    fft = libspeech.FFT(radix2_exp)
+    z = fft.fft(x)
+    assert z.dtype == np.complex64
+    assert z.shape == (n,)
+    ref = np.fft.fft(x.astype(np.float64))
+    assert np.abs(z - ref).max() < 1e-4 * max(1.0, np.abs(ref).max())
+
+    # the same bytes the tuple API produces
+    re, im = fft.forward(x)
+    assert np.array_equal(z.real, re)
+    assert np.array_equal(z.imag, im)
+
+
+def test_fft_and_ifft_accept_complex_input_and_round_trip():
+    fft = libspeech.FFT(10)
+    z_in = (_noise(1024, seed=1) + 1j * _noise(1024, seed=2)).astype(np.complex64)
+    z = fft.fft(z_in)
+    ref = np.fft.fft(z_in.astype(np.complex128))
+    assert np.abs(z - ref).max() < 1e-4 * np.abs(ref).max()
+
+    back = fft.ifft(z)
+    assert back.dtype == np.complex64
+    assert np.abs(back - z_in).max() < 1e-4
+    assert np.abs(fft.ifft(z_in) - np.fft.ifft(z_in.astype(np.complex128))).max() < 1e-4
+
+
+def test_fft_complex_validates_lengths():
+    fft = libspeech.FFT(6)
+    with pytest.raises(ValueError):
+        fft.fft(_noise(63))
+    with pytest.raises(ValueError):
+        fft.fft(np.zeros(63, np.complex64))
+    with pytest.raises(ValueError):
+        fft.ifft(np.zeros(65, np.complex64))
+
+
 # --- inverse STFT ---------------------------------------------------------
 
 def _noise(n: int, seed: int = 0) -> np.ndarray:

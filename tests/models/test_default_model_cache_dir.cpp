@@ -22,7 +22,7 @@ void unsetenv(const char* name) { _putenv_s(name, ""); }
 // directly. On Windows, HOME is essentially never set, so getenv("HOME")
 // returns nullptr there, and constructing a std::filesystem::path from a
 // null pointer is undefined behavior (crashes in practice). These tests
-// exercise every fallback speech::utils::getDefaultModelCacheDir() needs
+// exercise every fallback speech::utils::get_default_model_cache_dir() needs
 // to handle correctly.
 
 namespace {
@@ -30,73 +30,73 @@ namespace {
 // Small RAII helper: sets an env var for the scope of the test, restoring
 // (or unsetting) it afterward -- so these tests don't leak state into
 // whatever runs after them in the same process.
-class ScopedEnv {
+class scoped_env {
    public:
-    ScopedEnv(const char* name, const char* value) : name_(name) {
+    scoped_env(const char* name, const char* value) : name_(name) {
         const char* old = std::getenv(name);
-        hadOld_ = old != nullptr;
-        if (hadOld_) oldValue_ = old;
+        had_old_ = old != nullptr;
+        if (had_old_) old_value_ = old;
         if (value) {
             setenv(name, value, 1);
         } else {
             unsetenv(name);
         }
     }
-    ~ScopedEnv() {
-        if (hadOld_) {
-            setenv(name_.c_str(), oldValue_.c_str(), 1);
+    ~scoped_env() {
+        if (had_old_) {
+            setenv(name_.c_str(), old_value_.c_str(), 1);
         } else {
             unsetenv(name_.c_str());
         }
     }
-    ScopedEnv(const ScopedEnv&) = delete;
+    scoped_env(const scoped_env&) = delete;
 
    private:
     std::string name_;
-    std::string oldValue_;
-    bool hadOld_;
+    std::string old_value_;
+    bool had_old_;
 };
 
 }  // namespace
 
-UTEST(DefaultModelCacheDir, UsesHomeWhenSet) {
-    ScopedEnv home("HOME", "/home/testuser");
-    auto path = speech::utils::getDefaultModelCacheDir();
+UTEST(default_model_cache_dir, uses_home_when_set) {
+    scoped_env home("HOME", "/home/testuser");
+    auto path = speech::utils::get_default_model_cache_dir();
     ASSERT_TRUE(path.string().find("/home/testuser") == 0);
     ASSERT_TRUE(path.string().find(".libspeech") != std::string::npos);
 }
 
-UTEST(DefaultModelCacheDir, FallsBackToUserProfileWhenHomeUnset) {
+UTEST(default_model_cache_dir, falls_back_to_user_profile_when_home_unset) {
     // The exact scenario that used to crash: HOME unset (as on essentially
     // all real Windows systems), USERPROFILE set instead.
-    ScopedEnv home("HOME", nullptr);
-    ScopedEnv userProfile("USERPROFILE", "C:\\Users\\testuser");
-    auto path = speech::utils::getDefaultModelCacheDir();
+    scoped_env home("HOME", nullptr);
+    scoped_env user_profile("USERPROFILE", "C:\\Users\\testuser");
+    auto path = speech::utils::get_default_model_cache_dir();
     ASSERT_TRUE(path.string().find("testuser") != std::string::npos);
     ASSERT_TRUE(path.string().find(".libspeech") != std::string::npos);
 }
 
-UTEST(DefaultModelCacheDir, FallsBackToHomeDriveAndHomePathWhenOthersUnset) {
-    ScopedEnv home("HOME", nullptr);
-    ScopedEnv userProfile("USERPROFILE", nullptr);
-    ScopedEnv homeDrive("HOMEDRIVE", "C:");
-    ScopedEnv homePath("HOMEPATH", "\\Users\\testuser");
-    auto path = speech::utils::getDefaultModelCacheDir();
+UTEST(default_model_cache_dir, falls_back_to_home_drive_and_home_path_when_others_unset) {
+    scoped_env home("HOME", nullptr);
+    scoped_env user_profile("USERPROFILE", nullptr);
+    scoped_env home_drive("HOMEDRIVE", "C:");
+    scoped_env home_path("HOMEPATH", "\\Users\\testuser");
+    auto path = speech::utils::get_default_model_cache_dir();
     ASSERT_TRUE(path.string().find("testuser") != std::string::npos);
     ASSERT_TRUE(path.string().find(".libspeech") != std::string::npos);
 }
 
-UTEST(DefaultModelCacheDir, FallsBackToTempDirWithoutCrashingWhenNothingSet) {
+UTEST(default_model_cache_dir, falls_back_to_temp_dir_without_crashing_when_nothing_set) {
     // The critical regression test: none of HOME/USERPROFILE/HOMEDRIVE/
     // HOMEPATH set at all. Must not crash (the original bug: constructing
     // std::filesystem::path(nullptr) is UB) -- must return *some* usable
     // path instead.
-    ScopedEnv home("HOME", nullptr);
-    ScopedEnv userProfile("USERPROFILE", nullptr);
-    ScopedEnv homeDrive("HOMEDRIVE", nullptr);
-    ScopedEnv homePath("HOMEPATH", nullptr);
+    scoped_env home("HOME", nullptr);
+    scoped_env user_profile("USERPROFILE", nullptr);
+    scoped_env home_drive("HOMEDRIVE", nullptr);
+    scoped_env home_path("HOMEPATH", nullptr);
 
-    auto path = speech::utils::getDefaultModelCacheDir();
+    auto path = speech::utils::get_default_model_cache_dir();
     ASSERT_TRUE(!path.empty());
     ASSERT_TRUE(path.string().find(".libspeech") != std::string::npos);
 }

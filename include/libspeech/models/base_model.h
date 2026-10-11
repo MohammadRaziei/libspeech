@@ -15,14 +15,14 @@
 
 namespace speech::models {
 
-class SPEECH_API BaseModel {
+class SPEECH_API base_model {
    protected:
     std::string url;
     std::filesystem::path model_path;
 
    public:
-    BaseModel(const std::string& url, const std::filesystem::path& base_dir = speech::utils::getDefaultModelCacheDir());
-    virtual ~BaseModel() = default;
+    base_model(const std::string& url, const std::filesystem::path& base_dir = speech::utils::get_default_model_cache_dir());
+    virtual ~base_model() = default;
 
    protected:
     void download_model();

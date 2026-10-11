@@ -26,40 +26,40 @@
 #include "libspeech/dsp/stft.h"
 
 int main() {
-    const int sampleRate = 16000;
-    const int durationSeconds = 60;
-    const int n = sampleRate * durationSeconds;
+    const int sample_rate = 16000;
+    const int duration_seconds = 60;
+    const int n = sample_rate * duration_seconds;
 
     std::vector<float> signal(n);
     for (int i = 0; i < n; ++i) {
-        signal[i] = std::sin(2.0 * M_PI * 440.0 * i / sampleRate);
+        signal[i] = std::sin(2.0 * M_PI * 440.0 * i / sample_rate);
     }
 
-    speech::dsp::STFT stft(10);  // fftLength=1024, slideLength=256 (default)
-    const int numFrames = stft.calTimeLength(n);
-    printf("signal: %d samples (%ds @ %dHz), numFrames=%d, fftLength=%d\n", n, durationSeconds,
-           sampleRate, numFrames, stft.fftLength());
+    speech::dsp::stft stft(10);  // fft_length=1024, slide_length=256 (default)
+    const int num_frames = stft.cal_time_length(n);
+    printf("signal: %d samples (%ds @ %d_hz), num_frames=%d, fft_length=%d\n", n, duration_seconds,
+           sample_rate, num_frames, stft.fft_length());
 
     // Warm-up runs (not timed) -- excludes cold-cache/CPU-frequency-ramp-up
     // noise, which otherwise dominates the first couple of timed runs and
     // makes single-run comparisons unreliable.
     for (int i = 0; i < 3; ++i) {
-        auto result = stft.stft(signal);
+        auto result = stft.compute(signal);
     }
 
     const int repeats = 20;
-    double totalMs = 0.0, minMs = 1e9, maxMs = 0.0;
+    double total_ms = 0.0, min_ms = 1e9, max_ms = 0.0;
     for (int r = 0; r < repeats; ++r) {
         auto t0 = std::chrono::high_resolution_clock::now();
-        auto result = stft.stft(signal);
+        auto result = stft.compute(signal);
         auto t1 = std::chrono::high_resolution_clock::now();
         double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
-        totalMs += ms;
-        minMs = std::min(minMs, ms);
-        maxMs = std::max(maxMs, ms);
+        total_ms += ms;
+        min_ms = std::min(min_ms, ms);
+        max_ms = std::max(max_ms, ms);
     }
 
-    printf("avg=%.2fms min=%.2fms max=%.2fms over %d runs (after warm-up)\n", totalMs / repeats,
-           minMs, maxMs, repeats);
+    printf("avg=%.2fms min=%.2fms max=%.2fms over %d runs (after warm-up)\n", total_ms / repeats,
+           min_ms, max_ms, repeats);
     return 0;
 }

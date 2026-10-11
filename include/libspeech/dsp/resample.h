@@ -10,7 +10,7 @@
 #include <memory>
 #include <vector>
 
-#include "flux_base.h"  // Vendored AudioFlux header (src/third_party/audioflux): WindowType enum.
+#include "libspeech/dsp/window_type.h"
 #include "libspeech/detail/uninit_vector.h"
 #include "libspeech/export.h"
 
@@ -25,80 +25,80 @@ namespace speech::dsp {
  * AudioFlux's polyphase/bandlimited resampler.
  */
 namespace resample_impl {
-struct Polyphase;  // polyphase filter bank (defined in resample.cpp)
+struct polyphase;  // polyphase filter bank (defined in resample.cpp)
 }
 
-class SPEECH_API Resample {
+class SPEECH_API resample {
    public:
     // Creates a resampler with AudioFlux's default (best-quality) settings.
     // Amplitude-preserving: does not apply AudioFlux's optional sqrt(ratio)
     // energy-domain scaling (see resample.cpp for why).
-    Resample(int sourceRate, int targetRate);
+    resample(int source_rate, int target_rate);
 
     // Creates a resampler with explicit window/quality settings.
-    Resample(int sourceRate, int targetRate, int zeroNum, int nbit, WindowType winType,
-              float value, float rollOff, bool isScale, bool isContinue);
+    resample(int source_rate, int target_rate, int zero_num, int nbit, window_type win_type,
+              float value, float roll_off, bool is_scale, bool is_continue);
 
-    ~Resample();
+    ~resample();
 
-    Resample(const Resample&) = delete;
-    Resample& operator=(const Resample&) = delete;
+    resample(const resample&) = delete;
+    resample& operator=(const resample&) = delete;
 
     // Sets the sample rate ratio manually (overrides the ratio derived from source/target rates).
-    void setSampleRateRatio(float ratio);
+    void set_sample_rate_ratio(float ratio);
 
     // Enables or disables continuous (streaming) resampling across successive calls.
-    void enableContinuous(bool flag);
+    void enable_continuous(bool flag);
 
-    // Resamples inputData and returns the result. Throws std::runtime_error on failure.
-    std::vector<float> resample(const std::vector<float>& inputData);
+    // Resamples input_data and returns the result. Throws std::runtime_error on failure.
+    std::vector<float> process(const std::vector<float>& input_data);
 
     // Copy-free variant: reads `n` samples from `data`, returns the output in
     // a buffer that is allocated once, uninitialized, and trimmed in place.
-    detail::UninitVector<float> resampleFlat(const float* data, std::size_t n);
+    detail::uninit_vector<float> resample_flat(const float* data, std::size_t n);
 
    private:
-    // AudioFlux's resample object. Created on demand (ensureAudioFlux()): the default
+    // AudioFlux's resample object. Created on demand (ensure_audio_flux()): the default
     // Kaiser "Best/Mid/Fast" resamplers run entirely on the polyphase filter bank below
-    // and never need it; it backs continuous (streaming) mode, isScale, custom ratios and
+    // and never need it; it backs continuous (streaming) mode, is_scale, custom ratios and
     // non-Kaiser windows.
-    ::OpaqueResample* resampleObj;
+    ::OpaqueResample* resample_obj;
 
     // Rational polyphase filter bank: one contiguous weight row per output phase.
     //  * Kaiser windows: designed directly in double precision from the closed-form
-    //    windowed sinc (no lookup table, no interpolation) -- see buildPolyphaseExact().
+    //    windowed sinc (no lookup table, no interpolation) -- see build_polyphase_exact().
     //  * Other windows: derived from AudioFlux's own interpolation tables.
-    // Null for continuous mode / isScale / arbitrary float ratios, which use AudioFlux's
+    // Null for continuous mode / is_scale / arbitrary float ratios, which use AudioFlux's
     // direct kernel instead.
     // Shared and immutable: designed banks are cached process-wide (see resample.cpp), so
     // building many resamplers for the same rates -- a loop over files, one per channel --
     // designs the filter once.
-    std::shared_ptr<const resample_impl::Polyphase> poly_;
-    bool buildPolyphaseExact();
-    void buildPolyphaseFromTables();
-    detail::UninitVector<float> resamplePolyphase(const float* data, std::size_t n);
+    std::shared_ptr<const resample_impl::polyphase> poly_;
+    bool build_polyphase_exact();
+    void build_polyphase_from_tables();
+    detail::uninit_vector<float> resample_polyphase(const float* data, std::size_t n);
 
     // Constructor arguments, normalized the way AudioFlux normalizes them, kept so the
     // AudioFlux object can be created lazily and the exact design can use them.
-    struct Params {
-        int sourceRate = 0;
-        int targetRate = 0;
-        int zeroNum = 64;
+    struct params {
+        int source_rate = 0;
+        int target_rate = 0;
+        int zero_num = 64;
         int nbit = 9;
-        WindowType winType = Window_Kaiser;
+        window_type win_type = window_type::kaiser;
         float value = 14.7696565f;  // Kaiser beta
-        float rollOff = 0.9475937f;
-        bool isScale = false;
-        bool isContinue = false;
-        bool customWindow = false;  // false: AudioFlux "Best" preset
+        float roll_off = 0.9475937f;
+        bool is_scale = false;
+        bool is_continue = false;
+        bool custom_window = false;  // false: AudioFlux "Best" preset
     } params_;
-    void ensureAudioFlux();
+    void ensure_audio_flux();
 
-    // True when sourceRate == targetRate. AudioFlux's resampleObj_setSamplate()
+    // True when source_rate == target_rate. AudioFlux's resampleObj_setSamplate()
     // silently no-ops (leaving its internal ratio at a hardcoded default of 0.5)
     // when the two rates are equal, which would corrupt data if we called into
     // it anyway. We bypass AudioFlux entirely in that case instead.
-    bool isIdentity;
+    bool is_identity;
 
     // Frees and clears the underlying AudioFlux resample object.
     void reset();

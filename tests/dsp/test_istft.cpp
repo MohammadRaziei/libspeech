@@ -12,12 +12,14 @@
 #include "libspeech/dsp/window.h"
 #include "stft_algorithm.h"  // vendored AudioFlux C API: the reference kernel (private include dir)
 
-using speech::dsp::STFT;
+using speech::dsp::window_type;
+
+using speech::dsp::stft;
 
 namespace {
 
 // Deterministic pseudo-random floats in [-1, 1).
-struct Rng {
+struct rng {
     std::uint32_t s = 12345u;
     float next() {
         s = s * 1664525u + 1013904223u;
@@ -25,34 +27,34 @@ struct Rng {
     }
 };
 
-std::vector<float> randomVec(std::size_t n, std::uint32_t seed) {
-    Rng r;
+std::vector<float> random_vec(std::size_t n, std::uint32_t seed) {
+    rng r;
     r.s = seed;
     std::vector<float> v(n);
     for (auto& x : v) x = r.next();
     return v;
 }
 
-float maxAbs(const std::vector<float>& v) {
+float max_abs(const std::vector<float>& v) {
     float m = 0.0f;
     for (float x : v) m = std::max(m, std::fabs(x));
     return m;
 }
 
-float maxAbsDiff(const std::vector<float>& a, const speech::detail::UninitVector<float>& b) {
+float max_abs_diff(const std::vector<float>& a, const speech::detail::uninit_vector<float>& b) {
     float m = 0.0f;
     for (std::size_t i = 0; i < a.size(); ++i) m = std::max(m, std::fabs(a[i] - b[i]));
     return m;
 }
 
 // AudioFlux's own complex istft on a FULL spectrum: the reference.
-std::vector<float> referenceIstft(int radix2Exp, int hop, const std::vector<float>& re,
+std::vector<float> reference_istft(int radix2_exp, int hop, const std::vector<float>& re,
                                   const std::vector<float>& im, int frames, int method) {
     STFTObj obj = nullptr;
-    WindowType window = Window_Hann;
+    ::WindowType window = ::Window_Hann;  // AudioFlux's own enum: this talks to its C API
     int slide = hop;
-    int isContinue = 0;
-    stftObj_new(&obj, radix2Exp, &window, hop > 0 ? &slide : nullptr, &isContinue);
+    int is_continue = 0;
+    stftObj_new(&obj, radix2_exp, &window, hop > 0 ? &slide : nullptr, &is_continue);
     std::vector<float> out(static_cast<std::size_t>(stftObj_calDataLength(obj, frames)), 0.0f);
     stftObj_istft(obj, const_cast<float*>(re.data()), const_cast<float*>(im.data()), frames, method,
                   out.data());
@@ -65,66 +67,66 @@ std::vector<float> referenceIstft(int radix2Exp, int hop, const std::vector<floa
 // Random, NOT conjugate-symmetric full spectra: AudioFlux returns the real part of the inverse
 // transform, and so must we. Covers several sizes, both methods, custom hops, and enough frames to
 // run the multi-block / parallel path (N=512: 256 frames per block).
-UTEST(Istft, MatchesAudioFluxKernelOnArbitrarySpectra) {
-    struct Case { int radix; int hop; int frames; };
-    const Case cases[] = {{4, 0, 300}, {6, 0, 300}, {6, 32, 200}, {9, 0, 300}, {9, 256, 40}, {12, 0, 70}};
-    for (const Case& c : cases) {
+UTEST(istft, matches_audio_flux_kernel_on_arbitrary_spectra) {
+    struct test_case { int radix; int hop; int frames; };
+    const test_case cases[] = {{4, 0, 300}, {6, 0, 300}, {6, 32, 200}, {9, 0, 300}, {9, 256, 40}, {12, 0, 70}};
+    for (const test_case& c : cases) {
         const int N = 1 << c.radix;
-        STFT stft(c.radix, Window_Hann, c.hop);
+        stft stft(c.radix, window_type::hann, c.hop);
         const std::size_t total = static_cast<std::size_t>(c.frames) * N;
-        const std::vector<float> re = randomVec(total, 1u + c.radix);
-        const std::vector<float> im = randomVec(total, 99u + c.radix);
+        const std::vector<float> re = random_vec(total, 1u + c.radix);
+        const std::vector<float> im = random_vec(total, 99u + c.radix);
         for (int method : {0, 1}) {
-            const std::vector<float> ref = referenceIstft(c.radix, c.hop, re, im, c.frames, method);
+            const std::vector<float> ref = reference_istft(c.radix, c.hop, re, im, c.frames, method);
             const auto out = stft.istft(re.data(), im.data(), c.frames, /*onesided=*/false, method);
             ASSERT_EQ(out.size(), ref.size());
-            ASSERT_LT(maxAbsDiff(ref, out), 1e-4f * std::max(1.0f, maxAbs(ref)));
+            ASSERT_LT(max_abs_diff(ref, out), 1e-4f * std::max(1.0f, max_abs(ref)));
         }
     }
 }
 
 // A one-sided input (with junk in the DC/Nyquist imaginary parts, which belong to no real signal)
 // equals the reference run on its conjugate-completed full spectrum.
-UTEST(Istft, OnesidedMatchesAudioFluxOnTheMirroredSpectrum) {
+UTEST(istft, onesided_matches_audio_flux_on_the_mirrored_spectrum) {
     for (int radix : {5, 9, 11}) {
         const int N = 1 << radix, half = N / 2, bins = half + 1, frames = 150;
-        STFT stft(radix);
-        const std::vector<float> re = randomVec(static_cast<std::size_t>(frames) * bins, 7u);
-        const std::vector<float> im = randomVec(static_cast<std::size_t>(frames) * bins, 8u);
-        std::vector<float> fullRe(static_cast<std::size_t>(frames) * N), fullIm(fullRe.size());
+        stft stft(radix);
+        const std::vector<float> re = random_vec(static_cast<std::size_t>(frames) * bins, 7u);
+        const std::vector<float> im = random_vec(static_cast<std::size_t>(frames) * bins, 8u);
+        std::vector<float> full_re(static_cast<std::size_t>(frames) * N), full_im(full_re.size());
         for (int f = 0; f < frames; ++f) {
             for (int k = 0; k < bins; ++k) {
                 const float r = re[static_cast<std::size_t>(f) * bins + k];
                 const float i = (k == 0 || k == half) ? 0.0f : im[static_cast<std::size_t>(f) * bins + k];
-                fullRe[static_cast<std::size_t>(f) * N + k] = r;
-                fullIm[static_cast<std::size_t>(f) * N + k] = i;
+                full_re[static_cast<std::size_t>(f) * N + k] = r;
+                full_im[static_cast<std::size_t>(f) * N + k] = i;
                 if (k > 0 && k < half) {
-                    fullRe[static_cast<std::size_t>(f) * N + N - k] = r;
-                    fullIm[static_cast<std::size_t>(f) * N + N - k] = -i;
+                    full_re[static_cast<std::size_t>(f) * N + N - k] = r;
+                    full_im[static_cast<std::size_t>(f) * N + N - k] = -i;
                 }
             }
         }
         for (int method : {0, 1}) {
-            const std::vector<float> ref = referenceIstft(radix, 0, fullRe, fullIm, frames, method);
+            const std::vector<float> ref = reference_istft(radix, 0, full_re, full_im, frames, method);
             const auto out = stft.istft(re.data(), im.data(), frames, /*onesided=*/true, method);
-            ASSERT_LT(maxAbsDiff(ref, out), 1e-4f * std::max(1.0f, maxAbs(ref)));
+            ASSERT_LT(max_abs_diff(ref, out), 1e-4f * std::max(1.0f, max_abs(ref)));
         }
     }
 }
 
-// stft -> istft returns the signal (away from the first/last fftLength samples, where the window
+// stft -> istft returns the signal (away from the first/last fft_length samples, where the window
 // tapers to zero), for the full and the one-sided spectrum and both methods.
-UTEST(Istft, RoundTripsTheStft) {
+UTEST(istft, round_trips_the_stft) {
     for (int radix : {6, 9, 11}) {
         const int N = 1 << radix;
-        STFT stft(radix);
+        stft stft(radix);
         const std::size_t len = static_cast<std::size_t>(N) * 12;
-        const std::vector<float> x = randomVec(len, 3u);
+        const std::vector<float> x = random_vec(len, 3u);
         for (bool onesided : {false, true}) {
             const auto spec = stft.spectrogram(x.data(), x.size(), onesided);
             for (int method : {0, 1}) {
                 const auto y = stft.istft(spec, method);
-                ASSERT_TRUE(y.size() >= len - stft.slideLength() * 4);
+                ASSERT_TRUE(y.size() >= len - stft.slide_length() * 4);
                 float worst = 0.0f;
                 for (std::size_t i = N; i + N < y.size(); ++i) worst = std::max(worst, std::fabs(y[i] - x[i]));
                 ASSERT_LT(worst, 2e-4f);
@@ -135,12 +137,12 @@ UTEST(Istft, RoundTripsTheStft) {
 
 // Lengths the real-FFT engine does not support (N=8 and N=16384) go through AudioFlux and must
 // still work, for both input shapes.
-UTEST(Istft, UnsupportedLengthsFallBackToAudioFlux) {
+UTEST(istft, unsupported_lengths_fall_back_to_audio_flux) {
     for (int radix : {3, 14}) {
         const int N = 1 << radix;
-        STFT stft(radix);
+        stft stft(radix);
         const std::size_t len = static_cast<std::size_t>(N) * 6;
-        const std::vector<float> x = randomVec(len, 5u);
+        const std::vector<float> x = random_vec(len, 5u);
         for (bool onesided : {false, true}) {
             const auto spec = stft.spectrogram(x.data(), x.size(), onesided);
             const auto y = stft.istft(spec, 0);
@@ -152,35 +154,35 @@ UTEST(Istft, UnsupportedLengthsFallBackToAudioFlux) {
 }
 
 // The nested-vector API (source compatible) is now a thin wrapper and must agree with the flat one.
-UTEST(Istft, LegacyNestedVectorApiAgreesWithTheFlatOne) {
-    STFT stft(8);
-    const std::vector<float> x = randomVec(256 * 10, 11u);
+UTEST(istft, legacy_nested_vector_api_agrees_with_the_flat_one) {
+    stft stft(8);
+    const std::vector<float> x = random_vec(256 * 10, 11u);
     const auto spec = stft.spectrogram(x.data(), x.size(), false);
     const auto flat = stft.istft(spec, 0);
-    const auto nested = stft.stft(x);
-    const std::vector<float> viaNested = stft.istft(nested.first, nested.second, 0);
-    ASSERT_EQ(viaNested.size(), flat.size());
-    ASSERT_LT(maxAbsDiff(viaNested, flat), 1e-6f);
+    const auto nested = stft.compute(x);
+    const std::vector<float> via_nested = stft.istft(nested.first, nested.second, 0);
+    ASSERT_EQ(via_nested.size(), flat.size());
+    ASSERT_LT(max_abs_diff(via_nested, flat), 1e-6f);
 }
 
-UTEST(Istft, RejectsBadArguments) {
-    STFT stft(6);
-    const std::vector<float> x = randomVec(64 * 6, 1u);
+UTEST(istft, rejects_bad_arguments) {
+    stft stft(6);
+    const std::vector<float> x = random_vec(64 * 6, 1u);
     const auto spec = stft.spectrogram(x.data(), x.size(), false);
 
-    bool zeroFrames = false, badMethod = false, badNegativeMethod = false, nullPtr = false;
-    try { stft.istft(spec.real.data(), spec.imag.data(), 0, false, 0); } catch (const std::invalid_argument&) { zeroFrames = true; }
-    try { stft.istft(spec, 2); } catch (const std::invalid_argument&) { badMethod = true; }
-    try { stft.istft(spec, -1); } catch (const std::invalid_argument&) { badNegativeMethod = true; }
-    try { stft.istft(nullptr, nullptr, 3, false, 0); } catch (const std::invalid_argument&) { nullPtr = true; }
-    ASSERT_TRUE(zeroFrames);
-    ASSERT_TRUE(badMethod);
-    ASSERT_TRUE(badNegativeMethod);
-    ASSERT_TRUE(nullPtr);
+    bool zero_frames = false, bad_method = false, bad_negative_method = false, null_ptr = false;
+    try { stft.istft(spec.real.data(), spec.imag.data(), 0, false, 0); } catch (const std::invalid_argument&) { zero_frames = true; }
+    try { stft.istft(spec, 2); } catch (const std::invalid_argument&) { bad_method = true; }
+    try { stft.istft(spec, -1); } catch (const std::invalid_argument&) { bad_negative_method = true; }
+    try { stft.istft(nullptr, nullptr, 3, false, 0); } catch (const std::invalid_argument&) { null_ptr = true; }
+    ASSERT_TRUE(zero_frames);
+    ASSERT_TRUE(bad_method);
+    ASSERT_TRUE(bad_negative_method);
+    ASSERT_TRUE(null_ptr);
 
-    speech::dsp::Spectrogram wrong = spec;
-    wrong.numBins = 7;  // neither 64 nor 33
-    bool wrongBins = false;
-    try { stft.istft(wrong, 0); } catch (const std::invalid_argument&) { wrongBins = true; }
-    ASSERT_TRUE(wrongBins);
+    speech::dsp::complex_spectrogram wrong = spec;
+    wrong.num_bins = 7;  // neither 64 nor 33
+    bool wrong_bins = false;
+    try { stft.istft(wrong, 0); } catch (const std::invalid_argument&) { wrong_bins = true; }
+    ASSERT_TRUE(wrong_bins);
 }

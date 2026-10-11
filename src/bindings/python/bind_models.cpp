@@ -18,13 +18,13 @@ namespace nb = nanobind;
 NB_MODULE(NB_MODULE_NAME, m) {
     // --- logging -----------------------------------------------------------------------------
     m.def("set_log_level",
-          [](const std::string& level) { speech::utils::setLogLevel(speech::utils::parseLogLevel(level)); },
+          [](const std::string& level) { speech::utils::set_log_level(speech::utils::parse_log_level(level)); },
           "Sets how much libspeech writes to stderr: 'trace', 'debug', 'info', 'warning' (the default), "
           "'error' or 'off' (case-insensitive). Before the first call the level can also be set with the "
           "LIBSPEECH_LOG environment variable. Raises ValueError for an unknown level.",
           nb::arg("level"));
     m.def("get_log_level",
-          [] { return std::string(speech::utils::logLevelName(speech::utils::getLogLevel())); },
+          [] { return std::string(speech::utils::log_level_name(speech::utils::get_log_level())); },
           "The current log level, e.g. 'warning'.");
 
     // --- speech::models::Denoiser ---------------------------------------------------------
@@ -36,9 +36,9 @@ NB_MODULE(NB_MODULE_NAME, m) {
     // allocation: nanobind runs ~T() and then operator delete() on exactly that pointer. With the
     // old (ONNXModel, Denoiser) multiple inheritance it sat at offset 200 and freeing it aborted
     // with "free(): invalid pointer". test_denoiser_close_and_destroy guards this invariant.
-    nb::class_<speech::models::Denoiser>(m, "Denoiser")
+    nb::class_<speech::models::denoiser>(m, "Denoiser")
         .def_static("create",
-                    &speech::models::Denoiser::Create,
+                    &speech::models::denoiser::create,
                     "Creates a denoiser backend ('facebook' or 'speechbrain'). model_path may be a "
                     "local file or a URL (weights are downloaded on first use). num_threads is the "
                     "ONNX Runtime intra-op thread count: 1 (default), or 0 for one per hardware thread.",
@@ -47,7 +47,7 @@ NB_MODULE(NB_MODULE_NAME, m) {
         // NumPy first so arrays take the zero-copy path; float64 arrays are converted to float32.
         // The GIL is released while the model runs, so other Python threads keep going.
         .def("process",
-             [](speech::models::Denoiser& self, speech::py::InArray1D input_audio) {
+             [](speech::models::denoiser& self, speech::py::in_array_1d input_audio) {
                  std::vector<float> out;
                  {
                      nb::gil_scoped_release release;
@@ -55,40 +55,40 @@ NB_MODULE(NB_MODULE_NAME, m) {
                  }
                  auto* owner = new std::vector<float>(std::move(out));
                  nb::capsule keep(owner, [](void* p) noexcept { delete static_cast<std::vector<float>*>(p); });
-                 return speech::py::OutArray1D(owner->data(), {owner->size()}, keep);
+                 return speech::py::out_array_1d(owner->data(), {owner->size()}, keep);
              },
              "Denoises mono audio given as a 1-D NumPy array ([-1, 1]-normalized). Returns a "
              "float32 NumPy array of the same length. Raises RuntimeError if the denoiser is closed.",
              nb::arg("input_audio"))
         .def("process",
-             [](speech::models::Denoiser& self, const std::vector<float>& input_audio) {
+             [](speech::models::denoiser& self, const std::vector<float>& input_audio) {
                  nb::gil_scoped_release release;
                  return self.process(input_audio);
              },
              "Denoises mono audio (a list of [-1, 1]-normalized floats). "
              "Returns denoised audio, the same length as the input.",
              nb::arg("input_audio"))
-        .def("close", &speech::models::Denoiser::close,
+        .def("close", &speech::models::denoiser::close,
              "Releases the model and its memory right away. Safe to call more than once; "
              "process() raises RuntimeError afterwards.")
-        .def_prop_ro("closed", &speech::models::Denoiser::closed, "True once close() was called.")
-        .def_prop_ro("sample_rate", [](const speech::models::Denoiser& d) { return d.sample_rate; },
+        .def_prop_ro("closed", &speech::models::denoiser::closed, "True once close() was called.")
+        .def_prop_ro("sample_rate", [](const speech::models::denoiser& d) { return d.sample_rate; },
                      "Sample rate (Hz) the model expects its input at.")
         .def("__enter__", [](nb::handle self) { return self; })
-        .def("__exit__", [](speech::models::Denoiser& self, nb::args) { self.close(); });
+        .def("__exit__", [](speech::models::denoiser& self, nb::args) { self.close(); });
 
     // --- speech::models::SileroVadModel -----------------------------------------------------
-    nb::class_<speech::models::timestamp_t>(m, "SpeechTimestamp")
+    nb::class_<speech::models::speech_timestamp>(m, "SpeechTimestamp")
         .def(nb::init<int, int, int>(),
              nb::arg("start") = -1, nb::arg("end") = -1, nb::arg("sample_rate") = 16000)
-        .def_ro("start", &speech::models::timestamp_t::start, "Start of the speech segment, in samples.")
-        .def_ro("end", &speech::models::timestamp_t::end, "End of the speech segment, in samples.")
-        .def_prop_ro("start_s", &speech::models::timestamp_t::start_s, "Start of the speech segment, in seconds.")
-        .def_prop_ro("end_s", &speech::models::timestamp_t::end_s, "End of the speech segment, in seconds.")
-        .def("__repr__", &speech::models::timestamp_t::c_str)
-        .def("__eq__", &speech::models::timestamp_t::operator==);
+        .def_ro("start", &speech::models::speech_timestamp::start, "Start of the speech segment, in samples.")
+        .def_ro("end", &speech::models::speech_timestamp::end, "End of the speech segment, in samples.")
+        .def_prop_ro("start_s", &speech::models::speech_timestamp::start_s, "Start of the speech segment, in seconds.")
+        .def_prop_ro("end_s", &speech::models::speech_timestamp::end_s, "End of the speech segment, in seconds.")
+        .def("__repr__", &speech::models::speech_timestamp::c_str)
+        .def("__eq__", &speech::models::speech_timestamp::operator==);
 
-    nb::class_<speech::models::SileroVadModel>(m, "SileroVad")
+    nb::class_<speech::models::silero_vad_model>(m, "SileroVad")
         .def(nb::init<const std::string&, int, int, float, int, int, int, float>(),
              nb::arg("model_path") = "silero-vad.onnx",
              nb::arg("sample_rate") = 16000,
@@ -100,13 +100,13 @@ NB_MODULE(NB_MODULE_NAME, m) {
              nb::arg("max_speech_duration_s") = std::numeric_limits<float>::infinity(),
              "Loads a Silero VAD model. model_path may be a local file path "
              "or a URL (the .onnx weights are downloaded on first use).")
-        .def("process", &speech::models::SileroVadModel::processOnVector,
+        .def("process", &speech::models::silero_vad_model::process_on_vector,
              "Runs voice-activity detection over the full input audio "
              "(mono, [-1, 1]-normalized floats at the model's sample_rate).",
              nb::arg("input_audio"))
-        .def("get_speech_timestamps", &speech::models::SileroVadModel::get_speech_timestamps,
+        .def("get_speech_timestamps", &speech::models::silero_vad_model::get_speech_timestamps,
              "Returns the detected speech segments (call after process()).")
-        .def("reset", &speech::models::SileroVadModel::reset,
+        .def("reset", &speech::models::silero_vad_model::reset,
              "Resets internal state, so the same model instance can be "
              "reused on a new, unrelated piece of audio.");
 }

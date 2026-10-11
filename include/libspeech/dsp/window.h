@@ -13,7 +13,7 @@
 
 #include <vector>
 
-#include "flux_base.h"  // WindowType enum
+#include "libspeech/dsp/window_type.h"
 #include "libspeech/export.h"
 
 namespace speech::dsp::window {
@@ -23,12 +23,11 @@ namespace speech::dsp::window {
  * suitable for use before an FFT/STFT (periodic windows avoid double-
  * counting the first/last sample across frame boundaries).
  *
- * @param type   One of the AudioFlux WindowType values (Window_Hann,
- *               Window_Hamm, Window_Blackman, Window_Rect, ...).
+ * @param type   The window shape (window_type::hann, hamming, blackman, rect, ...).
  * @param length Number of samples in the window. Must be > 0.
  * @throws std::invalid_argument if length <= 0.
  */
-SPEECH_API std::vector<float> generate(WindowType type, int length);
+SPEECH_API std::vector<float> generate(window_type type, int length);
 
 }  // namespace speech::dsp::window
 

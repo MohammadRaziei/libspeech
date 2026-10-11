@@ -2,8 +2,8 @@
 #include <iostream>
 
 #include "libspeech/models/silero_vad.h" // Include the SileroVAD model header
-#include "libspeech/utils/utils.h"           // For downloadFile utility
-#include "libspeech/utils/log.h"             // For setLogLevel
+#include "libspeech/utils/utils.h"           // For download_file utility
+#include "libspeech/utils/log.h"             // For set_log_level
 
 #include "libspeech/models/facebook_denoiser.h"
 #include "libspeech/models/speechbrain_denoiser.h"
@@ -15,18 +15,18 @@
 int main0() {
     try {
         // Create a Resample object with default settings
-        speech::dsp::Resample resampler(44100, 16000); // Resample from 44.1kHz to 16kHz
+        speech::dsp::resample resampler(44100, 16000); // Resample from 44.1kHz to 16kHz
 
         // Input audio data (example)
-        std::vector<float> inputData = {0.0, 0.5, 1.0, 0.5, 0.0, -0.5, -1.0, -0.5};
+        std::vector<float> input_data = {0.0, 0.5, 1.0, 0.5, 0.0, -0.5, -1.0, -0.5};
 
         // Perform resampling
         std::cout << "Resampled Data:" << std::endl;
 
-        std::vector<float> outputData = resampler.resample(inputData);
+        std::vector<float> output_data = resampler.process(input_data);
 
         // Print the resampled data
-        for (float value : outputData) {
+        for (float value : output_data) {
             std::cout << value << " ";
         }
         std::cout << std::endl;
@@ -42,27 +42,27 @@ int main0() {
 
 int main2() {
     AixLog::Log::init<AixLog::SinkCout>(AixLog::Severity::trace);
-    speech::utils::setLogLevel(speech::utils::LogLevel::Trace);  // libspeech itself is quiet (warnings only) by default
+    speech::utils::set_log_level(speech::utils::log_level::trace);  // libspeech itself is quiet (warnings only) by default
     try {
 
         // Initialize the SileroVAD model
-        speech::models::SileroVadModel vad;
+        speech::models::silero_vad_model vad;
 
         // Download and load the audio file
 //        std::string url = "https://github.com/MohammadRaziei/libspeech/releases/download/resources/example-en-biden-large.mp3";
         std::string url = "https://github.com/MohammadRaziei/libspeech/releases/download/resources/example-en-biden-xlarge.mp3";
 
-        std::filesystem::path tempDir = std::filesystem::temp_directory_path();
-        std::filesystem::path fileName = speech::utils::downloadFile(url, tempDir, false, false);
+        std::filesystem::path temp_dir = std::filesystem::temp_directory_path();
+        std::filesystem::path file_name = speech::utils::download_file(url, temp_dir, false, false);
 
-        if (fileName.empty()) {
+        if (file_name.empty()) {
             LOG(FATAL) << "Download failed or file does not exist." << std::endl;
             return -1;
         }
 
         // Load the audio file
-        speech::io::Audio audio;
-        if (!audio.load(fileName)) {
+        speech::io::audio audio;
+        if (!audio.load(file_name)) {
             LOG(FATAL) << "Failed to load audio file." << std::endl;
             return -1;
         }
@@ -72,10 +72,10 @@ int main2() {
 
 
         // Process the audio
-        vad.processOnVector(audio16k.data(0));
+        vad.process_on_vector(audio16k.data(0));
 
         // Retrieve and print speech timestamps
-        std::vector<speech::models::timestamp_t> stamps = vad.get_speech_timestamps();
+        std::vector<speech::models::speech_timestamp> stamps = vad.get_speech_timestamps();
         for (const auto& stamp : stamps) {
             LOG(INFO) << "Speech detected from " << AixLog::Color::cyan << stamp.start_s() << " to " << stamp.end_s() << AixLog::Color::none << " seconds." << std::endl;
         }
@@ -92,7 +92,7 @@ int main2() {
 int main5() {
     try {
         AixLog::Log::init<AixLog::SinkCout>(AixLog::Severity::trace);
-        speech::utils::setLogLevel(speech::utils::LogLevel::Trace);  // libspeech itself is quiet (warnings only) by default
+        speech::utils::set_log_level(speech::utils::log_level::trace);  // libspeech itself is quiet (warnings only) by default
 
         // Define the model URL and base directory.
 
@@ -103,17 +103,17 @@ int main5() {
         std::string url = "https://github.com/MohammadRaziei/libspeech/releases/download/resources/audio-fa-noisy.mp3";
 
 
-        std::filesystem::path fileName = speech::utils::downloadFile(url,
+        std::filesystem::path file_name = speech::utils::download_file(url,
                  std::filesystem::temp_directory_path(), false, false);
 
-        if (fileName.empty()) {
+        if (file_name.empty()) {
             LOG(FATAL) << "Download failed or file does not exist." << std::endl;
             return -1;
         }
 
         // Load the audio file
-        speech::io::Audio audio;
-        if (!audio.load(fileName)) {
+        speech::io::audio audio;
+        if (!audio.load(file_name)) {
             LOG(FATAL) << "Failed to load audio file." << std::endl;
             return -1;
         }
@@ -121,7 +121,7 @@ int main5() {
 
 
 
-        speech::models::SpeechBrainDenoiser denoiser("speechbrain-sepformer-wham16k-enhancement.onnx", 16000);
+        speech::models::speechbrain_denoiser denoiser("speechbrain-sepformer-wham16k-enhancement.onnx", 16000);
 
         auto audio_process = audio.to_mono().resample(denoiser.sample_rate);
         auto process_data = audio_process.data(0);
@@ -149,18 +149,18 @@ int main5() {
 int main1() {
     try {
         // Create a Resample object with default settings
-        speech::dsp::Resample resampler(44100, 16000); // Resample from 44.1kHz to 16kHz
+        speech::dsp::resample resampler(44100, 16000); // Resample from 44.1kHz to 16kHz
 
         // Input audio data (example)
-        std::vector<float> inputData = {0.0, 0.5, 1.0, 0.5, 0.0, -0.5, -1.0, -0.5};
+        std::vector<float> input_data = {0.0, 0.5, 1.0, 0.5, 0.0, -0.5, -1.0, -0.5};
 
         // Perform resampling
         std::cout << "Resampled Data:" << std::endl;
 
-        std::vector<float> outputData = resampler.resample(inputData);
+        std::vector<float> output_data = resampler.process(input_data);
 
         // Print the resampled data
-        for (float value : outputData) {
+        for (float value : output_data) {
             std::cout << value << " ";
         }
         std::cout << std::endl;
@@ -176,27 +176,27 @@ int main1() {
 
 int main4() {
     AixLog::Log::init<AixLog::SinkCout>(AixLog::Severity::trace);
-    speech::utils::setLogLevel(speech::utils::LogLevel::Trace);  // libspeech itself is quiet (warnings only) by default
+    speech::utils::set_log_level(speech::utils::log_level::trace);  // libspeech itself is quiet (warnings only) by default
     try {
 
         // Initialize the SileroVAD model
-        speech::models::SileroVadModel vad;
+        speech::models::silero_vad_model vad;
 
         // Download and load the audio file
 //        std::string url = "https://github.com/MohammadRaziei/libspeech/releases/download/resources/example-en-biden-large.mp3";
         std::string url = "https://github.com/MohammadRaziei/libspeech/releases/download/resources/example-en-biden-xlarge.mp3";
 
-        std::filesystem::path tempDir = std::filesystem::temp_directory_path();
-        std::filesystem::path fileName = speech::utils::downloadFile(url, tempDir, false, false);
+        std::filesystem::path temp_dir = std::filesystem::temp_directory_path();
+        std::filesystem::path file_name = speech::utils::download_file(url, temp_dir, false, false);
 
-        if (fileName.empty()) {
+        if (file_name.empty()) {
             LOG(FATAL) << "Download failed or file does not exist." << std::endl;
             return -1;
         }
 
         // Load the audio file
-        speech::io::Audio audio;
-        if (!audio.load(fileName)) {
+        speech::io::audio audio;
+        if (!audio.load(file_name)) {
             LOG(FATAL) << "Failed to load audio file." << std::endl;
             return -1;
         }
@@ -206,10 +206,10 @@ int main4() {
 
 
         // Process the audio
-        vad.processOnVector(audio16k.data(0));
+        vad.process_on_vector(audio16k.data(0));
 
         // Retrieve and print speech timestamps
-        std::vector<speech::models::timestamp_t> stamps = vad.get_speech_timestamps();
+        std::vector<speech::models::speech_timestamp> stamps = vad.get_speech_timestamps();
         for (const auto& stamp : stamps) {
             LOG(INFO) << "Speech detected from " << AixLog::Color::cyan << stamp.start_s() << " to " << stamp.end_s() << AixLog::Color::none << " seconds." << std::endl;
         }
@@ -226,7 +226,7 @@ int main4() {
 int main() {
     try {
         AixLog::Log::init<AixLog::SinkCout>(AixLog::Severity::trace);
-        speech::utils::setLogLevel(speech::utils::LogLevel::Trace);  // libspeech itself is quiet (warnings only) by default
+        speech::utils::set_log_level(speech::utils::log_level::trace);  // libspeech itself is quiet (warnings only) by default
 
         // Define the model URL and base directory.
 
@@ -238,17 +238,17 @@ int main() {
         std::string url = "https://github.com/MohammadRaziei/libspeech/releases/download/resources/audio-fa-noisy.mp3";
 
 
-        std::filesystem::path fileName = speech::utils::downloadFile(url,
+        std::filesystem::path file_name = speech::utils::download_file(url,
                                                                      std::filesystem::temp_directory_path(), false, false);
 
-        if (fileName.empty()) {
+        if (file_name.empty()) {
             LOG(FATAL) << "Download failed or file does not exist." << std::endl;
             return -1;
         }
 
         // Load the audio file
-        speech::io::Audio audio;
-        if (!audio.load(fileName)) {
+        speech::io::audio audio;
+        if (!audio.load(file_name)) {
             LOG(FATAL) << "Failed to load audio file." << std::endl;
             return -1;
         }
@@ -256,7 +256,7 @@ int main() {
 
         std::string model_url = "facebook-denoiser-dns64.onnx";
 
-        speech::models::FacebookDenoiser denoiser(model_url);
+        speech::models::facebook_denoiser denoiser(model_url);
 
         auto audio_process = audio.to_mono().resample(denoiser.sample_rate);
 

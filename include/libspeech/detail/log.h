@@ -4,10 +4,10 @@
 // Everything is `inline` on purpose. speech::dsp, speech::io and speech::models are separate static
 // libraries that all end up in one libspeech.so, so inline state is merged into a single instance
 // there, while a DSP-only build (no models) still links on its own. Code outside the shared library
-// never touches this state directly: it goes through speech::utils::setLogLevel() (utils.cpp).
+// never touches this state directly: it goes through speech::utils::set_log_level() (utils.cpp).
 //
 // Usage inside the library (same shape as the AixLog macro this replaces):
-//     SPEECH_LOG(DEBUG) << TAG(kTag) << "message " << value << std::endl;
+//     SPEECH_LOG(DEBUG) << TAG(log_tag) << "message " << value << std::endl;
 // TAG(...) and COND(...) are still the AixLog helpers; only the output side is ours, so nothing
 // here takes over std::clog and the host application's own logging is left alone.
 //
@@ -29,40 +29,40 @@
 
 namespace speech::detail {
 
-using speech::utils::LogLevel;
+using speech::utils::log_level;
 
-inline const char* levelName(LogLevel level) noexcept {
+inline const char* level_name(log_level level) noexcept {
     switch (level) {
-        case LogLevel::Trace: return "trace";
-        case LogLevel::Debug: return "debug";
-        case LogLevel::Info: return "info";
-        case LogLevel::Warning: return "warning";
-        case LogLevel::Error: return "error";
-        case LogLevel::Off: return "off";
+        case log_level::trace: return "trace";
+        case log_level::debug: return "debug";
+        case log_level::info: return "info";
+        case log_level::warning: return "warning";
+        case log_level::error: return "error";
+        case log_level::off: return "off";
     }
     return "off";
 }
 
 /** Returns false (and leaves `out` untouched) for an unknown name. */
-inline bool tryParseLevel(const std::string& name, LogLevel& out) {
+inline bool try_parse_level(const std::string& name, log_level& out) {
     // Trim surrounding whitespace only (an inner space is a typo, not a separator), then lower-case.
     const char* const blank = " \t\n\r";
     const std::size_t first = name.find_first_not_of(blank);
     if (first == std::string::npos) return false;
     std::string s = name.substr(first, name.find_last_not_of(blank) - first + 1);
     for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    if (s == "trace") out = LogLevel::Trace;
-    else if (s == "debug") out = LogLevel::Debug;
-    else if (s == "info") out = LogLevel::Info;
-    else if (s == "warning" || s == "warn") out = LogLevel::Warning;
-    else if (s == "error") out = LogLevel::Error;
-    else if (s == "off" || s == "none") out = LogLevel::Off;
+    if (s == "trace") out = log_level::trace;
+    else if (s == "debug") out = log_level::debug;
+    else if (s == "info") out = log_level::info;
+    else if (s == "warning" || s == "warn") out = log_level::warning;
+    else if (s == "error") out = log_level::error;
+    else if (s == "off" || s == "none") out = log_level::off;
     else return false;
     return true;
 }
 
-/** Level used until setLogLevel() is called: LIBSPEECH_LOG if valid, otherwise Warning. */
-inline LogLevel initialLevel() {
+/** Level used until set_log_level() is called: LIBSPEECH_LOG if valid, otherwise Warning. */
+inline log_level initial_level() {
 #if defined(_MSC_VER)
 #pragma warning(push)
 #pragma warning(disable : 4996)  // getenv: no portable secure alternative needed for a read-only lookup
@@ -71,39 +71,39 @@ inline LogLevel initialLevel() {
 #if defined(_MSC_VER)
 #pragma warning(pop)
 #endif
-    LogLevel level = LogLevel::Warning;
-    if (env != nullptr && *env != '\0' && !tryParseLevel(env, level)) {
+    log_level level = log_level::warning;
+    if (env != nullptr && *env != '\0' && !try_parse_level(env, level)) {
         std::fprintf(stderr,
                      "libspeech: ignoring invalid LIBSPEECH_LOG='%s' "
                      "(use trace, debug, info, warning, error or off)\n",
                      env);
-        level = LogLevel::Warning;
+        level = log_level::warning;
     }
     return level;
 }
 
-inline std::atomic<int>& levelStorage() {
-    static std::atomic<int> level{static_cast<int>(initialLevel())};
+inline std::atomic<int>& level_storage() {
+    static std::atomic<int> level{static_cast<int>(initial_level())};
     return level;
 }
 
-inline LogLevel currentLevel() noexcept {
-    return static_cast<LogLevel>(levelStorage().load(std::memory_order_relaxed));
+inline log_level current_level() noexcept {
+    return static_cast<log_level>(level_storage().load(std::memory_order_relaxed));
 }
 
-inline bool logEnabled(LogLevel level) noexcept {
-    return static_cast<int>(level) >= static_cast<int>(currentLevel());
+inline bool log_enabled(log_level level) noexcept {
+    return static_cast<int>(level) >= static_cast<int>(current_level());
 }
 
 /** Maps the AixLog severity token used at a call site (TRACE, DEBUG, ...) to our level. */
-inline LogLevel levelFromSeverity(int severity) noexcept {
+inline log_level level_from_severity(int severity) noexcept {
     switch (severity) {
-        case 0: return LogLevel::Trace;
-        case 1: return LogLevel::Debug;
+        case 0: return log_level::trace;
+        case 1: return log_level::debug;
         case 2:
-        case 3: return LogLevel::Info;  // info, notice
-        case 4: return LogLevel::Warning;
-        default: return LogLevel::Error;  // error, fatal
+        case 3: return log_level::info;  // info, notice
+        case 4: return log_level::warning;
+        default: return log_level::error;  // error, fatal
     }
 }
 
@@ -112,13 +112,13 @@ inline LogLevel levelFromSeverity(int severity) noexcept {
  * (so lines from different threads never interleave), as
  *     2026-10-09 12:00:00.123 [debug] (tag) message
  */
-class LogLine {
+class log_line {
    public:
-    LogLine(LogLevel level, const char* function) : level_(level), function_(function) {}
-    LogLine(const LogLine&) = delete;
-    LogLine& operator=(const LogLine&) = delete;
+    log_line(log_level level, const char* function) : level_(level), function_(function) {}
+    log_line(const log_line&) = delete;
+    log_line& operator=(const log_line&) = delete;
 
-    ~LogLine() noexcept {
+    ~log_line() noexcept {
         if (!enabled_) return;
         try {
             std::string message = body_.str();
@@ -143,7 +143,7 @@ class LogLine {
             line += static_cast<char>('0' + millis / 10 % 10);
             line += static_cast<char>('0' + millis % 10);
             line += " [";
-            line += levelName(level_);
+            line += level_name(level_);
             line += "] (";
             line += tag_.empty() ? (function_ != nullptr ? function_ : "") : tag_.c_str();
             line += ") ";
@@ -156,25 +156,25 @@ class LogLine {
     }
 
     template <typename T>
-    LogLine& operator<<(const T& value) {
+    log_line& operator<<(const T& value) {
         if (enabled_) body_ << value;
         return *this;
     }
-    LogLine& operator<<(std::ostream& (*manipulator)(std::ostream&)) {  // std::endl, std::flush, ...
+    log_line& operator<<(std::ostream& (*manipulator)(std::ostream&)) {  // std::endl, std::flush, ...
         if (enabled_) manipulator(body_);
         return *this;
     }
-    LogLine& operator<<(const AixLog::Tag& tag) {
+    log_line& operator<<(const AixLog::Tag& tag) {
         if (tag) tag_ = tag.text;
         return *this;
     }
-    LogLine& operator<<(const AixLog::Conditional& condition) {
+    log_line& operator<<(const AixLog::Conditional& condition) {
         enabled_ = enabled_ && condition.is_true();
         return *this;
     }
 
    private:
-    LogLevel level_;
+    log_level level_;
     const char* function_;
     std::string tag_;
     std::ostringstream body_;
@@ -186,8 +186,8 @@ class LogLine {
 // `SPEECH_LOG(SEV) << ...;` -- the message is not even built when SEV is below the log level.
 // (`if (...) {} else` keeps it a single statement that is safe inside an unbraced if/else.)
 #define SPEECH_LOG(SEV)                                                              \
-    if (!::speech::detail::logEnabled(::speech::detail::levelFromSeverity(SEV))) {   \
+    if (!::speech::detail::log_enabled(::speech::detail::level_from_severity(SEV))) {   \
     } else                                                                           \
-        ::speech::detail::LogLine(::speech::detail::levelFromSeverity(SEV), __func__)
+        ::speech::detail::log_line(::speech::detail::level_from_severity(SEV), __func__)
 
 #endif  // LIBSPEECH_DETAIL_LOG_H

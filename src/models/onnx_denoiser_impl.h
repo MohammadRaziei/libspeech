@@ -16,14 +16,14 @@
 
 namespace speech::models::detail {
 
-class OnnxDenoiserImpl : public ONNXModel {
+class onnx_denoiser_impl : public onnx_model {
    public:
     /**
      * @param with_channel_dim true: input shape [1, 1, L] (Facebook); false: [1, L] (SpeechBrain).
      * @param num_threads intra-op threads; 0 = one per hardware thread.
      */
-    OnnxDenoiserImpl(const std::string& url, int sample_rate, int num_threads, bool with_channel_dim)
-        : ONNXModel(url, sample_rate), with_channel_dim_(with_channel_dim) {
+    onnx_denoiser_impl(const std::string& url, int sample_rate, int num_threads, bool with_channel_dim)
+        : onnx_model(url, sample_rate), with_channel_dim_(with_channel_dim) {
         if (num_threads < 0) {
             throw std::invalid_argument("num_threads must be >= 0");
         }

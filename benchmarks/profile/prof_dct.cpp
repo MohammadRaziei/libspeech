@@ -1,4 +1,4 @@
-// Native timing of speech::dsp::dctII (the function behind libspeech.dct) for several sizes / output counts.
+// Native timing of speech::dsp::dct_ii (the function behind libspeech.dct) for several sizes / output counts.
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -10,6 +10,6 @@ int main() {
     struct C { int n, k; };
     for (C c : {C{26, 13}, C{512, 13}, C{512, 512}, C{4096, 4096}, C{8192, 8192}, C{1000, 1000}}) {
         std::vector<float> x(c.n); for (int i = 0; i < c.n; ++i) x[i] = std::sin(0.01 * i);
-        std::printf("dctII n=%-5d -> %-5d outputs: %9.4f ms\n", c.n, c.k, best_ms([&] { auto r = speech::dsp::dctII(x, c.k, true); }, c.n >= 4096 && c.k > 24 ? 20 : 200));
+        std::printf("dct_ii n=%-5d -> %-5d outputs: %9.4f ms\n", c.n, c.k, best_ms([&] { auto r = speech::dsp::dct_ii(x, c.k, true); }, c.n >= 4096 && c.k > 24 ? 20 : 200));
     }
 }

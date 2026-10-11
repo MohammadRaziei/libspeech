@@ -13,8 +13,8 @@ namespace speech::models {
  * @param base_dir The base directory where the model will be stored.
  */
 
-ONNXModel::ONNXModel(const std::string& url, const int sample_rate, const std::filesystem::path& base_dir)
-    : BaseModel(url, base_dir), sample_rate(sample_rate),
+onnx_model::onnx_model(const std::string& url, const int sample_rate, const std::filesystem::path& base_dir)
+    : base_model(url, base_dir), sample_rate(sample_rate),
       memory_info(Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeCPU)) {}
 
 /**
@@ -27,7 +27,7 @@ ONNXModel::ONNXModel(const std::string& url, const int sample_rate, const std::f
 //    session = std::make_shared<Ort::Session>(env, model_path.string().c_str(), session_options);
 //}
 
-void ONNXModel::init_onnx_model() {
+void onnx_model::init_onnx_model() {
     if (!std::filesystem::exists(model_path)) {
         throw std::runtime_error("Model file does not exist: " + model_path.string());
     }
@@ -51,13 +51,13 @@ void ONNXModel::init_onnx_model() {
  * @param inter_threads Number of inter-op threads.
  * @param intra_threads Number of intra-op threads.
  */
-void ONNXModel::init_engine_threads(int inter_threads, int intra_threads) {
+void onnx_model::init_engine_threads(int inter_threads, int intra_threads) {
     session_options.SetIntraOpNumThreads(intra_threads);
     session_options.SetInterOpNumThreads(inter_threads);
     session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
 }
 
-ONNXModel::~ONNXModel() {
+onnx_model::~onnx_model() {
 
 }
 

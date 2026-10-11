@@ -7,34 +7,34 @@
 #include "libspeech/dsp/stft.h"
 
 namespace {
-std::vector<float> makeSine(int n, float freqHz, int sampleRate) {
+std::vector<float> make_sine(int n, float freq_hz, int sample_rate) {
     std::vector<float> out(n);
     for (int i = 0; i < n; ++i) {
-        out[i] = std::sin(2.0 * M_PI * freqHz * i / sampleRate);
+        out[i] = std::sin(2.0 * M_PI * freq_hz * i / sample_rate);
     }
     return out;
 }
 }  // namespace
 
-UTEST(STFT, FftLengthAndSlideLengthDefaults) {
-    speech::dsp::STFT stft(9);  // fftLength = 512
-    ASSERT_EQ(stft.fftLength(), 512);
-    ASSERT_EQ(stft.slideLength(), 128);  // default: fftLength/4
+UTEST(stft, fft_length_and_slide_length_defaults) {
+    speech::dsp::stft stft(9);  // fft_length = 512
+    ASSERT_EQ(stft.fft_length(), 512);
+    ASSERT_EQ(stft.slide_length(), 128);  // default: fft_length/4
 }
 
-UTEST(STFT, CalTimeLengthMatchesFrameCount) {
-    speech::dsp::STFT stft(9);  // fftLength=512, slideLength=128
-    // dataLength chosen so (dataLength - fftLength) is an exact multiple of slideLength.
-    int dataLength = 512 + 128 * 9;  // 10 frames
-    ASSERT_EQ(stft.calTimeLength(dataLength), 10);
+UTEST(stft, cal_time_length_matches_frame_count) {
+    speech::dsp::stft stft(9);  // fft_length=512, slide_length=128
+    // data_length chosen so (data_length - fft_length) is an exact multiple of slide_length.
+    int data_length = 512 + 128 * 9;  // 10 frames
+    ASSERT_EQ(stft.cal_time_length(data_length), 10);
 }
 
-UTEST(STFT, StftProducesExpectedFrameCountAndShape) {
-    speech::dsp::STFT stft(9);
-    int dataLength = 512 + 128 * 9;
-    auto signal = makeSine(dataLength, 440.0f, 16000);
+UTEST(stft, stft_produces_expected_frame_count_and_shape) {
+    speech::dsp::stft stft(9);
+    int data_length = 512 + 128 * 9;
+    auto signal = make_sine(data_length, 440.0f, 16000);
 
-    auto [real, imag] = stft.stft(signal);
+    auto [real, imag] = stft.compute(signal);
 
     ASSERT_EQ(real.size(), static_cast<size_t>(10));
     ASSERT_EQ(imag.size(), static_cast<size_t>(10));
@@ -43,57 +43,57 @@ UTEST(STFT, StftProducesExpectedFrameCountAndShape) {
     }
 }
 
-UTEST(STFT, TooShortInputProducesNoFrames) {
-    speech::dsp::STFT stft(9);  // fftLength=512
-    std::vector<float> shortSignal(100, 0.0f);
+UTEST(stft, too_short_input_produces_no_frames) {
+    speech::dsp::stft stft(9);  // fft_length=512
+    std::vector<float> short_signal(100, 0.0f);
 
-    auto [real, imag] = stft.stft(shortSignal);
+    auto [real, imag] = stft.compute(short_signal);
     ASSERT_EQ(real.size(), static_cast<size_t>(0));
 }
 
-UTEST(STFT, IstftReconstructsInteriorOfSignal) {
+UTEST(stft, istft_reconstructs_interior_of_signal) {
     // Round-trip test: Hann window + 75% overlap (the defaults) satisfies
     // the constant-overlap-add condition, so istft(stft(x)) should closely
-    // match x -- EXCEPT within one fftLength of each edge, where the
+    // match x -- EXCEPT within one fft_length of each edge, where the
     // analysis window necessarily tapers toward zero (a property of
     // windowed STFT in general, not a bug -- see stft.h's istft() docs).
-    speech::dsp::STFT stft(9);  // fftLength=512, slideLength=128
-    int dataLength = 512 + 128 * 19;  // 20 frames, comfortably long
-    auto signal = makeSine(dataLength, 440.0f, 16000);
+    speech::dsp::stft stft(9);  // fft_length=512, slide_length=128
+    int data_length = 512 + 128 * 19;  // 20 frames, comfortably long
+    auto signal = make_sine(data_length, 440.0f, 16000);
 
-    auto [real, imag] = stft.stft(signal);
+    auto [real, imag] = stft.compute(signal);
     auto reconstructed = stft.istft(real, imag);
 
-    ASSERT_EQ(reconstructed.size(), static_cast<size_t>(dataLength));
+    ASSERT_EQ(reconstructed.size(), static_cast<size_t>(data_length));
 
     // Only check the interior, away from edge taper effects.
-    int margin = stft.fftLength();
-    double maxAbsErr = 0.0;
-    for (int i = margin; i < dataLength - margin; ++i) {
+    int margin = stft.fft_length();
+    double max_abs_err = 0.0;
+    for (int i = margin; i < data_length - margin; ++i) {
         double err = std::fabs(reconstructed[i] - signal[i]);
-        maxAbsErr = std::max(maxAbsErr, err);
+        max_abs_err = std::max(max_abs_err, err);
     }
-    ASSERT_TRUE(maxAbsErr < 1e-2);
+    ASSERT_TRUE(max_abs_err < 1e-2);
 }
 
-UTEST(STFT, MismatchedFrameLengthThrows) {
-    speech::dsp::STFT stft(9);  // fftLength=512
-    std::vector<std::vector<float>> badReal = {std::vector<float>(256, 0.0f)};  // wrong length
-    std::vector<std::vector<float>> badImag = {std::vector<float>(256, 0.0f)};
+UTEST(stft, mismatched_frame_length_throws) {
+    speech::dsp::stft stft(9);  // fft_length=512
+    std::vector<std::vector<float>> bad_real = {std::vector<float>(256, 0.0f)};  // wrong length
+    std::vector<std::vector<float>> bad_imag = {std::vector<float>(256, 0.0f)};
 
     bool threw = false;
     try {
-        stft.istft(badReal, badImag);
+        stft.istft(bad_real, bad_imag);
     } catch (const std::invalid_argument&) {
         threw = true;
     }
     ASSERT_TRUE(threw);
 }
 
-UTEST(STFT, InvalidRadix2ExpThrows) {
+UTEST(stft, invalid_radix2_exp_throws) {
     bool threw = false;
     try {
-        speech::dsp::STFT stft(0);
+        speech::dsp::stft stft(0);
     } catch (const std::invalid_argument&) {
         threw = true;
     }

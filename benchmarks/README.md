@@ -47,7 +47,7 @@ Every row is a **Python-level call**: libspeech through its nanobind bindings, `
 ## Reading the results
 
 - **Two libspeech rows.** `libspeech` is the NumPy path: float32 arrays are read in place and results come back as NumPy arrays that own the C++ buffer (no list conversion, no copies). `libspeech_list` is the original `list[float]` in / nested-list out API, kept so its cost stays visible. A caller holding lists or float64/strided arrays pays one conversion (nanobind copies those once).
-- **Outputs are not bit-identical** across libraries (window and filterbank conventions differ), and libspeech's STFT returns all `fftLength` bins per frame by default while librosa and the audioflux package return `fftLength/2 + 1`; the benchmark therefore asks libspeech for `onesided=True` (257 bins, same shape as the other two). Compare times as "the same call a user would make", not as identical arithmetic.
+- **Outputs are not bit-identical** across libraries (window and filterbank conventions differ), and libspeech's STFT returns all `fft_length` bins per frame by default while librosa and the audioflux package return `fft_length/2 + 1`; the benchmark therefore asks libspeech for `onesided=True` (257 bins, same shape as the other two). Compare times as "the same call a user would make", not as identical arithmetic.
 - **Ratios** in the report are relative to the fastest library in that row, at that input size only.
 - **Single-core hosts** hide OpenMP gains in libspeech's STFT. Include the machine info footer when sharing numbers.
 

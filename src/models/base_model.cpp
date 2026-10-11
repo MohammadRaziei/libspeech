@@ -6,7 +6,7 @@
 
 namespace speech::models {
 
-BaseModel::BaseModel(const std::string& url, const std::filesystem::path& base_dir)
+base_model::base_model(const std::string& url, const std::filesystem::path& base_dir)
     : url(url), model_path(base_dir) {
     // Ensure the base directory exists
     if (!std::filesystem::exists(base_dir)) {
@@ -23,20 +23,20 @@ BaseModel::BaseModel(const std::string& url, const std::filesystem::path& base_d
     download_model();
 }
 
-void BaseModel::download_model() {
+void base_model::download_model() {
     try {
         SPEECH_LOG(DEBUG) << TAG("speech::models::BaseModel") << "Downloading model from: " << url << std::endl;
 
         // Download directly into the target directory
-        std::filesystem::path fileName = speech::utils::downloadFile(url, model_path, false, false);
+        std::filesystem::path file_name = speech::utils::download_file(url, model_path, false, false);
 
-        if (fileName.empty()) {
+        if (file_name.empty()) {
             SPEECH_LOG(DEBUG) << TAG("speech::models::BaseModel") << "Failed to download the model." << std::endl;
             throw std::runtime_error("Failed to download the model.");
         }
 
         // Set the model path
-        model_path = model_path / fileName.filename();
+        model_path = model_path / file_name.filename();
         SPEECH_LOG(INFO) << TAG("speech::models::BaseModel") << "Model saved to: " << model_path << std::endl;
     } catch (const std::exception& e) {
         SPEECH_LOG(ERROR) << TAG("speech::models::BaseModel") << "Error downloading model: " << e.what() << std::endl;

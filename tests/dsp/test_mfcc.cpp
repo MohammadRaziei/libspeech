@@ -7,26 +7,26 @@
 #include "libspeech/dsp/mfcc.h"
 
 namespace {
-std::vector<float> makeSine(int n, float freqHz, int sampleRate) {
+std::vector<float> make_sine(int n, float freq_hz, int sample_rate) {
     std::vector<float> out(n);
     for (int i = 0; i < n; ++i) {
-        out[i] = std::sin(2.0 * M_PI * freqHz * i / sampleRate);
+        out[i] = std::sin(2.0 * M_PI * freq_hz * i / sample_rate);
     }
     return out;
 }
 }  // namespace
 
-UTEST(MFCC, OutputShapeMatchesParams) {
-    speech::dsp::MFCC::Params params;
-    params.sampleRate = 16000;
-    params.numMelFilters = 26;
-    params.numCoefficients = 13;
-    params.radix2Exp = 9;  // fftLength = 512
+UTEST(mfcc, output_shape_matches_params) {
+    speech::dsp::mfcc::params params;
+    params.sample_rate = 16000;
+    params.num_mel_filters = 26;
+    params.num_coefficients = 13;
+    params.radix2_exp = 9;  // fft_length = 512
 
-    speech::dsp::MFCC mfcc(params);
+    speech::dsp::mfcc mfcc(params);
 
-    int dataLength = 512 + 128 * 9;  // 10 frames at default slideLength=fftLength/4
-    auto signal = makeSine(dataLength, 440.0f, 16000);
+    int data_length = 512 + 128 * 9;  // 10 frames at default slide_length=fft_length/4
+    auto signal = make_sine(data_length, 440.0f, 16000);
 
     auto coeffs = mfcc.compute(signal);
 
@@ -36,13 +36,13 @@ UTEST(MFCC, OutputShapeMatchesParams) {
     }
 }
 
-UTEST(MFCC, OutputIsFiniteForRealSignal) {
-    speech::dsp::MFCC::Params params;
-    params.sampleRate = 16000;
-    speech::dsp::MFCC mfcc(params);
+UTEST(mfcc, output_is_finite_for_real_signal) {
+    speech::dsp::mfcc::params params;
+    params.sample_rate = 16000;
+    speech::dsp::mfcc mfcc(params);
 
-    int dataLength = 1024 + 256 * 9;
-    auto signal = makeSine(dataLength, 220.0f, 16000);
+    int data_length = 1024 + 256 * 9;
+    auto signal = make_sine(data_length, 220.0f, 16000);
     auto coeffs = mfcc.compute(signal);
 
     for (const auto& frame : coeffs) {
@@ -52,14 +52,14 @@ UTEST(MFCC, OutputIsFiniteForRealSignal) {
     }
 }
 
-UTEST(MFCC, OutputIsFiniteForSilence) {
+UTEST(mfcc, output_is_finite_for_silence) {
     // Regression-style test: log(0 + epsilon) must not produce NaN/Inf.
-    speech::dsp::MFCC::Params params;
-    params.sampleRate = 16000;
-    speech::dsp::MFCC mfcc(params);
+    speech::dsp::mfcc::params params;
+    params.sample_rate = 16000;
+    speech::dsp::mfcc mfcc(params);
 
-    int dataLength = 1024 + 256 * 5;
-    std::vector<float> silence(dataLength, 0.0f);
+    int data_length = 1024 + 256 * 5;
+    std::vector<float> silence(data_length, 0.0f);
     auto coeffs = mfcc.compute(silence);
 
     for (const auto& frame : coeffs) {
@@ -69,9 +69,9 @@ UTEST(MFCC, OutputIsFiniteForSilence) {
     }
 }
 
-UTEST(MFCC, StationarySignalGivesConsistentCoefficientsAcrossFrames) {
+UTEST(mfcc, stationary_signal_gives_consistent_coefficients_across_frames) {
     // For a sinusoid at a frequency EXACTLY aligned to an FFT bin (k *
-    // sampleRate / fftLength), shifting the analysis window only rotates
+    // sample_rate / fft_length), shifting the analysis window only rotates
     // the phase of that bin's DFT coefficient -- magnitude is provably
     // invariant to the shift. That makes log-mel-energy (and therefore the
     // MFCC output) essentially identical across interior frames, which is a
@@ -79,14 +79,14 @@ UTEST(MFCC, StationarySignalGivesConsistentCoefficientsAcrossFrames) {
     // frequency, where windowed-FFT magnitude legitimately varies frame to
     // frame due to spectral leakage -- that's expected DSP behavior, not a
     // bug, so it would make a bad test).
-    speech::dsp::MFCC::Params params;
-    params.sampleRate = 16000;
-    params.radix2Exp = 9;  // fftLength = 512, bin spacing = 16000/512 = 31.25 Hz
-    speech::dsp::MFCC mfcc(params);
+    speech::dsp::mfcc::params params;
+    params.sample_rate = 16000;
+    params.radix2_exp = 9;  // fft_length = 512, bin spacing = 16000/512 = 31.25 Hz
+    speech::dsp::mfcc mfcc(params);
 
-    const float binAlignedFreq = 14.0f * 16000.0f / 512.0f;  // = 437.5 Hz, exactly bin 14
-    int dataLength = 512 + 128 * 19;  // 20 frames
-    auto signal = makeSine(dataLength, binAlignedFreq, 16000);
+    const float bin_aligned_freq = 14.0f * 16000.0f / 512.0f;  // = 437.5 Hz, exactly bin 14
+    int data_length = 512 + 128 * 19;  // 20 frames
+    auto signal = make_sine(data_length, bin_aligned_freq, 16000);
     auto coeffs = mfcc.compute(signal);
 
     // Compare frame 5 to frame 15 (both well away from edge-taper effects).
@@ -97,29 +97,29 @@ UTEST(MFCC, StationarySignalGivesConsistentCoefficientsAcrossFrames) {
     }
 }
 
-UTEST(MFCC, TooFewMelFiltersThrows) {
-    speech::dsp::MFCC::Params params;
-    params.sampleRate = 16000;
-    params.numMelFilters = 1;
+UTEST(mfcc, too_few_mel_filters_throws) {
+    speech::dsp::mfcc::params params;
+    params.sample_rate = 16000;
+    params.num_mel_filters = 1;
 
     bool threw = false;
     try {
-        speech::dsp::MFCC mfcc(params);
+        speech::dsp::mfcc mfcc(params);
     } catch (const std::invalid_argument&) {
         threw = true;
     }
     ASSERT_TRUE(threw);
 }
 
-UTEST(MFCC, TooManyCoefficientsThrows) {
-    speech::dsp::MFCC::Params params;
-    params.sampleRate = 16000;
-    params.numMelFilters = 13;
-    params.numCoefficients = 20;  // more than numMelFilters
+UTEST(mfcc, too_many_coefficients_throws) {
+    speech::dsp::mfcc::params params;
+    params.sample_rate = 16000;
+    params.num_mel_filters = 13;
+    params.num_coefficients = 20;  // more than num_mel_filters
 
     bool threw = false;
     try {
-        speech::dsp::MFCC mfcc(params);
+        speech::dsp::mfcc mfcc(params);
     } catch (const std::invalid_argument&) {
         threw = true;
     }
