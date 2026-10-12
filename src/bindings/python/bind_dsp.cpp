@@ -1,6 +1,8 @@
 #include <nanobind/nanobind.h>
 #include <nanobind/ndarray.h>
 #include <nanobind/stl/pair.h>
+#include <nanobind/stl/string.h>
+#include <nanobind/stl/variant.h>
 #include <nanobind/stl/vector.h>
 
 #include "libspeech/dsp/dct.h"
@@ -10,13 +12,29 @@
 #include "libspeech/dsp/simd.h"
 #include "libspeech/dsp/stft.h"
 #include "libspeech/dsp/window.h"
+#include <algorithm>
+#include <cctype>
 #include <complex>
 #include <stdexcept>
 #include <string>
+#include <variant>
 
 #include "ndarray_util.h"
 
 namespace nb = nanobind;
+
+namespace {
+// istft's overlap-add flavour: 0 / "weighted" (default) or 1 / "plain".
+using istft_method = std::variant<int, std::string>;
+int parse_istft_method(const istft_method& method) {
+    if (const int* number = std::get_if<int>(&method)) return *number;  // validated by istft() itself
+    std::string name = std::get<std::string>(method);
+    std::transform(name.begin(), name.end(), name.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (name == "weighted") return 0;
+    if (name == "plain") return 1;
+    throw std::invalid_argument("method must be 'weighted' or 'plain' (or 0 / 1), got '" + name + "'");
+}
+}  // namespace
 
 NB_MODULE(NB_MODULE_NAME, m) {
     m.def("simd_backend", &speech::dsp::simd::backend_name,
@@ -184,9 +202,33 @@ NB_MODULE(NB_MODULE_NAME, m) {
 
     // --- STFT ------------------------------------------------------------
     nb::class_<speech::dsp::stft>(m, "STFT")
-        .def(nb::init<int, speech::dsp::window_type, int>(),
+        .def("__init__",
+             [](speech::dsp::stft* self, int radix2_exp, speech::dsp::window_type type, int slide_length) {
+                 if (radix2_exp > 30) {
+                     throw std::invalid_argument(
+                         "radix2_exp is the EXPONENT of the frame length (length = 2 ** radix2_exp), got " +
+                         std::to_string(radix2_exp) + "; to give the length in samples use STFT(n_fft=" +
+                         std::to_string(radix2_exp) + ").");
+                 }
+                 new (self) speech::dsp::stft(radix2_exp, type, slide_length);
+             },
              nb::arg("radix2_exp"), nb::arg("window_type") = speech::dsp::window_type::hann, nb::arg("slide_length") = 0,
-             "Short-time Fourier transform: frames + windows + FFTs a signal.")
+             "Short-time Fourier transform: frames + windows + FFTs a signal. The frame length is "
+             "2 ** radix2_exp samples; slide_length is the hop (0 = a quarter frame). "
+             "STFT(n_fft=...) takes the length in samples instead.")
+        .def("__init__",
+             [](speech::dsp::stft* self, int n_fft, speech::dsp::window_type type, int hop_length) {
+                 if (n_fft < 2 || (n_fft & (n_fft - 1)) != 0) {
+                     throw std::invalid_argument("n_fft must be a power of two, got " + std::to_string(n_fft) + ".");
+                 }
+                 int radix2_exp = 0;
+                 while ((1 << radix2_exp) < n_fft) ++radix2_exp;
+                 new (self) speech::dsp::stft(radix2_exp, type, hop_length);
+             },
+             nb::kw_only(), nb::arg("n_fft"), nb::arg("window_type") = speech::dsp::window_type::hann,
+             nb::arg("hop_length") = 0,
+             "STFT with the frame length given in samples (a power of two), e.g. STFT(n_fft=512, "
+             "hop_length=128); hop_length 0 means a quarter frame.")
         .def_prop_ro("fft_length", &speech::dsp::stft::fft_length)
         .def_prop_ro("slide_length", &speech::dsp::stft::slide_length)
         .def("num_bins", &speech::dsp::stft::num_bins, nb::arg("onesided") = false,
@@ -236,25 +278,26 @@ NB_MODULE(NB_MODULE_NAME, m) {
              "STFT of a float32 array as a complex64 array of shape (num_frames, bins): fft_length bins "
              "(the full spectrum) or fft_length // 2 + 1 with onesided=True.")
         .def("istft",
-             [](speech::dsp::stft& self, speech::py::in_cx_array_2d spec, int method_type) {
+             [](speech::dsp::stft& self, speech::py::in_cx_array_2d spec, const istft_method& method_type) {
                  const std::size_t frames = spec.shape(0);
                  const std::size_t bins = spec.shape(1);
                  speech::frame_view<const speech::py::cx> view(spec.data(), frames, bins);
                  speech::py::float_vec out;
                  {
                      nb::gil_scoped_release release;
-                     out = self.istft(view, method_type);
+                     out = self.istft(view, parse_istft_method(method_type));
                  }
                  const std::size_t n = out.size();
                  return speech::py::wrap<speech::py::out_array_1d>(std::move(out), {n});
              },
              nb::arg("spec"), nb::arg("method_type") = 0,
              "Inverse STFT of a complex64 (num_frames, bins) array, e.g. from stft_complex(); bins is "
-             "fft_length or fft_length // 2 + 1. Returns a float32 1-D array.")
+             "fft_length or fft_length // 2 + 1. method is 'weighted' (default; also 0) or 'plain' (1). "
+             "Returns a float32 1-D array.")
         // NumPy first so arrays take the zero-copy path (float64 arrays are converted to float32).
         .def("istft",
              [](speech::dsp::stft& self, speech::py::in_array_2d real, speech::py::in_array_2d imag,
-                int method_type) {
+                const istft_method& method_type) {
                  if (real.shape(0) != imag.shape(0) || real.shape(1) != imag.shape(1)) {
                      throw std::invalid_argument("istft(): real and imag must have the same shape.");
                  }
@@ -267,7 +310,7 @@ NB_MODULE(NB_MODULE_NAME, m) {
                  speech::py::float_vec out;
                  {
                      nb::gil_scoped_release release;
-                     out = self.istft(re_frames, im_frames, method_type);
+                     out = self.istft(re_frames, im_frames, parse_istft_method(method_type));
                  }
                  const std::size_t n = out.size();
                  return speech::py::wrap<speech::py::out_array_1d>(std::move(out), {n});
@@ -275,7 +318,7 @@ NB_MODULE(NB_MODULE_NAME, m) {
              nb::arg("real"), nb::arg("imag"), nb::arg("method_type") = 0,
              "Inverse STFT of float32 (num_frames, bins) NumPy arrays, where bins is fft_length (the "
              "full spectrum, as stft() returns) or fft_length // 2 + 1 (stft(onesided=True)). Returns "
-             "a float32 1-D array of cal_data_length(num_frames) samples. method_type 0 = weighted "
+             "a float32 1-D array of cal_data_length(num_frames) samples. method_type: 'weighted' or 0 = weighted "
              "overlap-add (default), 1 = plain overlap-add; anything else raises ValueError. Only the "
              "real part of the inverse transform is returned, as in AudioFlux.")
         .def("istft",

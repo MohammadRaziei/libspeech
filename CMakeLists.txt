@@ -512,7 +512,7 @@ if(DEFINED PYTHON_PROJECT_NAME)
         # src/bindings/python/CMakeLists.txt).
         install(DIRECTORY ${PROJECT_SOURCE_DIR}/src/bindings/python/${PROJECT_NAME}/
                 DESTINATION ${SKBUILD_PROJECT_NAME}
-                FILES_MATCHING PATTERN "*.py")
+                FILES_MATCHING PATTERN "*.py" PATTERN "py.typed")
 
         # ONNXRuntime ships as a shared library that the compiled extension
         # modules dlopen symbols from at import time (see __init__.py's
@@ -560,6 +560,17 @@ if(DEFINED PYTHON_PROJECT_NAME)
             install(FILES "${ONNXRUNTIME_PROVIDERS_SHARED_FILE}"
                     DESTINATION ${SKBUILD_PROJECT_NAME})
         endif()
+
+        # Type stubs (.pyi) for the compiled modules, generated last so the package is complete.
+        string(REPLACE ";" "|" _stub_modules "${PYTHON_BIND_MODULES}")
+        install(CODE "
+            execute_process(COMMAND \"${CMAKE_COMMAND}\"
+                \"-DPYTHON_EXECUTABLE=${Python_EXECUTABLE}\"
+                \"-DPACKAGE_ROOT=\${CMAKE_INSTALL_PREFIX}\"
+                \"-DPACKAGE_NAME=${SKBUILD_PROJECT_NAME}\"
+                \"-DMODULES=${_stub_modules}\"
+                -P \"${PROJECT_SOURCE_DIR}/cmake/generate_stubs.cmake\")
+        ")
     else()
         file(COPY ${PROJECT_SOURCE_DIR}/src/bindings/python/${PROJECT_NAME} DESTINATION ${PYTHON_PROJECT_NAME})
         if(ONNXRUNTIME_SONAME_FILE)
@@ -597,6 +608,19 @@ if(DEFINED PYTHON_PROJECT_NAME)
         set_target_properties(speech PROPERTIES
                 LIBRARY_OUTPUT_DIRECTORY ${PYTHON_PROJECT_NAME}/${PROJECT_NAME}
                 RUNTIME_OUTPUT_DIRECTORY ${PYTHON_PROJECT_NAME}/${PROJECT_NAME})
+
+        # Type stubs (.pyi) next to the modules in the build tree (a wheel gets them at install time).
+        string(REPLACE ";" "|" _stub_modules "${PYTHON_BIND_MODULES}")
+        add_custom_target(speech_stubs ALL
+            COMMAND ${CMAKE_COMMAND}
+                    "-DPYTHON_EXECUTABLE=${Python_EXECUTABLE}"
+                    "-DPACKAGE_ROOT=${PYTHON_PROJECT_NAME}"
+                    "-DPACKAGE_NAME=${PROJECT_NAME}"
+                    "-DMODULES=${_stub_modules}"
+                    -P "${PROJECT_SOURCE_DIR}/cmake/generate_stubs.cmake"
+            DEPENDS ${PYTHON_BIND_MODULES} speech
+            COMMENT "Generating Python stubs (.pyi) for the libspeech modules..."
+            VERBATIM)
     endif()
 endif()
 

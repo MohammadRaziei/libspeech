@@ -15,6 +15,7 @@
 
 #include <cstddef>
 #include <memory>
+#include <mutex>
 
 #include "libspeech/dsp/window_type.h"
 #include "libspeech/detail/uninit_vector.h"
@@ -194,6 +195,10 @@ class SPEECH_API stft {
    private:
     int stft_complex_impl(span<const float> data, frame_view<std::complex<float>> out, bool onesided);
     ::OpaqueSTFT* stft_obj_;
+    // The vendored AudioFlux object keeps work buffers, so its (rarely used) fallback calls for
+    // lengths outside 16..8192 are serialized; the real-FFT fast path touches no shared state and
+    // is safe to call from many threads at once.
+    std::mutex fallback_mutex_;
     int fft_length_;
     int slide_length_;
     // Real-input FFT engine; null for lengths it does not support (then every

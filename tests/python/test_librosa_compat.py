@@ -285,6 +285,26 @@ def test_full_stft_is_librosas_spectrum_plus_its_conjugate_mirror():
     assert np.abs(full[257:] - np.conj(ref[1:256][::-1])).max() <= 1e-5 * np.abs(ref).max()
 
 
+@pytest.mark.parametrize("center", [True, False])
+def test_stft_function_matches_librosas_stft(center):
+    x = noisy_speechlike()
+    ours = libspeech.stft(x, n_fft=512, hop_length=128, center=center)
+    ref = librosa.stft(x, n_fft=512, hop_length=128, window="hann", center=center, pad_mode="constant")
+    assert ours.shape == ref.shape
+    assert ours.dtype == ref.dtype == np.complex64
+    assert np.abs(ours - ref).max() <= 1e-4 * max(1.0, np.abs(ref).max())
+
+
+def test_istft_function_matches_librosas_istft():
+    x = noisy_speechlike()
+    z = libspeech.stft(x, n_fft=512, hop_length=128)
+    ours = libspeech.istft(z, hop_length=128, length=len(x))
+    ref = librosa.istft(z, hop_length=128, win_length=512, n_fft=512, window="hann", center=True, length=len(x))
+    assert ours.shape == ref.shape
+    assert np.abs(ours - ref).max() <= 2e-5 * max(1.0, np.abs(ref).max())
+    assert np.abs(ours - x).max() < 5e-4  # and both give the signal back
+
+
 def test_stft_complex_is_librosas_stft_transposed():
     x = noisy_speechlike()
     stft = libspeech.STFT(9, libspeech.WindowType.hann, 128)

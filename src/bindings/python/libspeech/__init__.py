@@ -76,6 +76,7 @@ cdll.LoadLibrary(str(_here / ONNXRUNTIME_LIB_PATH))
 # itself needs an explicit load (httpp and ONNXRuntime, both dynamically
 # linked, were already preloaded above).
 cdll.LoadLibrary(str(_here / LIB_PATH))
+from ._functional import istft, stft
 from .speech_dsp_py import (
     FFT,
     MFCC,
@@ -120,9 +121,11 @@ __all__ = [
     "__version__",
     "dct",
     "get_log_level",
+    "istft",
     "set_log_level",
     "set_simd_enabled",
     "simd_backend",
     "simd_enabled",
+    "stft",
     "window",
 ]

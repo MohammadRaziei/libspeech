@@ -111,6 +111,7 @@ int stft::stft_into(const float* data, std::size_t n, float* real, float* imag) 
     if (!rfft_) {
         // AudioFlux writes frame-major into flat buffers and does not modify the
         // input (the const_cast only satisfies its non-const C signature).
+        const std::lock_guard<std::mutex> lock(fallback_mutex_);
         stftObj_stft(stft_obj_, const_cast<float*>(data), data_length, real, imag);
         return time_length;
     }
@@ -396,6 +397,7 @@ void stft::istft_into(const float* real, const float* imag, int num_frames, bool
             full_im = mirror_im.data();
         }
         std::fill(out, out + data_length, 0.0f);
+        const std::lock_guard<std::mutex> lock(fallback_mutex_);
         stftObj_istft(stft_obj_, const_cast<float*>(full_re), const_cast<float*>(full_im), num_frames,
                       method_type, out);
         return;

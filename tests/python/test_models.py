@@ -59,9 +59,9 @@ import libspeech
 MODEL = "facebook-denoiser-dns64.onnx"   # downloaded to ~/.libspeech on first use
 x = (0.05 * np.random.default_rng(0).standard_normal(4000)).astype(np.float32)
 
-d = libspeech.Denoiser.create("facebook", MODEL)
+d = libspeech.Denoiser("facebook")  # the backend's standard model, downloaded on first use
 assert d.sample_rate == 16000 and not d.closed
-y = d.process(x)  # the only real inference: NumPy in -> float32 NumPy out, same length
+y = d(x)  # the only real inference: NumPy in -> float32 NumPy out, same length (d(x) is d.process(x))
 assert isinstance(y, np.ndarray) and y.dtype == np.float32 and y.shape == x.shape
 try:
     d.process(np.zeros(0, np.float32))

@@ -94,25 +94,31 @@ resampled.save("sample_16k_mono.wav")
 mfcc = libspeech.MFCC(libspeech.MFCCParams())
 coefficients = mfcc.compute(resampled.data(0))   # [num_frames][num_coefficients]
 
-# With NumPy arrays (float32 in, float32 NumPy out, no list conversion) every transform is fast:
-x = resampled.to_numpy()                 # float32 1-D array (any float32 array works)
-stft = libspeech.STFT(9, libspeech.WindowType.hann, 128)
-re, im = stft.stft(x, onesided=True)    # (frames, 257); onesided=False gives all 512 bins
-y = stft.istft(re, im)                  # back to a signal; accepts 512 or 257 columns
-fft = libspeech.FFT(12)
-spectrum_re, spectrum_im = fft.forward(x[:4096])   # real input uses a real-FFT; also inverse/dct/idct
+# --- NumPy: float32 in, NumPy out, no list conversion ---
+x = resampled.to_numpy()                          # float32 1-D array (any float array works)
 
-# One complex64 array instead of (re, im): the kernels write straight into it, nothing is converted.
-z = stft.stft_complex(x, onesided=True)   # (frames, 257) complex64 -- librosa.stft(...).T
-y = stft.istft(z)                         # accepts the complex64 array as it is
-spectrum = fft.fft(x[:4096])              # complex64, like np.fft.fft (fft.ifft inverts it)
+# The everyday functions follow librosa: keyword-only n_fft / hop_length / window / center,
+# a one-sided complex64 result of shape (bins, frames), center=True padding.
+z = libspeech.stft(x, n_fft=512, hop_length=128)  # (257, frames) -- same as librosa.stft(x, ...)
+y = libspeech.istft(z, hop_length=128, length=len(x))
+
+# The classes keep a transform around and give you control of the layout:
+stft = libspeech.STFT(n_fft=512, hop_length=128)  # or STFT(9, ...): the exponent form
+z = stft.stft_complex(x, onesided=True)           # (frames, 257) complex64, written in place
+y = stft.istft(z, "weighted")                     # "weighted" (default) or "plain"
+re, im = stft.stft(x)                             # the older (re, im) pair; onesided=False = all 512 bins
+
+fft = libspeech.FFT(12)
+spectrum = fft.fft(x[:4096])                      # complex64, like np.fft.fft (fft.ifft inverts it)
+re, im = fft.forward(x[:4096])                    # the same as a pair; also inverse/dct/idct
 
 # --- Speech models ---
-# `with` frees the model's memory on exit (or call denoiser.close()). process() takes a list or a
-# 1-D NumPy array (and returns the same kind) and lets other Python threads run while it works.
-# num_threads: 1 (default), or 0 = one ONNX Runtime thread per hardware thread.
-with libspeech.Denoiser.create("facebook", "facebook_denoiser.onnx", num_threads=1) as denoiser:
-    clean = denoiser.process(resampled.data(0))
+# Denoiser("facebook") uses the backend's standard model (downloaded to ~/.libspeech on first use);
+# model="path-or-url.onnx" picks another. `with` frees the model's memory on exit (or call close()).
+# Calling it takes a list or a 1-D NumPy array (and returns the same kind) and lets other Python
+# threads run meanwhile. num_threads: 1 (default), or 0 = one ONNX Runtime thread per hardware thread.
+with libspeech.Denoiser("facebook") as denoiser:
+    clean = denoiser(resampled.to_numpy())
 
 vad = libspeech.SileroVad()
 vad.process(resampled.data(0))

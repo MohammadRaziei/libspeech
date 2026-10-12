@@ -1,5 +1,6 @@
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/string.h>
+#include <nanobind/stl/optional.h>
 #include <nanobind/stl/unique_ptr.h>
 #include <nanobind/stl/vector.h>
 
@@ -28,46 +29,68 @@ NB_MODULE(NB_MODULE_NAME, m) {
           "The current log level, e.g. 'warning'.");
 
     // --- speech::models::Denoiser ---------------------------------------------------------
-    // Abstract interface: no public constructor is exposed, matching the
-    // C++ API -- the only way to get one is Denoiser.create(...).
+    // The C++ type is an abstract interface; Python gets a constructor that picks the backend
+    // (a factory via nb::new_), and the same thing as Denoiser.create(...).
     //
     // `create` hands Python a unique_ptr<Denoiser>. That is only sound because every backend
     // derives from Denoiser alone (single inheritance), so the Denoiser* is the start of the
     // allocation: nanobind runs ~T() and then operator delete() on exactly that pointer. With the
     // old (ONNXModel, Denoiser) multiple inheritance it sat at offset 200 and freeing it aborted
     // with "free(): invalid pointer". test_denoiser_close_and_destroy guards this invariant.
+    // process() and __call__ are the same function: denoiser("facebook")(x).
+    // NumPy first so arrays take the zero-copy path; float64 arrays are converted to float32.
+    // The GIL is released while the model runs, so other Python threads keep going.
+    const auto process_array = [](speech::models::denoiser& self, speech::py::in_array_1d input_audio) {
+        std::vector<float> out;
+        {
+            nb::gil_scoped_release release;
+            out = self.process(input_audio.data(), input_audio.size());
+        }
+        auto* owner = new std::vector<float>(std::move(out));
+        nb::capsule keep(owner, [](void* p) noexcept { delete static_cast<std::vector<float>*>(p); });
+        return speech::py::out_array_1d(owner->data(), {owner->size()}, keep);
+    };
+    const auto process_list = [](speech::models::denoiser& self, const std::vector<float>& input_audio) {
+        nb::gil_scoped_release release;
+        return self.process(input_audio);
+    };
+    const char* const array_doc =
+        "Denoises mono audio given as a 1-D NumPy array ([-1, 1]-normalized). Returns a float32 "
+        "NumPy array of the same length. Raises RuntimeError if the denoiser is closed.";
+    const char* const list_doc =
+        "Denoises mono audio (a list of [-1, 1]-normalized floats). Returns denoised audio, the "
+        "same length as the input.";
+
     nb::class_<speech::models::denoiser>(m, "Denoiser")
+        // Denoiser("facebook") -- the everyday way; `model` defaults to the backend's standard model
+        // (downloaded to ~/.libspeech on first use). Denoiser.create(...) is the same thing spelled
+        // as a factory.
+        .def(nb::new_([](const std::string& backend, std::optional<std::string> model, int sample_rate,
+                         int num_threads) {
+                 const std::string default_model = backend == "facebook" ? "facebook-denoiser-dns64.onnx"
+                                                   : backend == "speechbrain"
+                                                       ? "speechbrain-sepformer-wham16k-enhancement.onnx"
+                                                       : std::string();
+                 return speech::models::denoiser::create(backend, model ? *model : default_model, sample_rate,
+                                                         num_threads);
+             }),
+             nb::arg("backend"), nb::arg("model") = nb::none(), nb::arg("sample_rate") = 16000,
+             nb::arg("num_threads") = 1,
+             "Loads a denoiser: backend is 'facebook' (DNS64) or 'speechbrain' (SepFormer). `model` is "
+             "a local .onnx file or a URL; by default the backend's standard model is used (downloaded "
+             "on first use). num_threads is the ONNX Runtime intra-op thread count: 1 (default), or 0 "
+             "for one per hardware thread. Use it as a context manager (`with`) or call close() to "
+             "free the model's memory early.")
         .def_static("create",
                     &speech::models::denoiser::create,
-                    "Creates a denoiser backend ('facebook' or 'speechbrain'). model_path may be a "
-                    "local file or a URL (weights are downloaded on first use). num_threads is the "
-                    "ONNX Runtime intra-op thread count: 1 (default), or 0 for one per hardware thread.",
+                    "Factory form of the constructor: model_path may be a local file or a URL. "
+                    "Prefer Denoiser(backend).",
                     nb::arg("backend"), nb::arg("model_path"), nb::arg("sample_rate") = 16000,
                     nb::arg("num_threads") = 1)
-        // NumPy first so arrays take the zero-copy path; float64 arrays are converted to float32.
-        // The GIL is released while the model runs, so other Python threads keep going.
-        .def("process",
-             [](speech::models::denoiser& self, speech::py::in_array_1d input_audio) {
-                 std::vector<float> out;
-                 {
-                     nb::gil_scoped_release release;
-                     out = self.process(input_audio.data(), input_audio.size());
-                 }
-                 auto* owner = new std::vector<float>(std::move(out));
-                 nb::capsule keep(owner, [](void* p) noexcept { delete static_cast<std::vector<float>*>(p); });
-                 return speech::py::out_array_1d(owner->data(), {owner->size()}, keep);
-             },
-             "Denoises mono audio given as a 1-D NumPy array ([-1, 1]-normalized). Returns a "
-             "float32 NumPy array of the same length. Raises RuntimeError if the denoiser is closed.",
-             nb::arg("input_audio"))
-        .def("process",
-             [](speech::models::denoiser& self, const std::vector<float>& input_audio) {
-                 nb::gil_scoped_release release;
-                 return self.process(input_audio);
-             },
-             "Denoises mono audio (a list of [-1, 1]-normalized floats). "
-             "Returns denoised audio, the same length as the input.",
-             nb::arg("input_audio"))
+        .def("process", process_array, array_doc, nb::arg("input_audio"))
+        .def("process", process_list, list_doc, nb::arg("input_audio"))
+        .def("__call__", process_array, array_doc, nb::arg("input_audio"))
+        .def("__call__", process_list, list_doc, nb::arg("input_audio"))
         .def("close", &speech::models::denoiser::close,
              "Releases the model and its memory right away. Safe to call more than once; "
              "process() raises RuntimeError afterwards.")
