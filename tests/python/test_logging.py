@@ -2,7 +2,7 @@
 
 What reaches stderr is process-wide state, so the output tests run in a subprocess with a controlled
 environment. They only use the FFT (cheap, no model needed): FFT(9) logs one DEBUG line and the
-invalid FFT(99) logs one ERROR line before raising.
+empty inverse() input logs one ERROR line before raising.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ import libspeech
 {setup}
 libspeech.FFT(9)            # logs a DEBUG line ("Created FFT")
 try:
-    libspeech.FFT(99)       # logs an ERROR line, then raises
+    libspeech.FFT(9).inverse([], [])   # logs an ERROR line (our own check), then raises
 except ValueError:
     pass
 print(libspeech.get_log_level())
