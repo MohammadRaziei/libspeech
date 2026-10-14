@@ -58,6 +58,20 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v6
+      with:
+        submodules: true
+
+    - name: Set up Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: "3.11"
+        cache: "pip"
+
+    # httpp: needed at CMake-configure time (see build-and-test above). The rest are the docs
+    # tools: Sphinx (Python reference), doxygen-awesome-css (C++ theme), markdown-it-py (pages).
+    # The Python reference imports the package built in the build tree, so this is a full build.
+    - name: Install python dependencies
+      run: pip install httpp sphinx doxygen-awesome-css markdown-it-py
 
     - name: Install Doxygen + graphviz
       run: |
@@ -67,7 +81,9 @@ jobs:
     - name: Configure CMake
       run: |
         cmake -B build \
-          -DBUILD_MODELS=OFF \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DBUILD_MODELS=ON \
+          -DBUILD_PYTHON=ON \
           -DBUILD_TESTS=OFF \
           -DBUILD_DOCS=ON
 
@@ -78,7 +94,7 @@ jobs:
       uses: actions/upload-artifact@v7
       with:
         name: cmake-documentation
-        path: build/docs/out/html
+        path: build/docs/out
         retention-days: 5
 
   build-coverage:

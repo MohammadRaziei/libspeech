@@ -51,6 +51,11 @@ This file starts at 0.3.1; older history is in `git log`.
 - Resample output is numerically more accurate than before (up to ~6e-3 different from the
   old kernel). The default (`best`) is still ~8–18% slower than librosa/soxr on one core; use
   `resample_quality` to trade accuracy for speed.
+- **Documentation site rebuilt like ctoon's**: `-DBUILD_DOCS=ON` + `--target speech_docs` builds the
+  C++ reference (Doxygen, with doxygen-awesome-css), the Python reference (Sphinx, from the package
+  staged in the build tree), a route index (`docs/supported_langs.json`) and Markdown pages
+  (changelog, C++ API renames, contributing) into `<build>/docs/out/`; `speech_docs_cpp` and
+  `speech_docs_python` build one part. Needs `pip install sphinx doxygen-awesome-css markdown-it-py`.
 - The Python bindings' CMake code moved from the top-level `CMakeLists.txt` to
   `src/bindings/python/CMakeLists.txt`; `cmake/generate_stubs.cmake` is gone.
 
@@ -61,11 +66,12 @@ This file starts at 0.3.1; older history is in `git log`.
 - **Facebook denoiser silently dropped everything after ~32 s of input** (the exported graph
   works on a fixed window); longer input is now processed in overlapping, cross-faded windows
   and the output has the input's length.
-- **`facebook-denoiser-dns64.onnx` takes ~7 s per call whatever the input length.** The graph
+- **The Facebook models (`facebook-denoiser-dns48.onnx`, `-dns64.onnx`, `-master64.onnx`) take 4 to 7 s per call whatever the input length.** The graph
   was traced with a 512000-sample example, so its `valid_length` was baked in as the constant
   512085 and every input was zero-padded to ~32 s. A re-published model computes `valid_length`
   from the input length inside the graph (same weights; 38 nodes replace the constant), measured
-  on one core: 0.1 s → 0.03 s, 1 s → 0.23 s, 5 s → 1.0 s, 32 s → ~7 s. Output equals the old
+  on one core, dns64: 0.1 s → 0.03 s, 1 s → 0.23 s, 5 s → 1.0 s, 32 s → ~7 s (dns48 1 s → 0.14 s,
+  master64 1 s → 0.17 s). All three had the same baked constant and are patched the same way. Output equals the old
   model for 32 s inputs and differs by ~1e-3 (peak, at the tail) for 1 to 5 s inputs; not
   compared against the PyTorch reference or on real speech. Existing installs keep the old file
   in `~/.libspeech/` until it is deleted.

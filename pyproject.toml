@@ -218,6 +218,10 @@ exclude = ["third_party"]
 # Stand-alone benchmark scripts: printing progress is their output, they import competitor
 # libraries lazily (a missing one must only skip its own cells), and plain os.path is fine.
 "benchmarks/**" = ["T20", "PLC0415", "PTH"]
+# Documentation build scripts (docs/convert_page.py, docs/generate_index.py, Sphinx conf.py): they
+# print their progress, import the optional Markdown/RST libraries lazily, put non-ASCII
+# punctuation into generated HTML, and Sphinx calls hooks with a fixed signature.
+"docs/**" = ["T20", "PLC0415", "RUF001", "ARG001"]
 "src/**/__main__.py" = ["T20"]
 "src/**/core.py" = ["ARG001", "F401"]
 "version.py" = ["T20"]  # CLI script -- printing is the point

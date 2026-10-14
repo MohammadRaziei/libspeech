@@ -1,0 +1,15 @@
+<!--
+SPEECH_ASCII_ART
+
+  libspeech — lightweight speech processing library
+  (audio I/O, DSP and ONNX speech models; C++17 with Python bindings).
+
+  Author  : Mohammad Raziei
+  Email   : mohammadraziei1375@gmail.com
+  GitHub  : https://github.com/MohammadRaziei/libspeech
+  License : MIT
+  Version : SPEECH_VERSION
+
+  Generated automatically by the libspeech build system.
+  Do not edit manually.
+-->

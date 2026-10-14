@@ -168,8 +168,15 @@ python version.py tag create patch   # bump patch, commit, and tag a release
 
 ## Docs and coverage
 
-`-DBUILD_DOCS=ON` gives you `speech_docs` (Doxygen, warnings-free -- keep it
-that way when you touch a public header). `-DBUILD_COVERAGE=ON` (needs
+`-DBUILD_DOCS=ON` gives you `speech_docs`, laid out like ctoon's `docs/`: the C++ reference
+(Doxygen, warnings-free -- keep it that way when you touch a public header), the Python
+reference (Sphinx; needs `pip install sphinx doxygen-awesome-css markdown-it-py`, `BUILD_PYTHON`
+and a local build, because it imports the package staged in the build tree), the route index
+(`docs/supported_langs.json` plus one fragment folder per language) and the Markdown pages
+(changelog, API renames, this file). Output: `<build>/docs/out/`; `speech_docs_cpp` and
+`speech_docs_python` build one part. Footer links to the benchmark and coverage pages are
+dropped when those pages are not in the output (`docs/FinishPages.cmake`).
+`-DBUILD_COVERAGE=ON` (needs
 `lcov`; add `-DBUILD_PYTHON=ON` and `pip install coverage` for the Python
 side) gives you `speech_coverage`, which runs every component's tests
 instrumented, merges them, and writes a dashboard to

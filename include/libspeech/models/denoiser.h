@@ -57,6 +57,10 @@ class SPEECH_API denoiser {
 
     /**
      * Factory: picks a backend by name ("facebook" | "speechbrain").
+     * @param backend     "facebook" or "speechbrain".
+     * @param url         model file name or URL; it is looked up in ~/.libspeech and downloaded
+     *                    when it is not there.
+     * @param sample_rate sample rate of the audio the model works on (default 16000).
      * @param num_threads ONNX Runtime intra-op threads: 1 (default) = single-threaded,
      *                    0 = one per hardware thread. Must not be negative.
      * @throws std::invalid_argument for an unknown backend or a negative num_threads.

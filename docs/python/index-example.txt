@@ -1,0 +1,21 @@
+            <div class="code-wrap">
+                <div class="code-label">
+                    <div class="code-lang-row"><div class="code-dots"><span></span><span></span><span></span></div><span class="code-lang">python</span></div>
+                    <button class="copy-btn" onclick="copyCode(this)"><i class="fa-regular fa-copy"></i> copy</button>
+                </div>
+                <pre><code class="language-python">import numpy as np
+import libspeech
+
+x = np.random.randn(16000).astype(np.float32)
+
+# librosa-style: one-sided complex64 result of shape (bins, frames)
+z = libspeech.stft(x, n_fft=512, hop_length=128)
+y = libspeech.istft(z, hop_length=128, length=len(x))
+
+# resampling with a speed / accuracy preset ("best", "high", "medium", "fast")
+rs = libspeech.Resample(44100, 16000, "medium")
+
+# speech enhancement (the model is downloaded to ~/.libspeech on first use)
+with libspeech.Denoiser("facebook") as denoiser:
+    clean = denoiser(x)</code></pre>
+            </div>

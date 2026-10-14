@@ -1,0 +1,9 @@
+{
+  "title": "C++ API",
+  "badge": "C++17",
+  "description": "The core library: <code>speech::io::audio</code>, <code>speech::dsp</code> (<code>resample</code>, <code>fft</code>, <code>stft</code>, <code>mfcc</code>, <code>window</code>), <code>speech::models</code> (<code>denoiser</code>, <code>silero_vad</code>) and logging. Header files under <code>include/libspeech/</code>.",
+  "meta_icon": "fa-solid fa-book",
+  "meta_label": "Generated with Doxygen",
+  "link_href": "cpp/html/index.html",
+  "link_label": "Open C++ Reference"
+}

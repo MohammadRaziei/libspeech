@@ -1,0 +1,11 @@
+            <div class="code-wrap">
+                <div class="code-label">
+                    <div class="code-lang-row"><div class="code-dots"><span></span><span></span><span></span></div><span class="code-lang">bash</span></div>
+                    <button class="copy-btn" onclick="copyCode(this)"><i class="fa-regular fa-copy"></i> copy</button>
+                </div>
+                <pre><code class="language-bash">pip install libspeech</code></pre>
+            </div>
+<div class="install-note">
+    Requires Python 3.8+. NumPy is only needed for the NumPy-based functions. Wheels ship a pre-built native extension, so there are no system dependencies.<br>
+    Latest development build: <code>pip install git+https://github.com/MohammadRaziei/libspeech</code>
+</div>

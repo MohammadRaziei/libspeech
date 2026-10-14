@@ -14,7 +14,7 @@ Usage: generate_report.py RESULTS_DIR OUTPUT_HTML --chartjs-path PATH
 from __future__ import annotations
 
 import argparse
-import datetime
+import datetime as dt
 import json
 import os
 
@@ -106,7 +106,7 @@ def main():
 
     env = Environment(loader=FileSystemLoader(HERE), autoescape=True)
     html = env.get_template("template.html.jinja2").render(
-        generated=datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+        generated=dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
         chartjs=chartjs,
         libs=libs,
         lib_labels=LIB_LABELS,

@@ -1,0 +1,36 @@
+<footer class="footer">
+    <div class="footer-inner">
+        <div>
+            <div class="footer-brand">
+                <div class="footer-logo">
+                    <img src="{{ pathto('_static/libspeech-logo.svg', 1) }}" alt="libspeech" width="28" height="28">
+                </div>
+                <span class="footer-name">libspeech</span>
+            </div>
+            <div class="footer-tagline">
+                Lightweight speech processing: audio I/O, DSP and ONNX speech models in C++ with Python bindings.
+            </div>
+            <div class="footer-copy">
+                &copy; 2025 <a href="https://github.com/mohammadraziei">Mohammad Raziei</a>
+                &nbsp;·&nbsp; <a href="https://github.com/MohammadRaziei/libspeech/blob/main/LICENSE">MIT License</a>
+                &nbsp;·&nbsp; v{{ version }}
+            </div>
+        </div>
+        <div>
+            <div class="footer-links-title">Resources</div>
+            <div class="footer-links">
+                <a class="footer-link" href="{{ pathto(root_doc) }}">
+                    <i class="fa-solid fa-book"></i> API Reference
+                </a>
+                <a class="footer-link" href="https://github.com/MohammadRaziei/libspeech" target="_blank">
+                    <i class="fa-brands fa-github"></i> Source code
+                </a>
+                {%- if show_source and has_source and sourcename %}
+                <a class="footer-link" href="{{ pathto('_sources/' + sourcename, 1)|e }}">
+                    <i class="fa-solid fa-code"></i> View page source
+                </a>
+                {%- endif %}
+            </div>
+        </div>
+    </div>
+</footer>

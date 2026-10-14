@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.19)
 option(BUILD_PYTHON "export python module" off)
 option(BUILD_TESTS "build unit tests (speech::dsp only, no ONNXRuntime/httpp needed)" on)
 option(BUILD_MODELS "build speech::models + the speech library (needs ONNXRuntime download + the httpp package); off configures speech::dsp + tests only" on)
-option(BUILD_DOCS "build the speech_docs Doxygen target (docs/)" off)
+option(BUILD_DOCS "build the speech_docs targets: Doxygen C++ docs, Sphinx Python docs, index and pages (docs/)" off)
 option(BUILD_COVERAGE "instrument speech_dsp with --coverage and enable the speech_coverage_cpp_dsp target (needs lcov/genhtml); OFF by default so a normal build isn't broken just because lcov happens to be installed" off)
 
 set(CMAKE_C_STANDARD 99 CACHE STRING "C version selection")
@@ -115,14 +115,14 @@ if(BUILD_TESTS)
     add_subdirectory(tests)
 endif()
 
-if(BUILD_DOCS)
-    add_subdirectory(docs)
-endif()
-
 if(NOT BUILD_MODELS)
     message(STATUS "BUILD_MODELS=off: configuring speech::dsp + tests only, skipping ONNXRuntime/models/audio I/O.")
     if(BUILD_TESTS)
         speech_coverage_finalize()
+    endif()
+    # C++ docs only: the Python docs need the bindings, which this configuration skips
+    if(BUILD_DOCS)
+        add_subdirectory(docs)
     endif()
     return()
 endif()
@@ -375,6 +375,11 @@ endif()
 
 if(DEFINED PYTHON_PROJECT_NAME)
     add_subdirectory(${PROJECT_SOURCE_DIR}/src/bindings/python)
+endif()
+
+# After the Python bindings: the Sphinx docs import the package staged in the build tree
+if(BUILD_DOCS)
+    add_subdirectory(docs)
 endif()
 
 # Python tests need the bindings fully configured above (the _audio target,

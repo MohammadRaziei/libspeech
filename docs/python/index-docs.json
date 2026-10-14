@@ -1,0 +1,9 @@
+{
+  "title": "Python API",
+  "badge": "Python 3.8+",
+  "description": "nanobind extension that mirrors the C++ API: <code>stft</code> / <code>istft</code> (librosa style), <code>STFT</code>, <code>FFT</code>, <code>MFCC</code>, <code>Resample</code>, <code>Audio</code>, <code>Denoiser</code>, <code>SileroVad</code>, logging and the SIMD switch. NumPy in, NumPy out; the GIL is released while a model runs.",
+  "meta_icon": "fa-solid fa-book",
+  "meta_label": "Generated with Sphinx",
+  "link_href": "python/html/index.html",
+  "link_label": "Open Python Reference"
+}

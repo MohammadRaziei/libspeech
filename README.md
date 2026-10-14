@@ -229,7 +229,7 @@ Run everything with `cmake --build build --target speech_test`, or just
 ### Docs & coverage
 
 ```bash
-cmake .. -DBUILD_DOCS=ON && cmake --build . --target speech_docs   # Doxygen HTML -> build/docs/out/html
+cmake .. -DBUILD_DOCS=ON && cmake --build . --target speech_docs   # -> build/docs/out/index.html (C++ via Doxygen, Python via Sphinx)
 ```
 
 Coverage follows the same layout as [ctoon](https://github.com/mohammadraziei/ctoon):
