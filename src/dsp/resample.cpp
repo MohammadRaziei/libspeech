@@ -18,6 +18,23 @@
 namespace speech::dsp {
 
 namespace {
+struct quality_params {
+    int zero_num;
+    float beta;
+    float roll_off;
+};
+quality_params params_for(resample_quality q) {
+    switch (q) {
+        case resample_quality::best:   return {64, 14.7696565f, 0.9475937f};
+        case resample_quality::high:   return {48, 12.0f, 0.95f};
+        case resample_quality::medium: return {32, 11.0f, 0.95f};
+        case resample_quality::fast:   return {16, 9.4f, 0.92f};
+    }
+    throw std::invalid_argument("unknown resample_quality");
+}
+}  // namespace
+
+namespace {
 constexpr const char* log_tag = "speech::dsp::Resample";
 
 // Polyphase kernels. Output i uses weight row (i*down) mod up and the input
@@ -579,6 +596,11 @@ resample::resample(int source_rate, int target_rate)
     SPEECH_LOG(DEBUG) << TAG(log_tag) << "Created resampler: " << source_rate << "Hz -> " << target_rate
                << "Hz." << std::endl;
 }
+
+resample::resample(int source_rate, int target_rate, resample_quality quality)
+    : resample(source_rate, target_rate, params_for(quality).zero_num, /*nbit=*/0, window_type::kaiser,
+               params_for(quality).beta, params_for(quality).roll_off, /*is_scale=*/false,
+               /*is_continue=*/false) {}
 
 resample::resample(int source_rate, int target_rate, int zero_num, int nbit, window_type win_type,
                      float value, float roll_off, bool is_scale, bool is_continue)

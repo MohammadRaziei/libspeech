@@ -96,3 +96,34 @@ def test_denoiser_end_to_end_and_clean_shutdown():
         capture_output=True, text=True, timeout=300, check=False,
     )
     assert r.returncode == 0, f"exit={r.returncode}\n{r.stderr[-1200:]}"
+
+
+_LONG_INPUT_SCRIPT = """
+import numpy as np, libspeech
+# The exported Facebook graph only handles ~32 s per call (it pads to that window internally and
+# truncates longer input). 40 s must still come back as 40 s, with no hole at the window seam.
+n = 40 * 16000
+rng = np.random.default_rng(0)
+t = np.arange(n) / 16000
+# amplitude-modulated tone: the model keeps it (a steady tone is treated as noise and removed)
+x = (0.3 * np.sin(2 * np.pi * 220 * t) * np.sin(2 * np.pi * 3 * t) ** 2
+     + 0.02 * rng.standard_normal(n)).astype(np.float32)
+with libspeech.Denoiser("facebook") as d:
+    y = d(x)
+assert y.shape == x.shape, (y.shape, x.shape)
+assert np.isfinite(y).all()
+rms = lambda a: float(np.sqrt(np.mean(a ** 2)))
+# windows are 512000 samples with a 16000-sample cross-fade; the overlap is [496000, 512000)
+before, overlap, after = (rms(y[a:a + 16000]) for a in (480000, 496000, 512000))
+assert overlap > 0.8 * min(before, after), (before, overlap, after)  # no hole at the seam
+assert rms(y[-16000:]) > 0.1 * rms(y[16000:48000]), "tail was dropped"
+"""
+
+
+@pytest.mark.models
+def test_denoiser_input_longer_than_the_graph_window():
+    r = subprocess.run(
+        [sys.executable, "-c", _LONG_INPUT_SCRIPT],
+        capture_output=True, text=True, timeout=300, check=False,
+    )
+    assert r.returncode == 0, f"exit={r.returncode}\n{r.stderr[-1200:]}"

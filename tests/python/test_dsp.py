@@ -89,3 +89,19 @@ def test_dct_of_constant_has_energy_only_in_dc_term():
     out = libspeech.dct([3.0] * 32)
     assert abs(out[0]) > 1.0
     assert all(abs(v) < 1e-3 for v in out[1:])
+
+
+def test_resample_quality_levels():
+    np = pytest.importorskip("numpy")
+    n = 44100
+    x = (0.5 * np.sin(2 * np.pi * 3000 * np.arange(n) / 44100)).astype(np.float32)
+    ref = libspeech.Resample(44100, 16000).resample(x)
+    assert libspeech.Resample(44100, 16000, "best").resample(x).tolist() == ref.tolist()
+    for quality in ("high", "medium", "fast"):
+        y = libspeech.Resample(44100, 16000, quality).resample(x)
+        assert y.shape == ref.shape
+        mid = slice(2000, -2000)  # away from the filter edges
+        assert abs(float(np.abs(y[mid]).max()) - 0.5) < 0.01, quality
+        assert float(np.abs(y[mid] - ref[mid]).max()) < 0.01, quality  # same tone, same phase
+    with pytest.raises(ValueError):
+        libspeech.Resample(44100, 16000, "ultra")

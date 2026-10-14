@@ -70,7 +70,20 @@ NB_MODULE(NB_MODULE_NAME, m) {
     // --- Resample ------------------------------------------------------------
     nb::class_<speech::dsp::resample>(m, "Resample")
         .def(nb::init<int, int>(), nb::arg("source_rate"), nb::arg("target_rate"),
-             "Amplitude-preserving resampler between two sample rates.")
+             "Amplitude-preserving resampler between two sample rates (quality \"best\").")
+        .def("__init__",
+             [](speech::dsp::resample* self, int source_rate, int target_rate, const std::string& quality) {
+                 using q = speech::dsp::resample_quality;
+                 q level;
+                 if (quality == "best") level = q::best;
+                 else if (quality == "high") level = q::high;
+                 else if (quality == "medium") level = q::medium;
+                 else if (quality == "fast") level = q::fast;
+                 else throw nb::value_error("quality must be \"best\", \"high\", \"medium\" or \"fast\"");
+                 new (self) speech::dsp::resample(source_rate, target_rate, level);
+             },
+             nb::arg("source_rate"), nb::arg("target_rate"), nb::arg("quality"),
+             "Resampler with a speed/accuracy preset: \"best\" (default), \"high\", \"medium\", \"fast\".")
         // NumPy fast path: float32 C-contiguous arrays are read in place (other
         // dtypes/layouts are converted once by nanobind) and the result is a
         // NumPy array that owns the C++ buffer -- no list conversion, no copies.

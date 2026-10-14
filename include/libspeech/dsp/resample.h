@@ -20,6 +20,17 @@ struct OpaqueResample;
 
 namespace speech::dsp {
 
+// Speed / accuracy trade-off of the Kaiser windowed-sinc filter. All levels preserve the
+// amplitude of in-band tones; they differ in the transition band (how close to the target
+// Nyquist the passband stays flat) and in the aliasing rejection beyond it. Measured for
+// 44.1 -> 16 kHz (10 s, one core; see CHANGELOG.md): best 2.5 ms, high 1.9, medium 1.4, fast 0.8.
+enum class resample_quality {
+    best,    // default: 64 zero crossings, beta 14.77 (AudioFlux "Best"); alias rejection > 150 dB
+    high,    // 48 zero crossings, beta 12;   alias rejection > 120 dB beyond 8.5 kHz
+    medium,  // 32 zero crossings, beta 11;   alias rejection > 105 dB beyond 8.5 kHz
+    fast,    // 16 zero crossings, beta 9.4;  alias rejection > 90 dB beyond 9 kHz, passband narrower
+};
+
 /**
  * Resample: sample-rate conversion (e.g. 44100Hz -> 16000Hz) backed by
  * AudioFlux's polyphase/bandlimited resampler.
@@ -34,6 +45,9 @@ class SPEECH_API resample {
     // Amplitude-preserving: does not apply AudioFlux's optional sqrt(ratio)
     // energy-domain scaling (see resample.cpp for why).
     resample(int source_rate, int target_rate);
+
+    // Same, with one of the speed / accuracy presets above.
+    resample(int source_rate, int target_rate, resample_quality quality);
 
     // Creates a resampler with explicit window/quality settings.
     resample(int source_rate, int target_rate, int zero_num, int nbit, window_type win_type,

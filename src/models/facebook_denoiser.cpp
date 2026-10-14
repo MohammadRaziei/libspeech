@@ -4,9 +4,14 @@
 
 namespace speech::models {
 
+// The exported dns64 graph pads its input to a fixed window internally (about 32 s at 16 kHz:
+// every activation has the same size for a 0.1 s and a 5 s input, ~7 s per call on one core) and
+// silently returns only that many samples for longer input, so longer input is run in windows.
+constexpr std::size_t max_window_samples = 512000;
+
 struct facebook_denoiser::impl : detail::onnx_denoiser_impl {
     impl(const std::string& url, int sample_rate, int num_threads)
-        : onnx_denoiser_impl(url, sample_rate, num_threads, /*with_channel_dim=*/true) {}
+        : onnx_denoiser_impl(url, sample_rate, num_threads, /*with_channel_dim=*/true, max_window_samples) {}
 };
 
 facebook_denoiser::facebook_denoiser(const std::string& url, int sample_rate, int num_threads)
