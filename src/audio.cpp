@@ -173,10 +173,10 @@ void audio_callback(ma_device* device, void* output, const void* input, ma_uint3
     size_t frames_to_copy = std::min(static_cast<size_t>(frame_count), audio->audio_data[0].size() - current_frame);
 
     if (frames_to_copy > 0) {
-        float* output = static_cast<float*>(output);
+        float* out = static_cast<float*>(output);
         for (size_t i = 0; i < frames_to_copy; ++i) {
             for (int c = 0; c < audio->channels; ++c) {
-                output[i * audio->channels + c] = audio->audio_data[c][current_frame + i];
+                out[i * audio->channels + c] = audio->audio_data[c][current_frame + i];
             }
         }
         current_frame += frames_to_copy;
