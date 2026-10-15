@@ -103,7 +103,9 @@ from .speech_models_py import (
     Denoiser,
     SileroVad,
     SpeechTimestamp,
+    available_providers,
     get_log_level,
+    is_cuda_available,
     set_log_level,
 )
 
@@ -119,8 +121,10 @@ __all__ = [
     "SpeechTimestamp",
     "WindowType",
     "__version__",
+    "available_providers",
     "dct",
     "get_log_level",
+    "is_cuda_available",
     "istft",
     "set_log_level",
     "set_simd_enabled",

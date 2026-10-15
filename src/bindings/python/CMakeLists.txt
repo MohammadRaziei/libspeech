@@ -222,8 +222,15 @@ if(TRUE)
         file(COPY ${ONNXRUNTIME_PROVIDERS_SHARED_FILE} DESTINATION ${_stage_root}/${PROJECT_NAME})
     endif()
 
+    # The generator expression is deliberate: multi-config generators (Visual Studio, Xcode,
+    # Ninja Multi-Config) append a per-config subdirectory (.../libspeech/Release/) to a plain
+    # output-directory path, which moves the modules out of the package directory that
+    # __init__.py and the stub generator import them from. `$<1:...>` is just the path, but
+    # being a generator expression it switches that suffix off.
+    set(_stage_pkg_dir "$<1:${_stage_root}/${PROJECT_NAME}>")
+
     foreach(_core IN LISTS PYTHON_BIND_MODULES)
-        set_target_properties(${_core} PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${_stage_root}/${PROJECT_NAME})
+        set_target_properties(${_core} PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${_stage_pkg_dir})
     endforeach()
 
     # speech itself must land inside the package directory too --
@@ -240,8 +247,8 @@ if(TRUE)
     # to landing directly under ${_stage_root} instead of
     # ${_stage_root}/${PROJECT_NAME}, right alongside it.
     set_target_properties(speech PROPERTIES
-            LIBRARY_OUTPUT_DIRECTORY ${_stage_root}/${PROJECT_NAME}
-            RUNTIME_OUTPUT_DIRECTORY ${_stage_root}/${PROJECT_NAME})
+            LIBRARY_OUTPUT_DIRECTORY ${_stage_pkg_dir}
+            RUNTIME_OUTPUT_DIRECTORY ${_stage_pkg_dir})
 
     # Python stubs (.pyi), generated like ctoon does (python -m nanobind.stubgen), but through the
     # package (-m libspeech.<module>): the modules need the shared libraries that

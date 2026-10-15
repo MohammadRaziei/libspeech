@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "libspeech/models/denoiser.h"
+#include "libspeech/models/providers.h"
 #include "libspeech/models/silero_vad.h"
 #include "libspeech/utils/log.h"
 #include "ndarray_util.h"
@@ -27,6 +28,14 @@ NB_MODULE(NB_MODULE_NAME, m) {
     m.def("get_log_level",
           [] { return std::string(speech::utils::log_level_name(speech::utils::get_log_level())); },
           "The current log level, e.g. 'warning'.");
+
+    // --- execution providers -----------------------------------------------------------------
+    m.def("available_providers", &speech::models::available_providers,
+          "ONNX Runtime execution providers of the loaded build, in priority order, e.g. "
+          "['CUDAExecutionProvider', 'CPUExecutionProvider']. 'CPUExecutionProvider' is always there.");
+    m.def("is_cuda_available", &speech::models::is_cuda_available,
+          "True if models can run on CUDA: the ONNX Runtime build has the CUDA provider and it can "
+          "actually be created on this machine. False for a CPU-only build. Never raises.");
 
     // --- speech::models::Denoiser ---------------------------------------------------------
     // The C++ type is an abstract interface; Python gets a constructor that picks the backend
