@@ -41,7 +41,7 @@
 - 🚀 **ONNX Runtime powered** models, without a heavy LibTorch dependency
 - 🎙️ **Audio I/O** (`speech::io`): load/save WAV/MP3/FLAC, playback, resample, mono-mixing
 - 🧮 **DSP** (`speech::dsp`): Resample, window functions, FFT/IFFT, DCT/IDCT, STFT/ISTFT, MFCC -- all with their own C++ unit tests and Python bindings
-- 🔊 **Speech models** (`speech::models`): a `Denoiser` interface (Facebook/SpeechBrain backends) and Silero VAD
+- 🔊 **Speech models** (`speech::models`): a `Denoiser` interface (Facebook, SpeechBrain, GTCRN and DPDFNet backends) and Silero VAD
 - 🖥️ **Cross-platform**: Windows, Linux, macOS
 - 🐍 **Python bindings** (nanobind) mirroring the C++ API 1:1
 - 📦 **Zero system dependencies**: no `apt install libcurl-dev` / OpenSSL needed -- HTTPS model downloads go through [`httpp`](https://github.com/mohammadraziei/httpp) (`pip install httpp`), a separately-installed package with its own prebuilt HTTP(S) client and progress bar

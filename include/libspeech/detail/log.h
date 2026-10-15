@@ -95,18 +95,6 @@ inline bool log_enabled(log_level level) noexcept {
     return static_cast<int>(level) >= static_cast<int>(current_level());
 }
 
-/** Maps the AixLog severity token used at a call site (TRACE, DEBUG, ...) to our level. */
-inline log_level level_from_severity(int severity) noexcept {
-    switch (severity) {
-        case 0: return log_level::trace;
-        case 1: return log_level::debug;
-        case 2:
-        case 3: return log_level::info;  // info, notice
-        case 4: return log_level::warning;
-        default: return log_level::error;  // error, fatal
-    }
-}
-
 /**
  * One log line: collects the message, writes it to stderr in a single call on destruction
  * (so lines from different threads never interleave), as
@@ -183,11 +171,27 @@ class log_line {
 
 }  // namespace speech::detail
 
+// The severity token at a call site (TRACE, DEBUG, INFO, WARNING, ERROR, ...) is turned into a level by
+// pasting it onto a prefix, never by letting the preprocessor expand it. That matters on Windows:
+// <windows.h> (pulled in by aixlog.hpp, which restores it after its own header) defines `ERROR` as 0,
+// so the old `level_from_severity(SEV)` turned every SPEECH_LOG(ERROR) into the trace level and the
+// message was dropped. An operand of `##` is not macro-expanded, so `ERROR` stays a plain token --
+// but only if the paste happens directly in SPEECH_LOG's own body: an argument that is merely
+// forwarded to another macro (SPEECH_LOG_LEVEL(SEV)) is expanded first, which is why SPEECH_LOG
+// pastes itself instead of calling a helper.
+#define SPEECH_LOG_LEVEL_TRACE ::speech::utils::log_level::trace
+#define SPEECH_LOG_LEVEL_DEBUG ::speech::utils::log_level::debug
+#define SPEECH_LOG_LEVEL_INFO ::speech::utils::log_level::info
+#define SPEECH_LOG_LEVEL_NOTICE ::speech::utils::log_level::info
+#define SPEECH_LOG_LEVEL_WARNING ::speech::utils::log_level::warning
+#define SPEECH_LOG_LEVEL_ERROR ::speech::utils::log_level::error
+#define SPEECH_LOG_LEVEL_FATAL ::speech::utils::log_level::error
+
 // `SPEECH_LOG(SEV) << ...;` -- the message is not even built when SEV is below the log level.
 // (`if (...) {} else` keeps it a single statement that is safe inside an unbraced if/else.)
-#define SPEECH_LOG(SEV)                                                              \
-    if (!::speech::detail::log_enabled(::speech::detail::level_from_severity(SEV))) {   \
-    } else                                                                           \
-        ::speech::detail::log_line(::speech::detail::level_from_severity(SEV), __func__)
+#define SPEECH_LOG(SEV)                                                                \
+    if (!::speech::detail::log_enabled(SPEECH_LOG_LEVEL_##SEV)) {                      \
+    } else                                                                             \
+        ::speech::detail::log_line(SPEECH_LOG_LEVEL_##SEV, __func__)
 
 #endif  // LIBSPEECH_DETAIL_LOG_H

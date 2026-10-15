@@ -56,8 +56,8 @@ class SPEECH_API denoiser {
     bool closed() const noexcept;
 
     /**
-     * Factory: picks a backend by name ("facebook" | "speechbrain").
-     * @param backend     "facebook" or "speechbrain".
+     * Factory: picks a backend by name ("facebook" | "speechbrain" | "gtcrn" | "dpdfnet").
+     * @param backend     "facebook", "speechbrain", "gtcrn" or "dpdfnet".
      * @param url         model file name or URL; it is looked up in ~/.libspeech and downloaded
      *                    when it is not there.
      * @param sample_rate sample rate of the audio the model works on (default 16000).

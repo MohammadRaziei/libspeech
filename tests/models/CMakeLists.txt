@@ -11,7 +11,9 @@ add_executable(test_cpp_models
     ${SPEECH_MODELS_TEST_SOURCES}
     ${CMAKE_CURRENT_SOURCE_DIR}/../utest/utest_main.cxx
 )
-target_include_directories(test_cpp_models PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../utest)
+target_include_directories(test_cpp_models PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../utest
+        # internal headers (spectral.h) that are tested directly
+        ${PROJECT_SOURCE_DIR}/src/models)
 target_link_libraries(test_cpp_models PRIVATE speech_models)
 
 add_test(NAME cpp_models COMMAND test_cpp_models)

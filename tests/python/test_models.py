@@ -127,3 +127,124 @@ def test_denoiser_input_longer_than_the_graph_window():
         capture_output=True, text=True, timeout=300, check=False,
     )
     assert r.returncode == 0, f"exit={r.returncode}\n{r.stderr[-1200:]}"
+
+
+def test_gtcrn_only_accepts_16khz():
+    # Rejected before any model file is fetched, so this needs no network.
+    for rate in (8000, 44100):
+        with pytest.raises(ValueError, match="16 kHz"):
+            libspeech.Denoiser("gtcrn", sample_rate=rate)
+
+
+# GTCRN is tiny (~0.5 MB, well under a second per call), so unlike the big denoisers its end-to-end
+# test is cheap. Still `models` (it downloads the file) and run in a subprocess like the others.
+_GTCRN_SCRIPT = """
+import numpy as np, libspeech
+rng = np.random.default_rng(0)
+rms = lambda a: float(np.sqrt(np.mean(a ** 2)))
+with libspeech.Denoiser("gtcrn") as d:
+    assert d.sample_rate == 16000
+    # any length comes back unchanged in length: shorter than a hop, around the hop/frame sizes, longer
+    for n in (1, 100, 255, 256, 257, 511, 513, 16000):
+        y = d((0.1 * rng.standard_normal(n)).astype(np.float32))
+        assert y.shape == (n,) and y.dtype == np.float32 and np.isfinite(y).all(), n
+    # pure noise is what the model exists to remove: at least 20 dB less energy
+    noise = (0.05 * rng.standard_normal(32000)).astype(np.float32)
+    assert rms(d(noise)) < 0.1 * rms(noise), (rms(d(noise)), rms(noise))
+    # the model is a real function of the input (not an identity) and is deterministic
+    x = (0.1 * rng.standard_normal(5000)).astype(np.float32)
+    assert not np.allclose(d(x), x)
+    assert np.array_equal(d(x), d(x))
+    # Golden values from an independent implementation (NumPy FFT + onnxruntime stepping the same
+    # streaming model frame by frame, torch.stft/istft conventions). This is what pins the numerics --
+    # the window shape, the framing and the state carried between frames -- which the checks above
+    # cannot see. The input is closed-form so no RNG version can change it.
+    i = np.arange(16000)
+    t = i / 16000
+    g = (0.3 * np.sin(2 * np.pi * 220 * t) * np.sin(2 * np.pi * 3 * t) ** 2
+         + 0.05 * np.sin(1e-3 * i * i) + 0.02 * np.sin(0.7 * i)).astype(np.float32)
+    gold = [-0.03803, -0.13327, 0.00407, 0.00827, -0.00499, -0.00043, 0.01226, 0.00266,
+            -0.00334, -0.02823, 0.00018, 0.00984, -0.02509, -0.00045, 0.01568, 0.00538]
+    got = d(g)[500:16000:1000]
+    assert np.allclose(got, gold, atol=2e-4), np.round(got, 5).tolist()
+    try:
+        d(np.zeros(0, np.float32))
+        raise SystemExit("empty input did not raise")
+    except ValueError:
+        pass
+try:
+    d(x)
+    raise SystemExit("process() after close() did not raise")
+except RuntimeError:
+    pass
+"""
+
+
+@pytest.mark.models
+def test_gtcrn_end_to_end():
+    r = subprocess.run(
+        [sys.executable, "-c", _GTCRN_SCRIPT],
+        capture_output=True, text=True, timeout=300, check=False,
+    )
+    assert r.returncode == 0, f"exit={r.returncode}\n{r.stderr[-1200:]}"
+
+
+def test_dpdfnet_rejects_a_negative_thread_count():
+    # Checked before any model file is fetched, so this needs no network.
+    with pytest.raises(ValueError):
+        libspeech.Denoiser.create("dpdfnet", "dpdfnet2", num_threads=-1)
+
+
+# Real speech is needed here: DPDFNet is selective enough to remove synthetic tones and vowels
+# entirely, which would leave nothing to compare. The sample is the one sherpa-onnx publishes next
+# to the models (a 9.8 s noisy 16 kHz clip), fetched like the model itself, hence `models`.
+_DPDFNET_SCRIPT = """
+import urllib.request, tempfile, wave
+import numpy as np, libspeech
+
+URL = "https://github.com/k2-fsa/sherpa-onnx/releases/download/speech-enhancement-models/inp_16k.wav"
+with tempfile.NamedTemporaryFile(suffix=".wav") as f:
+    f.write(urllib.request.urlopen(URL, timeout=60).read())
+    f.flush()
+    with wave.open(f.name) as w:
+        assert w.getframerate() == 16000 and w.getnchannels() == 1
+        x = np.frombuffer(w.readframes(w.getnframes()), np.int16).astype(np.float32) / 32768
+
+with libspeech.Denoiser("dpdfnet") as d:       # dpdfnet2, the default variant
+    assert d.sample_rate == 16000
+    y = d(x)
+    assert y.shape == x.shape and y.dtype == np.float32 and np.isfinite(y).all()
+    # Golden values from an independent implementation (NumPy FFT + onnxruntime stepping the same
+    # streaming model: reflect-padded centre frames, Vorbis window, state initialised from the
+    # model's metadata, output advanced by the model's 4-hop latency). They pin what the checks
+    # above cannot see: the window, the state initialisation, the latency shift, the framing.
+    idx = [9752, 15908, 21916, 36519, 47820, 48983, 65997, 77397, 81572, 89891, 98623, 116322, 120181,
+           134680, 143988, 146755]
+    gold = [-0.12947, -0.44897, -0.41319, 0.23036, 0.25831, -0.17385, -0.46184, 0.24363, 0.35783,
+            -0.32971, -0.32768, 0.14166, 0.31609, 0.20303, 0.23455, 0.19838]
+    assert np.allclose(y[idx], gold, atol=2e-4), np.round(y[idx], 5).tolist()
+    # it actually denoises: the quietest 20 ms frames (the background noise) get >30 dB quieter
+    def floor(a):
+        frames = a[: len(a) // 320 * 320].reshape(-1, 320)
+        return np.percentile(np.sqrt((frames ** 2).mean(1)), 10)
+    assert floor(y) < 0.03 * floor(x), (floor(x), floor(y))
+    # any length, including shorter than one hop and the flushed tail, comes back unchanged in length
+    for n in (1, 100, 159, 161, 5000):
+        z = d(x[:n])
+        assert z.shape == (n,) and np.isfinite(z).all(), n
+    # the model works at 16 kHz only; asking for another rate is a clear error
+try:
+    libspeech.Denoiser("dpdfnet", sample_rate=48000)
+    raise SystemExit("a 48 kHz request for a 16 kHz model did not raise")
+except ValueError as e:
+    assert "16000" in str(e), e
+"""
+
+
+@pytest.mark.models
+def test_dpdfnet_end_to_end():
+    r = subprocess.run(
+        [sys.executable, "-c", _DPDFNET_SCRIPT],
+        capture_output=True, text=True, timeout=300, check=False,
+    )
+    assert r.returncode == 0, f"exit={r.returncode}\n{r.stderr[-1200:]}"

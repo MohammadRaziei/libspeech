@@ -49,3 +49,22 @@ UTEST(log, set_and_get_round_trip) {
         ASSERT_TRUE(speech::utils::parse_log_level(speech::utils::log_level_name(level)) == level);
     }
 }
+
+// <windows.h> defines `ERROR` as 0, and aixlog.hpp restores that macro after its own header. The old
+// SPEECH_LOG(ERROR) expanded it to severity 0 (= trace), so on Windows no error message was ever
+// written. Reproduce the macro here so a regression is caught on every platform, not only Windows.
+#include "libspeech/detail/log.h"
+#define ERROR 0
+
+UTEST(log, error_severity_is_not_hijacked_by_a_windows_style_error_macro) {
+    level_guard guard;
+    speech::utils::set_log_level(log_level::error);
+    bool error_built = false;
+    bool warning_built = false;
+    SPEECH_LOG(ERROR) << (error_built = true, "expected test output: error line is written");
+    SPEECH_LOG(WARNING) << (warning_built = true, "must not be built at the error level");
+    ASSERT_TRUE(error_built);
+    ASSERT_FALSE(warning_built);
+}
+
+#undef ERROR

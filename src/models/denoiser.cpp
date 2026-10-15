@@ -3,7 +3,9 @@
 #include <mutex>
 #include <stdexcept>
 
+#include "libspeech/models/dpdfnet_denoiser.h"
 #include "libspeech/models/facebook_denoiser.h"
+#include "libspeech/models/gtcrn_denoiser.h"
 #include "libspeech/models/speechbrain_denoiser.h"
 
 namespace speech::models {
@@ -45,7 +47,8 @@ std::unique_ptr<denoiser> denoiser::create(const std::string& backend,
                                             const std::string& url,
                                             int sample_rate,
                                             int num_threads) {
-    if (backend != "facebook" && backend != "speechbrain") {
+    if (backend != "facebook" && backend != "speechbrain" && backend != "gtcrn" &&
+        backend != "dpdfnet") {
         throw std::invalid_argument("Unknown denoiser backend: " + backend);
     }
     if (num_threads < 0) {
@@ -53,6 +56,12 @@ std::unique_ptr<denoiser> denoiser::create(const std::string& backend,
     }
     if (backend == "facebook") {
         return std::make_unique<facebook_denoiser>(url, sample_rate, num_threads);
+    }
+    if (backend == "gtcrn") {
+        return std::make_unique<gtcrn_denoiser>(url, sample_rate, num_threads);
+    }
+    if (backend == "dpdfnet") {
+        return std::make_unique<dpdfnet_denoiser>(url, sample_rate, num_threads);
     }
     return std::make_unique<speechbrain_denoiser>(url, sample_rate, num_threads);
 }

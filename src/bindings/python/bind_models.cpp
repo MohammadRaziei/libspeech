@@ -10,6 +10,8 @@
 #include <vector>
 
 #include "libspeech/models/denoiser.h"
+#include "libspeech/models/dpdfnet_denoiser.h"
+#include "libspeech/models/gtcrn_denoiser.h"
 #include "libspeech/models/providers.h"
 #include "libspeech/models/silero_vad.h"
 #include "libspeech/utils/log.h"
@@ -79,13 +81,19 @@ NB_MODULE(NB_MODULE_NAME, m) {
                  const std::string default_model = backend == "facebook" ? "facebook-denoiser-dns64.onnx"
                                                    : backend == "speechbrain"
                                                        ? "speechbrain-sepformer-wham16k-enhancement.onnx"
+                                                   : backend == "gtcrn"
+                                                       ? std::string(speech::models::gtcrn_denoiser::default_model)
+                                                   : backend == "dpdfnet"
+                                                       ? std::string(speech::models::dpdfnet_denoiser::default_model)
                                                        : std::string();
                  return speech::models::denoiser::create(backend, model ? *model : default_model, sample_rate,
                                                          num_threads);
              }),
              nb::arg("backend"), nb::arg("model") = nb::none(), nb::arg("sample_rate") = 16000,
              nb::arg("num_threads") = 1,
-             "Loads a denoiser: backend is 'facebook' (DNS64) or 'speechbrain' (SepFormer). `model` is "
+             "Loads a denoiser: backend is 'facebook' (DNS64), 'speechbrain' (SepFormer), 'gtcrn' (tiny, "
+             "16 kHz only) or 'dpdfnet' (variants dpdfnet_baseline/2/4/8, dpdfnet2_48khz_hr; "
+             "sample_rate must match the variant). `model` is "
              "a local .onnx file or a URL; by default the backend's standard model is used (downloaded "
              "on first use). num_threads is the ONNX Runtime intra-op thread count: 1 (default), or 0 "
              "for one per hardware thread. Use it as a context manager (`with`) or call close() to "

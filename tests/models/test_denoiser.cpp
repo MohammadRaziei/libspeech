@@ -4,7 +4,9 @@
 #include <type_traits>
 
 #include "libspeech/models/denoiser.h"
+#include "libspeech/models/dpdfnet_denoiser.h"
 #include "libspeech/models/facebook_denoiser.h"
+#include "libspeech/models/gtcrn_denoiser.h"
 #include "libspeech/models/speechbrain_denoiser.h"
 
 // These tests exercise speech::models::Denoiser::Create()'s dispatch logic only -- the
@@ -60,6 +62,37 @@ UTEST(denoiser, negative_num_threads_throws) {
         speech::models::denoiser::create("facebook", "foo.onnx", 16000, -1);
     } catch (const std::invalid_argument&) {
         threw = true;
+    }
+    ASSERT_TRUE(threw);
+}
+
+UTEST(gtcrn, only_16khz_is_accepted_and_nothing_is_downloaded_for_it) {
+    // Rejected before any model file is touched, so this needs no network.
+    bool threw = false;
+    try {
+        speech::models::gtcrn_denoiser d("gtcrn_simple.onnx", 8000);
+    } catch (const std::invalid_argument&) {
+        threw = true;
+    }
+    ASSERT_TRUE(threw);
+}
+
+UTEST(gtcrn, factory_knows_the_backend_name) {
+    bool unknown_threw = false;
+    try {
+        speech::models::denoiser::create("gtrcn", "x.onnx");  // typo must still be rejected
+    } catch (const std::invalid_argument&) {
+        unknown_threw = true;
+    }
+    ASSERT_TRUE(unknown_threw);
+}
+
+UTEST(dpdfnet, factory_knows_the_backend_and_checks_threads_before_any_download) {
+    bool threw = false;
+    try {
+        speech::models::denoiser::create("dpdfnet", "dpdfnet2", 16000, -1);
+    } catch (const std::invalid_argument&) {
+        threw = true;  // a known backend: it got as far as the thread-count check, not "unknown backend"
     }
     ASSERT_TRUE(threw);
 }
