@@ -3,6 +3,7 @@
 #include <nanobind/stl/optional.h>
 #include <nanobind/stl/unique_ptr.h>
 #include <nanobind/stl/vector.h>
+#include <nanobind/stl/filesystem.h>
 
 #include <memory>
 #include <string>
@@ -12,9 +13,11 @@
 #include "libspeech/models/denoiser.h"
 #include "libspeech/models/dpdfnet_denoiser.h"
 #include "libspeech/models/gtcrn_denoiser.h"
+#include "libspeech/models/model_files.h"
 #include "libspeech/models/providers.h"
 #include "libspeech/models/silero_vad.h"
 #include "libspeech/utils/log.h"
+#include "libspeech/utils/utils.h"
 #include "ndarray_util.h"
 
 namespace nb = nanobind;
@@ -38,6 +41,48 @@ NB_MODULE(NB_MODULE_NAME, m) {
     m.def("is_cuda_available", &speech::models::is_cuda_available,
           "True if models can run on CUDA: the ONNX Runtime build has the CUDA provider and it can "
           "actually be created on this machine. False for a CPU-only build. Never raises.");
+
+    // --- model files: checksums, downloading, readme ------------------------------------------
+    m.def("sha256",
+          [](nb::bytes data) {
+              return speech::utils::sha256_hex(data.c_str(), data.size());
+          },
+          "SHA-256 of a bytes object as 64 lowercase hex characters.", nb::arg("data"));
+    m.def("sha256_file",
+          [](const std::filesystem::path& path) {
+              nb::gil_scoped_release release;
+              return speech::utils::sha256_file(path);
+          },
+          "SHA-256 of a file (read in chunks, any size) as 64 lowercase hex characters. "
+          "Raises RuntimeError if the file cannot be read.",
+          nb::arg("path"));
+    const auto make_fetch_options = [](bool ignore_cache, std::optional<std::filesystem::path> cache_dir) {
+        speech::models::fetch_options options;
+        options.ignore_cache = ignore_cache;
+        if (cache_dir) options.cache_dir = *cache_dir;
+        return options;
+    };
+    m.def("fetch_model",
+          [make_fetch_options](const std::string& model, bool ignore_cache,
+                               std::optional<std::filesystem::path> cache_dir) {
+              nb::gil_scoped_release release;
+              return speech::models::fetch_model(model, make_fetch_options(ignore_cache, cache_dir)).model;
+          },
+          "Makes sure a model is in the cache (default ~/.libspeech) and returns the path of the .onnx file. "
+          "`model` is a bare file name from libspeech's models release or a full http(s) URL. The checksum "
+          "file (<model>.sha256) is downloaded first and must be one line holding the SHA-256, then the model "
+          "is downloaded and checked against it (a mismatch deletes the download and raises RuntimeError), "
+          "then <model>.readme. A cached model is checked on every call. ignore_cache=True downloads "
+          "everything again.",
+          nb::arg("model"), nb::arg("ignore_cache") = false, nb::arg("cache_dir") = nb::none());
+    m.def("model_readme",
+          [make_fetch_options](const std::string& model, bool ignore_cache,
+                               std::optional<std::filesystem::path> cache_dir) {
+              nb::gil_scoped_release release;
+              return speech::models::model_readme(model, make_fetch_options(ignore_cache, cache_dir));
+          },
+          "The readme of a model (what it is, who made it, license, provenance), fetched like fetch_model().",
+          nb::arg("model"), nb::arg("ignore_cache") = false, nb::arg("cache_dir") = nb::none());
 
     // --- speech::models::Denoiser ---------------------------------------------------------
     // The C++ type is an abstract interface; Python gets a constructor that picks the backend
@@ -77,7 +122,7 @@ NB_MODULE(NB_MODULE_NAME, m) {
         // (downloaded to ~/.libspeech on first use). Denoiser.create(...) is the same thing spelled
         // as a factory.
         .def(nb::new_([](const std::string& backend, std::optional<std::string> model, int sample_rate,
-                         int num_threads) {
+                         int num_threads, bool ignore_cache) {
                  const std::string default_model = backend == "facebook" ? "facebook-denoiser-dns64.onnx"
                                                    : backend == "speechbrain"
                                                        ? "speechbrain-sepformer-wham16k-enhancement.onnx"
@@ -86,24 +131,27 @@ NB_MODULE(NB_MODULE_NAME, m) {
                                                    : backend == "dpdfnet"
                                                        ? std::string(speech::models::dpdfnet_denoiser::default_model)
                                                        : std::string();
+                 // The constructor may download a model (seconds to minutes): let other Python threads run.
+                 nb::gil_scoped_release release;
                  return speech::models::denoiser::create(backend, model ? *model : default_model, sample_rate,
-                                                         num_threads);
+                                                         num_threads, ignore_cache);
              }),
              nb::arg("backend"), nb::arg("model") = nb::none(), nb::arg("sample_rate") = 16000,
-             nb::arg("num_threads") = 1,
+             nb::arg("num_threads") = 1, nb::arg("ignore_cache") = false,
              "Loads a denoiser: backend is 'facebook' (DNS64), 'speechbrain' (SepFormer), 'gtcrn' (tiny, "
              "16 kHz only) or 'dpdfnet' (variants dpdfnet_baseline/2/4/8, dpdfnet2_48khz_hr; "
              "sample_rate must match the variant). `model` is "
              "a local .onnx file or a URL; by default the backend's standard model is used (downloaded "
              "on first use). num_threads is the ONNX Runtime intra-op thread count: 1 (default), or 0 "
-             "for one per hardware thread. Use it as a context manager (`with`) or call close() to "
+             "for one per hardware thread. ignore_cache=True downloads the model (and its .sha256 and .readme) again "
+             "even if it is cached. Use it as a context manager (`with`) or call close() to "
              "free the model's memory early.")
         .def_static("create",
                     &speech::models::denoiser::create,
                     "Factory form of the constructor: model_path may be a local file or a URL. "
                     "Prefer Denoiser(backend).",
                     nb::arg("backend"), nb::arg("model_path"), nb::arg("sample_rate") = 16000,
-                    nb::arg("num_threads") = 1)
+                    nb::arg("num_threads") = 1, nb::arg("ignore_cache") = false)
         .def("process", process_array, array_doc, nb::arg("input_audio"))
         .def("process", process_list, list_doc, nb::arg("input_audio"))
         .def("__call__", process_array, array_doc, nb::arg("input_audio"))
@@ -114,6 +162,12 @@ NB_MODULE(NB_MODULE_NAME, m) {
         .def_prop_ro("closed", &speech::models::denoiser::closed, "True once close() was called.")
         .def_prop_ro("sample_rate", [](const speech::models::denoiser& d) { return d.sample_rate; },
                      "Sample rate (Hz) the model expects its input at.")
+        .def_prop_ro("model_path", [](const speech::models::denoiser& d) { return d.model_path(); },
+                     "Where the model file is (still valid after close()).")
+        .def_prop_ro("sha256", [](const speech::models::denoiser& d) { return d.sha256(); },
+                     "SHA-256 of the model file; '' if it was loaded without a checksum.")
+        .def("readme", &speech::models::denoiser::readme,
+             "The model's readme: what it is, who made it, its license and provenance.")
         .def("__enter__", [](nb::handle self) { return self; })
         .def("__exit__", [](speech::models::denoiser& self, nb::args) { self.close(); });
 
@@ -129,7 +183,7 @@ NB_MODULE(NB_MODULE_NAME, m) {
         .def("__eq__", &speech::models::speech_timestamp::operator==);
 
     nb::class_<speech::models::silero_vad_model>(m, "SileroVad")
-        .def(nb::init<const std::string&, int, int, float, int, int, int, float>(),
+        .def(nb::init<const std::string&, int, int, float, int, int, int, float, bool>(),
              nb::arg("model_path") = "silero-vad.onnx",
              nb::arg("sample_rate") = 16000,
              nb::arg("window_frame_size") = 32,
@@ -138,8 +192,16 @@ NB_MODULE(NB_MODULE_NAME, m) {
              nb::arg("speech_pad_ms") = 30,
              nb::arg("min_speech_duration_ms") = 250,
              nb::arg("max_speech_duration_s") = std::numeric_limits<float>::infinity(),
-             "Loads a Silero VAD model. model_path may be a local file path "
-             "or a URL (the .onnx weights are downloaded on first use).")
+             nb::arg("ignore_cache") = false,
+             "Loads a Silero VAD model. model_path is a model file name from libspeech's models release "
+             "or a URL (the .onnx weights are downloaded and checked on first use). ignore_cache=True "
+             "downloads them again even if cached.")
+        .def_prop_ro("model_path", [](const speech::models::silero_vad_model& v) { return v.model_file(); },
+                     "Where the model file is.")
+        .def_prop_ro("sha256", [](const speech::models::silero_vad_model& v) { return v.sha256(); },
+                     "SHA-256 of the model file; '' if it was loaded without a checksum.")
+        .def("readme", &speech::models::silero_vad_model::readme,
+             "The model's readme: what it is, who made it, its license and provenance.")
         .def("process", &speech::models::silero_vad_model::process_on_vector,
              "Runs voice-activity detection over the full input audio "
              "(mono, [-1, 1]-normalized floats at the model's sample_rate).",

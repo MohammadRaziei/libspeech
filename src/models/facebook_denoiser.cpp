@@ -10,12 +10,14 @@ namespace speech::models {
 constexpr std::size_t max_window_samples = 512000;
 
 struct facebook_denoiser::impl : detail::onnx_denoiser_impl {
-    impl(const std::string& url, int sample_rate, int num_threads)
-        : onnx_denoiser_impl(url, sample_rate, num_threads, /*with_channel_dim=*/true, max_window_samples) {}
+    impl(const std::string& url, int sample_rate, int num_threads, bool ignore_cache)
+        : onnx_denoiser_impl(url, sample_rate, num_threads, /*with_channel_dim=*/true, max_window_samples, ignore_cache) {}
 };
 
-facebook_denoiser::facebook_denoiser(const std::string& url, int sample_rate, int num_threads)
-    : denoiser(sample_rate), impl_(std::make_unique<impl>(url, sample_rate, num_threads)) {}
+facebook_denoiser::facebook_denoiser(const std::string& url, int sample_rate, int num_threads, bool ignore_cache)
+    : denoiser(sample_rate), impl_(std::make_unique<impl>(url, sample_rate, num_threads, ignore_cache)) {
+    set_model_files(impl_->files());
+}
 
 facebook_denoiser::~facebook_denoiser() = default;
 

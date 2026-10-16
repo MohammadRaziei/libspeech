@@ -1,6 +1,8 @@
 #include "libspeech/models/denoiser.h"
 
+#include <fstream>
 #include <mutex>
+#include <sstream>
 #include <stdexcept>
 
 #include "libspeech/models/dpdfnet_denoiser.h"
@@ -43,10 +45,24 @@ bool denoiser::closed() const noexcept {
     return closed_;
 }
 
+std::string denoiser::readme() const {
+    if (files_.readme.empty()) {
+        throw std::runtime_error("No readme is available for model " + files_.model.string());
+    }
+    std::ifstream in(files_.readme, std::ios::binary);
+    if (!in) {
+        throw std::runtime_error("Cannot read " + files_.readme.string());
+    }
+    std::ostringstream ss;
+    ss << in.rdbuf();
+    return ss.str();
+}
+
 std::unique_ptr<denoiser> denoiser::create(const std::string& backend,
                                             const std::string& url,
                                             int sample_rate,
-                                            int num_threads) {
+                                            int num_threads,
+                                            bool ignore_cache) {
     if (backend != "facebook" && backend != "speechbrain" && backend != "gtcrn" &&
         backend != "dpdfnet") {
         throw std::invalid_argument("Unknown denoiser backend: " + backend);
@@ -55,15 +71,15 @@ std::unique_ptr<denoiser> denoiser::create(const std::string& backend,
         throw std::invalid_argument("num_threads must be >= 0 (0 = one per hardware thread)");
     }
     if (backend == "facebook") {
-        return std::make_unique<facebook_denoiser>(url, sample_rate, num_threads);
+        return std::make_unique<facebook_denoiser>(url, sample_rate, num_threads, ignore_cache);
     }
     if (backend == "gtcrn") {
-        return std::make_unique<gtcrn_denoiser>(url, sample_rate, num_threads);
+        return std::make_unique<gtcrn_denoiser>(url, sample_rate, num_threads, ignore_cache);
     }
     if (backend == "dpdfnet") {
-        return std::make_unique<dpdfnet_denoiser>(url, sample_rate, num_threads);
+        return std::make_unique<dpdfnet_denoiser>(url, sample_rate, num_threads, ignore_cache);
     }
-    return std::make_unique<speechbrain_denoiser>(url, sample_rate, num_threads);
+    return std::make_unique<speechbrain_denoiser>(url, sample_rate, num_threads, ignore_cache);
 }
 
 }  // namespace speech::models

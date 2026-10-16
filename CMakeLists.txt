@@ -198,12 +198,14 @@ file(GLOB SPEECH_MODELS_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/mod
 add_library(speech_models STATIC
         ${SPEECH_MODELS_SOURCES}
         src/utils/utils.cpp
+        src/utils/sha256.cpp
 )
 add_library(speech::models ALIAS speech_models)
 
 target_include_directories(speech_models
         PUBLIC ${PROJECT_SOURCE_DIR}/include
         PUBLIC src/third_party/aixlog/include
+        PRIVATE src/third_party  # picosha2/picosha2.h (vendored, MIT)
 )
 target_link_libraries(speech_models
         PUBLIC onnxruntime_interface

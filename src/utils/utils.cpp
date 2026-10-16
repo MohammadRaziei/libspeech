@@ -109,9 +109,16 @@ std::filesystem::path speech::utils::download_file(const std::string& url, const
     }
 
     if (!res.ok) {
-        SPEECH_LOG(ERROR) << TAG(log_tag) << COND(!quiet)
-                  << "Error: Failed to download file. httpp error: " << res.error
-                  << " (status " << res.status << ")" << std::endl;
+        // A failure is always logged (with the HTTP status): `quiet` only silences the progress bar and
+        // the info lines, and makes the failure a warning -- quiet downloads are the small optional files
+        // next to a model (checksum, readme), whose absence the caller may tolerate.
+        if (quiet) {
+            SPEECH_LOG(WARNING) << TAG(log_tag) << "Failed to download file " << url << ". httpp error: " << res.error
+                                << " (status " << res.status << ")" << std::endl;
+        } else {
+            SPEECH_LOG(ERROR) << TAG(log_tag) << "Error: Failed to download file " << url << ". httpp error: "
+                              << res.error << " (status " << res.status << ")" << std::endl;
+        }
         return {};
     }
 

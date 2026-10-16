@@ -23,10 +23,11 @@ class onnx_denoiser_impl : public onnx_model {
      * @param num_threads intra-op threads; 0 = one per hardware thread.
      * @param max_samples longest input the exported graph handles in one call; longer input is
      *        run in overlapping windows and cross-faded (0 = no limit).
+     * @param ignore_cache download the model again even if it is cached.
      */
     onnx_denoiser_impl(const std::string& url, int sample_rate, int num_threads, bool with_channel_dim,
-                       std::size_t max_samples = 0)
-        : onnx_model(url, sample_rate), with_channel_dim_(with_channel_dim), max_samples_(max_samples) {
+                       std::size_t max_samples = 0, bool ignore_cache = false)
+        : onnx_model(url, sample_rate, speech::utils::get_default_model_cache_dir(), ignore_cache), with_channel_dim_(with_channel_dim), max_samples_(max_samples) {
         if (num_threads < 0) {
             throw std::invalid_argument("num_threads must be >= 0");
         }

@@ -13,8 +13,8 @@ namespace speech::models {
  * @param base_dir The base directory where the model will be stored.
  */
 
-onnx_model::onnx_model(const std::string& url, const int sample_rate, const std::filesystem::path& base_dir)
-    : base_model(url, base_dir), sample_rate(sample_rate),
+onnx_model::onnx_model(const std::string& url, const int sample_rate, const std::filesystem::path& base_dir, bool ignore_cache)
+    : base_model(url, base_dir, ignore_cache), sample_rate(sample_rate),
       memory_info(Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeCPU)) {}
 
 /**

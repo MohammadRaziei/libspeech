@@ -45,7 +45,8 @@ class SPEECH_API dpdfnet_denoiser final : public denoiser {
      * @throws std::invalid_argument if sample_rate does not match the model or num_threads is negative.
      * @throws std::runtime_error if the file is not a supported DPDFNet export.
      */
-    explicit dpdfnet_denoiser(const std::string& url = default_model, int sample_rate = 16000, int num_threads = 1);
+    explicit dpdfnet_denoiser(const std::string& url = default_model, int sample_rate = 16000, int num_threads = 1,
+                              bool ignore_cache = false);
 
     ~dpdfnet_denoiser() override;
 

@@ -12,8 +12,8 @@ Repository:
 Author:
     Mohammad Raziei
 License:
-    MIT
-    SPDX-License-Identifier: MIT
+    Apache-2.0
+    SPDX-License-Identifier: Apache-2.0
 Run:
     python version.py --help
 """

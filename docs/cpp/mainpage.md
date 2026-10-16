@@ -50,6 +50,16 @@ auto clean = denoiser->process(resampled.data(0));
 denoiser->close();
 ```
 
+## Models: download, verification, readme
+
+`speech::models::fetch_model("gtcrn_simple.onnx")` (also what every model constructor does) makes sure the
+model is in `~/.libspeech`: it downloads `<model>.onnx.sha256` first (one line, `<sha256>  <name>`; anything
+else, e.g. an HTML page, is an error), then the model, which is hashed and compared, then `<model>.onnx.readme`.
+Nothing is installed until all three are there and the hash matched. A cached model is hashed on every call.
+Pass `ignore_cache = true` (`denoiser::create(..., ignore_cache)`, `fetch_options`) to download again.
+`denoiser::readme()` / `speech::models::model_readme(name)` return the readme; `data/models.csv` lists every
+model with its license and whether commercial use is allowed.
+
 ## Naming
 
 Everything is snake_case in the style of the STL; the old CamelCase names are listed in

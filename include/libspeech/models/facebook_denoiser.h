@@ -26,7 +26,8 @@ class SPEECH_API facebook_denoiser final : public denoiser {
      * @param sample_rate The sample rate (Hz) the model expects its input at. Defaults to 16000.
      * @param num_threads ONNX Runtime intra-op threads: 1 (default), or 0 for one per hardware thread.
      */
-    explicit facebook_denoiser(const std::string& url, int sample_rate = 16000, int num_threads = 1);
+    explicit facebook_denoiser(const std::string& url, int sample_rate = 16000, int num_threads = 1,
+                       bool ignore_cache = false);
 
     ~facebook_denoiser() override;
 

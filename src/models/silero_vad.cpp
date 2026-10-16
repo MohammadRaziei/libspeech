@@ -123,8 +123,8 @@ silero_vad_model::silero_vad_model(const std::string& model_path,
                                const int sample_rate, int window_frame_size,
                                float threshold, int min_silence_duration_ms,
                                int speech_pad_ms, int min_speech_duration_ms,
-                               float max_speech_duration_s)
-    : onnx_model(model_path, sample_rate),  threshold(threshold), speech_pad_samples(speech_pad_ms), prev_end(0) {
+                               float max_speech_duration_s, bool ignore_cache)
+    : onnx_model(model_path, sample_rate, speech::utils::get_default_model_cache_dir(), ignore_cache),  threshold(threshold), speech_pad_samples(speech_pad_ms), prev_end(0) {
     sr_per_ms = sample_rate / 1000;  // e.g., 16000 / 1000 = 16
     window_size_samples = window_frame_size * sr_per_ms; // e.g., 32ms * 16 = 512 samples
     effective_window_size = window_size_samples + context_samples; // e.g., 512 + 64 = 576 samples

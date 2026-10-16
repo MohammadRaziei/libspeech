@@ -45,6 +45,7 @@ if(TARGET speech_io_py)
 
         add_python_test(audio)
         add_python_test(models)
+        add_python_test(model_files)      # checksums, downloading, readme (local HTTP server, offline)
         add_python_test(logging)
         add_python_test(functional)
         add_python_test(dsp)
@@ -59,7 +60,7 @@ if(TARGET speech_io_py)
         # speech_test_python or ctest.
         add_custom_target(speech_test_python_models_e2e
             COMMAND ${CMAKE_COMMAND} -E echo "-- Running Python model tests: pytest -m models"
-            COMMAND ${Python3_EXECUTABLE} -m pytest ${CMAKE_CURRENT_SOURCE_DIR}/test_models.py -m models
+            COMMAND ${Python3_EXECUTABLE} -m pytest ${CMAKE_CURRENT_SOURCE_DIR}/test_models.py ${CMAKE_CURRENT_SOURCE_DIR}/test_model_files.py -m models
             WORKING_DIRECTORY ${PYTHON_PROJECT_NAME}
             USES_TERMINAL
         )

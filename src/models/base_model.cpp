@@ -1,4 +1,6 @@
 #include "libspeech/models/base_model.h"
+#include <fstream>
+#include <sstream>
 #include <stdexcept>
 #include "libspeech/utils/utils.h"
 #include "aixlog.hpp"
@@ -6,42 +8,44 @@
 
 namespace speech::models {
 
-base_model::base_model(const std::string& url, const std::filesystem::path& base_dir)
+base_model::base_model(const std::string& url, const std::filesystem::path& base_dir, bool ignore_cache)
     : url(url), model_path(base_dir) {
-    // Ensure the base directory exists
-    if (!std::filesystem::exists(base_dir)) {
-        std::filesystem::create_directories(base_dir);
-    }
-
-    // Check if the URL is a valid internet address or a local file name
+    // A bare file name means libspeech's `models` release; fetch_model() resolves it. Keep the full URL
+    // here for the log messages and subclasses.
     if (url.find("http://") != 0 && url.find("https://") != 0) {
-        // Convert to default URL
-        this->url = "https://github.com/MohammadRaziei/libspeech/releases/download/models/" + url;
+        this->url = release_url + url;
     }
-
-    // Download the model
-    download_model();
+    download_model(ignore_cache);
 }
 
-void base_model::download_model() {
+void base_model::download_model(bool ignore_cache) {
     try {
-        SPEECH_LOG(DEBUG) << TAG("speech::models::BaseModel") << "Downloading model from: " << url << std::endl;
+        SPEECH_LOG(DEBUG) << TAG("speech::models::BaseModel") << "Fetching model: " << url << std::endl;
 
-        // Download directly into the target directory
-        std::filesystem::path file_name = speech::utils::download_file(url, model_path, false, false);
+        fetch_options options;
+        options.cache_dir = model_path;  // at this point model_path is still the base directory
+        options.ignore_cache = ignore_cache;
+        files_ = fetch_model(url, options);
 
-        if (file_name.empty()) {
-            SPEECH_LOG(DEBUG) << TAG("speech::models::BaseModel") << "Failed to download the model." << std::endl;
-            throw std::runtime_error("Failed to download the model.");
-        }
-
-        // Set the model path
-        model_path = model_path / file_name.filename();
+        model_path = files_.model;
         SPEECH_LOG(INFO) << TAG("speech::models::BaseModel") << "Model saved to: " << model_path << std::endl;
     } catch (const std::exception& e) {
         SPEECH_LOG(ERROR) << TAG("speech::models::BaseModel") << "Error downloading model: " << e.what() << std::endl;
         throw;
     }
+}
+
+std::string base_model::readme() const {
+    if (files_.readme.empty()) {
+        throw std::runtime_error("No readme is available for model " + model_path.string());
+    }
+    std::ifstream in(files_.readme, std::ios::binary);
+    if (!in) {
+        throw std::runtime_error("Cannot read " + files_.readme.string());
+    }
+    std::ostringstream ss;
+    ss << in.rdbuf();
+    return ss.str();
 }
 
 }  // namespace speech::models

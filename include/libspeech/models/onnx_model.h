@@ -33,8 +33,10 @@ class SPEECH_API onnx_model : public base_model {
      * @param url The URL of the ONNX model file to download.
      * @param sample_rate The sample rate (Hz) the model expects its input at.
      * @param base_dir The base directory where the model will be stored. Defaults to ~/.libspeech.
+     * @param ignore_cache Download the model (and its checksum/readme) again even if it is cached.
      */
-    onnx_model(const std::string& url, const int sample_rate, const std::filesystem::path& base_dir = speech::utils::get_default_model_cache_dir());
+    onnx_model(const std::string& url, const int sample_rate, const std::filesystem::path& base_dir = speech::utils::get_default_model_cache_dir(),
+               bool ignore_cache = false);
 
     /**
      * Destructor for ONNXModel.

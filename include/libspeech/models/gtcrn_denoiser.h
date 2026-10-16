@@ -39,7 +39,8 @@ class SPEECH_API gtcrn_denoiser final : public denoiser {
      * @throws std::invalid_argument if sample_rate is not 16000 or num_threads is negative.
      * @throws std::runtime_error if the file is not a GTCRN model with the expected inputs.
      */
-    explicit gtcrn_denoiser(const std::string& url = default_model, int sample_rate = 16000, int num_threads = 1);
+    explicit gtcrn_denoiser(const std::string& url = default_model, int sample_rate = 16000, int num_threads = 1,
+                            bool ignore_cache = false);
 
     ~gtcrn_denoiser() override;
 

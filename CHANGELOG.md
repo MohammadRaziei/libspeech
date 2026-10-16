@@ -21,7 +21,35 @@ This file starts at 0.3.1; older history is in `git log`.
 - **`istft` with an invalid `method` raises** (only 0/1, or `"weighted"`/`"plain"` in Python).
 - **`nanobind>=2.0.0`** is required to build the Python bindings.
 
+### Changed
+- **License is now Apache-2.0** (was declared as MIT in the README/pyproject, while the `LICENSE` file actually held
+  pybind11's BSD-3 text). `LICENSE` is the standard Apache-2.0 text, `NOTICE` names the third-party code and says
+  that the downloaded models keep their own licenses. Copies of libspeech already distributed under MIT stay MIT.
+
 ### Added
+- **Verified model downloads.** A model now always comes with two small files next to it, and all three
+  are downloaded: `<model>.onnx.sha256` (one line, `<sha256>  <file name>`, as `sha256sum` writes it) and
+  `<model>.onnx.readme` (what the model is, who made it, license, provenance). The checksum file is fetched
+  **first** and must be exactly that one line (an HTML error page is rejected and deleted); then the model is
+  downloaded, hashed and compared; then the readme. Nothing reaches the cache until all three are in and the
+  hash matched, so a failed or interrupted download no longer leaves a broken file behind that later calls
+  would trust (`download_file` skipped any existing file). A cached model is hashed on every load and
+  downloaded again if it does not match; a model cached by an older version just gets its two files. A bare
+  model name (the `models` release) must have all three; an explicit URL may lack the sidecar files and is then
+  used unverified with a warning (a malformed checksum file is still an error).
+- **`ignore_cache`**: `Denoiser(..., ignore_cache=True)`, `SileroVad(..., ignore_cache=True)`,
+  `libspeech.fetch_model(..., ignore_cache=True)`; C++ `denoiser::create(..., ignore_cache)`, the model
+  constructors and `fetch_options::ignore_cache`. Downloads everything again; if that fails the old cache is untouched.
+- **Readme API**: `Denoiser.readme()`, `SileroVad.readme()`, `libspeech.model_readme(name)`; C++
+  `denoiser::readme()`, `base_model::readme()`, `speech::models::model_readme(name)`. Also `model_path`
+  and `sha256` on loaded models, `libspeech.fetch_model(name)` (returns the verified path without loading
+  the model) and C++ `speech::models::fetch_model` / `fetch_options` / `parse_checksum`.
+- **SHA-256**: `libspeech.sha256(bytes)`, `libspeech.sha256_file(path)`, C++ `speech::utils::sha256_hex` /
+  `sha256_file` (chunked, any file size). Uses the x86 SHA instructions when the CPU has them (GCC/Clang) and
+  the vendored PicoSHA2 (MIT, `src/third_party/picosha2`) otherwise; `sha256_backend()` says which.
+  Measured here (128 MB file): 0.15 s with SHA-NI, 0.89 s portable, `hashlib` 0.19 s.
+- **`data/models.csv`**: every model in the `models` release (name, file, backend, sample rate, size, sha256,
+  license, `commercial_use`, source, notes). A test checks it against the release's `.sha256` files.
 - Python `libspeech.stft(...)` / `libspeech.istft(...)` (librosa style, NumPy in/out), and
   `STFT.stft_complex`, `STFT.istft`, `FFT.fft`/`FFT.ifft` returning `complex64`.
 - C++ `istft` (inverse real FFT, one-sided or full input, AudioFlux-compatible normalisation),
@@ -64,7 +92,9 @@ This file starts at 0.3.1; older history is in `git log`.
   build, and whether CUDA can really be created. Models still run on the CPU; selecting a provider
   for a session is not implemented yet.
 - Test marker `models` (real-model tests, run by `cmake.yml` only: `pytest -m models`).
-
+- `benchmarks/profile/`: profiling README and C++ timing scripts for DCT/FFT (2026-10-05).
+- DSP loops link `OpenMP_CXX`; the README documents the SIMD backends and the architecture-agnostic
+  vectorization logic (2026-10-02).
 ### Changed
 - Resample output is numerically more accurate than before (up to ~6e-3 different from the
   old kernel). The default (`best`) is still ~8–18% slower than librosa/soxr on one core; use
@@ -76,7 +106,12 @@ This file starts at 0.3.1; older history is in `git log`.
   `speech_docs_python` build one part. Needs `pip install sphinx doxygen-awesome-css markdown-it-py`.
 - The Python bindings' CMake code moved from the top-level `CMakeLists.txt` to
   `src/bindings/python/CMakeLists.txt`; `cmake/generate_stubs.cmake` is gone.
-
+- Wheels: cibuildwheel 3.4.1 → 4.2.0 with explicit CPython version constraints; delvewheel repair is
+  disabled on Windows (it caused a missing `speech.dll`); the test dependencies exclude Intel macOS and
+  Python 3.15+ (numba → llvmlite wheel availability).
+- The Python bindings bake the runtime library file names (ONNX Runtime, httpp) into `_about` at build time
+  instead of guessing them at import time (which failed because `dlopen` ignores the RPATH).
+- Benchmarks import NumPy in isolation, so the timings are fair.
 ### Fixed
 - **Windows: `SPEECH_LOG(ERROR)` messages were never printed.** `<windows.h>` defines `ERROR` as 0,
   so the macro mapped it to the trace level. The severity is now pasted into a name
@@ -105,8 +140,90 @@ This file starts at 0.3.1; older history is in `git log`.
   in `~/.libspeech/` until it is deleted.
 - `tests/python/test_logging.py` no longer relies on AudioFlux rejecting `FFT(99)` to produce an
   error line (it failed on Windows CI).
-
+- The real-FFT STFT path takes its analysis window from `window_calFFTWindow()`, the same function the
+  vendored AudioFlux uses, instead of reading it out of the opaque `stftObj_`; regression test for every
+  supported window type (`tests/dsp/test_fast_paths.cpp`).
+- Python binding memory leak of `Denoiser` (the C++ object is held through a `shared_ptr` now); `close()`
+  frees the model's memory explicitly.
 ### Known issues
 - Not measured or run on Windows/macOS/ARM or with multiple cores in this round of work; check CI.
 - `STFT` outside n_fft 16..8192 uses the AudioFlux fallback, which is mutex-locked; `FFT` is not
   thread-safe.
+
+## 0.3.1 (2026-10-01; the version was bumped, no git tag)
+
+### Added
+- Python benchmark suite (`benchmarks/`) comparing libspeech with librosa, audioflux, scipy and soundfile for
+  time, memory and install size, with a standalone HTML report (`report/`); the CMake targets skip Python when
+  there is no interpreter.
+- `benchmarks/README.md` documents the measured results and the optimized paths: flat spectrogram, block-wise
+  MFCC with sparse mel filters, AVX2+FMA resampling dispatch, memory-efficient `load`/`to_numpy`.
+
+### Changed
+- README: table of contents, dependency text now names `httpp` (not httplib + Mbed TLS), the STFT/OpenMP
+  benchmark explanation separates single-core from multi-core results; the benchmarking section was removed
+  from the README (the raw data is kept locally).
+
+## 0.3.0 (2026-09-29)
+
+### Added
+- Build options for documentation and coverage (`-DBUILD_DOCS=ON`, `-DBUILD_COVERAGE=ON`); coverage of all
+  components is merged into one `speech_coverage_total` report; CI builds with `BUILD_PYTHON=ON` so the tests
+  are installed and reported.
+
+### Removed
+- The `dr_libs` submodule: `miniaudio` already embeds `dr_wav`, `dr_mp3` and `dr_flac`.
+- The command-line tool, and the unused Python files `libspeech/core.py` and `libspeech/__main__.py`
+  (0 % coverage, leftovers of an earlier split).
+
+## 0.2.0 (2026-09-27)
+
+### Fixed
+- The CPython 3.12 wheel got the wrong ABI tag: the `CIBW_ENVIRONMENT_CP312` variable did nothing
+  (cibuildwheel ignores Python-version suffixes) and was removed; `tool.cibuildwheel.overrides` now forces
+  `cp312-abi3`.
+- Clang's `-Wc23-extensions` warning caused by the vendored miniaudio is silenced.
+
+## 0.1.1 (2026-09-26)
+
+### Fixed
+- Linux wheels ship and load ONNX Runtime under its SONAME (`libonnxruntime.so.1`) instead of the
+  fully-versioned file name; CMake's `install()` followed the symlinks and shipped duplicate ~20 MB copies.
+
+## 0.1.0 (2026-09-26)
+
+First tagged release. Everything from 2026-08-27 up to the first release:
+
+### Added
+- `speech::dsp` as a standalone static library (`speech_dsp`), a direct DCT-II implementation, and an STFT
+  of its own; AudioFlux is no longer a submodule (a subset of its C sources lives in `src/third_party/`,
+  moved there from `src/vendor/`); `fftObj_idct()`'s input mutation is documented; `resampleObj_setSamplate`
+  handles identity resamples.
+- `BUILD_MODELS` (replaces `SPEECH_DSP_ONLY`) to build the DSP layer alone, and a unit-test build option.
+- Python bindings for the speech models (`bind_models`), Python tests, version handling
+  (`include/libspeech/version.h`), `CONTRIBUTING.md`, a standalone benchmarking project for STFT.
+- Model downloads use `httpp` (HTTP client with a progress bar), replacing httplib, Mbed TLS and indicators.
+- CI: a matrix build for CMake and an orchestrator for the wheels and the release.
+
+### Fixed
+- Windows/MSVC: compilation (`NOMINMAX`, `M_PI`, `setenv`), AudioFlux and ONNX Runtime compatibility,
+  public API symbols exported from the DLL, static library members forced into `speech.dll`, ONNX Runtime and
+  httpp DLLs copied beside executables, `speech.dll` installed in the wheel, DLL load failures diagnosed.
+- macOS: arm64 suffix for ONNX Runtime, universal2 ONNX Runtime and dylib names, deployment target 13.3,
+  wheel repair.
+- Wheels: `$ORIGIN` RPATH and the ONNX Runtime SONAME shipped; musllinux and win32 wheels are skipped (ONNX
+  Runtime is glibc-only); the runtime library file names are baked into `_about`; httpp is required
+  unconditionally and loaded from pip instead of being bundled; the `pefile` dependency was replaced by an
+  inline PE import-table parser and then removed; Python bindings consolidated with explicit install rules for
+  the nested package.
+
+## Before 0.1.0 (2025-03-14 to 2025-03-31)
+
+The first prototype, in the order of the commits:
+- Audio I/O with miniaudio and dr_libs, a `speech` namespace for `Audio`, a fixed `play()`, Python audio
+  bindings, `seconds`, a format function and `operator=`.
+- ONNX Runtime support with a base model class, model download with a progress bar (indicators, then a
+  generated progress-bar source), and Silero VAD (fixed on 2025-03-17).
+- AudioFlux (first as a submodule, then static) and `resample`; glog replaced by AixLog.
+- A GitHub workflow, a different way to install onnxruntime for CPython, a simple HTML test, README and the
+  libspeech logo (many iterations).

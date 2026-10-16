@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "libspeech/export.h"
+#include "libspeech/models/model_files.h"
 
 namespace speech::models {
 
@@ -63,18 +64,30 @@ class SPEECH_API denoiser {
      * @param sample_rate sample rate of the audio the model works on (default 16000).
      * @param num_threads ONNX Runtime intra-op threads: 1 (default) = single-threaded,
      *                    0 = one per hardware thread. Must not be negative.
+     * @param ignore_cache download the model (and its .sha256/.readme) again even if it is cached.
      * @throws std::invalid_argument for an unknown backend or a negative num_threads.
      */
     static std::unique_ptr<denoiser> create(const std::string& backend,
                                              const std::string& url,
                                              int sample_rate = 16000,
-                                             int num_threads = 1);
+                                             int num_threads = 1,
+                                             bool ignore_cache = false);
+
+    /** Where the model file is. Stays valid after close(). */
+    const std::filesystem::path& model_path() const noexcept { return files_.model; }
+    /** The model's SHA-256 (64 lowercase hex chars); empty if the model was not verified. */
+    const std::string& sha256() const noexcept { return files_.sha256; }
+    /** The model's readme: what it is, who made it, its license and provenance. */
+    std::string readme() const;
 
     /** Sample rate (Hz) the model expects its input at. */
     const int sample_rate;
 
    protected:
     explicit denoiser(int sample_rate);
+
+    /** Backends call this once the model is loaded, with base_model::files(). */
+    void set_model_files(const model_files& files) { files_ = files; }
 
     /** Backend hook: runs the model. Input is already validated; the denoiser is open. */
     virtual std::vector<float> process_impl(const float* data, std::size_t size) = 0;
@@ -83,6 +96,7 @@ class SPEECH_API denoiser {
     virtual void close_impl() noexcept = 0;
 
    private:
+    model_files files_;
     mutable std::shared_mutex mutex_;
     bool closed_ = false;
 };

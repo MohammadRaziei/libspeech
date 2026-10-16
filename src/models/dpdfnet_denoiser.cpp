@@ -49,7 +49,8 @@ std::vector<float> parse_floats(const std::string& text, const char* key) {
 }  // namespace
 
 struct dpdfnet_denoiser::impl : onnx_model {
-    impl(const std::string& url, int sample_rate, int num_threads) : onnx_model(resolve_model(url), sample_rate) {
+    impl(const std::string& url, int sample_rate, int num_threads, bool ignore_cache)
+        : onnx_model(resolve_model(url), sample_rate, speech::utils::get_default_model_cache_dir(), ignore_cache) {
         if (num_threads < 0) throw std::invalid_argument("num_threads must be >= 0");
         if (num_threads == 0) num_threads = static_cast<int>(std::max(1u, std::thread::hardware_concurrency()));
         init_engine_threads(1, num_threads);
@@ -171,8 +172,10 @@ struct dpdfnet_denoiser::impl : onnx_model {
     std::vector<float> initial_state_;
 };
 
-dpdfnet_denoiser::dpdfnet_denoiser(const std::string& url, int sample_rate, int num_threads)
-    : denoiser(sample_rate), impl_(std::make_unique<impl>(url, sample_rate, num_threads)) {}
+dpdfnet_denoiser::dpdfnet_denoiser(const std::string& url, int sample_rate, int num_threads, bool ignore_cache)
+    : denoiser(sample_rate), impl_(std::make_unique<impl>(url, sample_rate, num_threads, ignore_cache)) {
+    set_model_files(impl_->files());
+}
 
 dpdfnet_denoiser::~dpdfnet_denoiser() = default;
 

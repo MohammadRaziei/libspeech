@@ -104,9 +104,13 @@ from .speech_models_py import (
     SileroVad,
     SpeechTimestamp,
     available_providers,
+    fetch_model,
     get_log_level,
     is_cuda_available,
+    model_readme,
     set_log_level,
+    sha256,
+    sha256_file,
 )
 
 __all__ = [
@@ -123,10 +127,14 @@ __all__ = [
     "__version__",
     "available_providers",
     "dct",
+    "fetch_model",
     "get_log_level",
     "is_cuda_available",
     "istft",
+    "model_readme",
     "set_log_level",
+    "sha256",
+    "sha256_file",
     "set_simd_enabled",
     "simd_backend",
     "simd_enabled",

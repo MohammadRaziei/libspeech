@@ -119,6 +119,15 @@ re, im = fft.forward(x[:4096])                    # the same as a pair; also inv
 # threads run meanwhile. num_threads: 1 (default), or 0 = one ONNX Runtime thread per hardware thread.
 with libspeech.Denoiser("facebook") as denoiser:
     clean = denoiser(resampled.to_numpy())
+    print(denoiser.readme())        # what the model is, who made it, its license (also: .model_path, .sha256)
+
+# Every model is downloaded together with <model>.onnx.sha256 (fetched first, checked, then the model is
+# hashed and compared) and <model>.onnx.readme. A cached model is verified on every load.
+# ignore_cache=True downloads everything again. data/models.csv lists all models and their licenses.
+denoiser = libspeech.Denoiser("gtcrn", ignore_cache=True)
+path = libspeech.fetch_model("dpdfnet2.onnx")       # just download + verify, returns the file path
+text = libspeech.model_readme("silero-vad.onnx")
+digest = libspeech.sha256_file(path)                # also libspeech.sha256(data)
 
 vad = libspeech.SileroVad()
 vad.process(resampled.data(0))
@@ -313,6 +322,6 @@ We welcome contributions! Please see [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the Apache License 2.0 - see [LICENSE](LICENSE) and [NOTICE](NOTICE). The ONNX models it downloads have their own licenses (see `data/models.csv`; the Facebook denoiser models are non-commercial, CC BY-NC 4.0).
 
 [![Stars](https://starchart.cc/mohammadraziei/libspeech.svg?variant=adaptive)](https://starchart.cc/mohammadraziei/libspeech)
