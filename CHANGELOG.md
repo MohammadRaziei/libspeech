@@ -37,14 +37,13 @@ This file starts at 0.3.1; older history is in `git log`.
   downloaded again if it does not match; a model cached by an older version just gets its two files. A bare
   model name (the `models` release) must have all three; an explicit URL may lack the sidecar files and is then
   used unverified with a warning (a malformed checksum file is still an error).
-- **Several processes, one download.** Downloading a model takes a lock, the directory `<model>.onnx.lock`
-  (creating a directory is atomic), whose file `alive` the downloading process rewrites every second. Another
-  process (or thread) that wants the same model sees a live lock, waits, and then finds the model in the cache
-  instead of downloading it again; a lock whose heartbeat is older than 15 s belongs to a dead process and is
-  taken over (an hour of waiting is the limit for a lock that stays alive). Temporary files are named per
-  download (`<model>.<pid>-<random>.part`), so even an overlap cannot mix two downloads, and `.part` files left
-  by killed downloads are deleted. If our temporary files vanish because another process took the lock over
-  and finished, its result is used. A cache hit never takes the lock.
+- **Several processes, one download.** The lock is httpp's (`httpp::download` always takes `<file>.lock/`, whose
+  `alive` file the downloading process keeps rewriting): another process (or thread) that wants the same model
+  waits and then finds the finished file instead of downloading it again; a lock that stops being updated
+  belongs to a dead process and is taken over. A download that was killed is resumed from its `.part` file and
+  verified against the checksum. The checksum and readme are fetched under per-download temporary names
+  (`*.<tag>.new`) and installed only after the model arrived and matched, so a failed refresh leaves the old
+  cache as it was. A cache hit never takes the lock. Needs a httpp with the download lock (not in 0.6.1 from PyPI).
 - **`ignore_cache`**: `Denoiser(..., ignore_cache=True)`, `SileroVad(..., ignore_cache=True)`,
   `libspeech.fetch_model(..., ignore_cache=True)`; C++ `denoiser::create(..., ignore_cache)`, the model
   constructors and `fetch_options::ignore_cache`. Downloads everything again; if that fails the old cache is untouched.
@@ -53,9 +52,9 @@ This file starts at 0.3.1; older history is in `git log`.
   and `sha256` on loaded models, `libspeech.fetch_model(name)` (returns the verified path without loading
   the model) and C++ `speech::models::fetch_model` / `fetch_options` / `parse_checksum`.
 - **SHA-256**: `libspeech.sha256(bytes)`, `libspeech.sha256_file(path)`, C++ `speech::utils::sha256_hex` /
-  `sha256_file` (chunked, any file size). Uses the x86 SHA instructions when the CPU has them (GCC/Clang) and
-  the vendored PicoSHA2 (MIT, `src/third_party/picosha2`) otherwise; `sha256_backend()` says which.
-  Measured here (128 MB file): 0.15 s with SHA-NI, 0.89 s portable, `hashlib` 0.19 s.
+  `sha256_file` (chunked, any file size). The hashing itself is httpp's (`httpp::sha256_hex`), which also
+  verifies the downloads; nothing is vendored for it.
+
 - **`data/models.csv`**: every model in the `models` release (name, file, backend, sample rate, size, sha256,
   license, `commercial_use`, source, notes). A test checks it against the release's `.sha256` files.
 - Python `libspeech.stft(...)` / `libspeech.istft(...)` (librosa style, NumPy in/out), and

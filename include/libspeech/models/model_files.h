@@ -50,9 +50,8 @@ struct fetch_options {
  * server does not have them the model is used unverified and a warning is logged (a checksum file that
  * exists but is malformed is still an error).
  *
- * Several processes or threads may call this for the same model at once: one downloads (it holds the
- * directory `<model>.onnx.lock` and refreshes `<model>.onnx.lock/alive` every second), the others wait and
- * then use what it put in the cache. A lock whose `alive` file has not been touched for 15 s is taken over.
+ * Several processes or threads may call this for the same model at once: httpp's download lock lets one
+ * download while the others wait and then use the finished file. A download killed half way is resumed.
  *
  * @throws std::runtime_error on download failure, malformed checksum file or hash mismatch.
  */

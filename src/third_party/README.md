@@ -30,10 +30,6 @@ git submodule update --init src/third_party/miniaudio
 - **`aixlog/`** — [badaix/aixlog](https://github.com/badaix/aixlog)'s single
   header (`aixlog.hpp`), used project-wide for logging. See `aixlog/README.md`.
 
-- **`picosha2/`** — [okdshin/PicoSHA2](https://github.com/okdshin/PicoSHA2)'s single header
-  (`picosha2.h`, MIT, `LICENSE` next to it), unmodified. It is the portable SHA-256 behind
-  `speech::utils::sha256_*`; CPUs with the x86 SHA instructions use a faster path in `src/utils/sha256.cpp`.
-
 These two are copied directly into the repo instead of being submodules
 because in each case only a small, specific slice of the upstream project is
 actually needed. The vendoring workflow (copy what's needed, patch in place

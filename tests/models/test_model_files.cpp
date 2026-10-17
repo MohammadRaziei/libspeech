@@ -1,7 +1,5 @@
 #include "utest.h"
 
-#include <atomic>
-#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -10,7 +8,6 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
-#include <thread>
 #include <vector>
 
 #include "libspeech/models/model_files.h"
@@ -19,6 +16,10 @@
 
 // The download/verify logic runs here against a fake transport (no network): a map url -> body, plus a
 // log of every request, so the tests can check what was asked for, in which order, and what was left behind.
+// The fake behaves like httpp::download(...).resume(): the file appears under its name only when complete,
+// a complete file with the right checksum is not fetched again unless `force`, and a file that fails its
+// checksum is deleted. (The real transport, including the cross-process lock, is covered by the Python tests
+// in tests/python/test_model_files.py.)
 
 namespace fs = std::filesystem;
 namespace sm = speech::models;
@@ -38,20 +39,46 @@ struct fake_server {
     std::function<void(const std::string&)> on_fetch;  // called for every request, e.g. to be slow
     std::mutex mutex;                                   // the concurrency tests call fetch() from several threads
 
+    // What the transport was asked, per request (parallel to `requests`).
+    std::vector<sm::detail::fetch_request> asked;
+
     sm::detail::fetch_fn fetch() {
-        return [this](const std::string& url, const fs::path& dest) {
-            if (on_fetch) on_fetch(url);
+        return [this](const sm::detail::fetch_request& request) {
+            sm::detail::fetch_result result;
+            if (on_fetch) on_fetch(request.url);
             std::string body;
             {
                 std::lock_guard<std::mutex> guard(mutex);
-                requests.push_back(url);
-                const auto it = files.find(url);
-                if (it == files.end()) return false;
+                requests.push_back(request.url);
+                asked.push_back(request);
+                const auto it = files.find(request.url);
+                if (it == files.end()) {
+                    result.error = "HTTP 404";
+                    return result;
+                }
                 body = it->second;
             }
-            std::ofstream out(dest, std::ios::binary);
-            out << body;
-            return true;
+            const std::string digest = speech::utils::sha256_hex(body.data(), body.size());
+            if (!request.sha256.empty() && !request.force && fs::exists(request.dest) &&
+                speech::utils::sha256_file(request.dest) == request.sha256) {
+                result.ok = true;  // already complete: no download (httpp reports skipped)
+                return result;
+            }
+            if (!request.sha256.empty() && digest != request.sha256) {
+                std::error_code ec;
+                fs::remove(request.dest, ec);  // httpp never leaves a file that failed its check
+                result.error = "SHA-256 mismatch: expected " + request.sha256 + ", got " + digest + "; the file was deleted";
+                return result;
+            }
+            fs::path part = request.dest;
+            part += ".part";  // written aside, renamed when complete
+            {
+                std::ofstream out(part, std::ios::binary);
+                out << body;
+            }
+            fs::rename(part, request.dest);
+            result.ok = true;
+            return result;
         };
     }
 
@@ -146,7 +173,7 @@ UTEST(parse_checksum, rejects_everything_else) {
 
 // ---- fetch_model -------------------------------------------------------------------------------
 
-UTEST(fetch_model, downloads_checksum_then_model_then_readme) {
+UTEST(fetch_model, downloads_checksum_then_readme_then_model) {
     temp_dir dir("order");
     fake_server srv;
     srv.publish(release_tiny, "tiny.onnx");
@@ -154,14 +181,14 @@ UTEST(fetch_model, downloads_checksum_then_model_then_readme) {
 
     ASSERT_EQ(srv.requests.size(), 3u);
     ASSERT_STREQ(srv.requests[0].c_str(), (release_tiny + ".sha256").c_str());  // checksum first
-    ASSERT_STREQ(srv.requests[1].c_str(), release_tiny.c_str());
-    ASSERT_STREQ(srv.requests[2].c_str(), (release_tiny + ".readme").c_str());
+    ASSERT_STREQ(srv.requests[1].c_str(), (release_tiny + ".readme").c_str());  // a missing readme fails early
+    ASSERT_STREQ(srv.requests[2].c_str(), release_tiny.c_str());                // the big file last
 
     ASSERT_STREQ(slurp(f.model).c_str(), model_bytes.c_str());
     ASSERT_STREQ(slurp(f.readme).c_str(), readme_text.c_str());
     ASSERT_STREQ(f.sha256.c_str(), speech::utils::sha256_hex(model_bytes.data(), model_bytes.size()).c_str());
     ASSERT_TRUE(f.checksum == dir.path / "tiny.onnx.sha256");
-    ASSERT_EQ(dir.listing().size(), 3u);  // the three files, no .part leftovers
+    ASSERT_EQ(dir.listing().size(), 3u);  // the three files, no .new / .part leftovers
 }
 
 UTEST(fetch_model, html_instead_of_checksum_is_an_error_and_nothing_is_kept) {
@@ -201,7 +228,8 @@ UTEST(fetch_model, release_model_requires_checksum_and_readme) {
         srv.publish(release_tiny, "tiny.onnx");
         srv.files.erase(release_tiny + ".readme");
         ASSERT_FALSE(error_of([&] { sm::detail::fetch_model_with(srv.fetch(), "tiny.onnx", opts(dir)); }).empty());
-        ASSERT_EQ(dir.listing().size(), 0u);  // the model was good, but nothing is installed without all three
+        ASSERT_EQ(srv.requests.size(), 2u);   // checksum, readme: the big model was never requested
+        ASSERT_EQ(dir.listing().size(), 0u);  // and the checksum that was fetched is not kept without the rest
     }
 }
 
@@ -210,8 +238,9 @@ UTEST(fetch_model, model_download_failure_leaves_nothing) {
     fake_server srv;
     srv.publish(release_tiny, "tiny.onnx");
     srv.files.erase(release_tiny);
-    ASSERT_STREQ(error_of([&] { sm::detail::fetch_model_with(srv.fetch(), "tiny.onnx", opts(dir)); }).c_str(),
-                 "Failed to download the model.");
+    const std::string err = error_of([&] { sm::detail::fetch_model_with(srv.fetch(), "tiny.onnx", opts(dir)); });
+    ASSERT_TRUE(err.find("Failed to download the model") != std::string::npos);
+    ASSERT_TRUE(err.find("HTTP 404") != std::string::npos);  // the transport's reason is passed on
     ASSERT_EQ(dir.listing().size(), 0u);
 }
 
@@ -362,226 +391,93 @@ UTEST(fetch_model, cached_model_still_works_offline_when_it_has_no_checksum_yet)
     ASSERT_TRUE(f.sha256.empty());  // not verified, and it says so
 }
 
-// ---- several callers at once (the download lock) -------------------------------------------------
+// ---- what the transport is asked for -------------------------------------------------------------
 
-namespace {
-
-using std::chrono::milliseconds;
-
-// Short timings, so that the tests are quick; max_wait is small so that a bug shows up as a failure, not a hang.
-sm::detail::lock_timing fast_locks() {
-    sm::detail::lock_timing t;
-    t.heartbeat = milliseconds(50);
-    t.stale_after = milliseconds(2000);
-    t.poll = milliseconds(20);
-    t.max_wait = milliseconds(6000);
-    return t;
-}
-
-// Pretends to be another process that holds the lock: rewrites <lock>/alive until stopped.
-struct lock_owner {
-    fs::path lock;
-    std::atomic<bool> beating{true};
-    std::thread thread;
-    explicit lock_owner(const fs::path& lock_dir) : lock(lock_dir) {
-        fs::create_directories(lock);
-        std::ofstream(lock / "alive") << "1 0\n";
-        thread = std::thread([this] {
-            while (beating) {
-                std::ofstream(lock / "alive", std::ios::trunc) << "1 1\n";
-                std::this_thread::sleep_for(milliseconds(20));
-            }
-        });
+static std::size_t count_staged(const fs::path& dir) {
+    std::size_t n = 0;
+    for (const auto& e : fs::directory_iterator(dir)) {
+        if (e.path().extension() == ".new") ++n;
     }
-    void stop() {
-        beating = false;
-        if (thread.joinable()) thread.join();
-    }
-    ~lock_owner() { stop(); }
-};
-
-}  // namespace
-
-UTEST(download_lock, concurrent_callers_download_the_model_once) {
-    temp_dir dir("concurrent");
-    fake_server srv;
-    srv.publish(release_tiny, "tiny.onnx");
-    srv.on_fetch = [](const std::string& url) {
-        if (url == release_tiny) std::this_thread::sleep_for(milliseconds(300));  // long enough to overlap
-    };
-    constexpr int callers = 4;
-    std::vector<fs::path> results(callers);
-    std::vector<std::string> errors(callers);
-    std::vector<std::thread> threads;
-    for (int i = 0; i < callers; ++i) {
-        threads.emplace_back([&, i] {
-            try {
-                results[i] = sm::detail::fetch_model_with(srv.fetch(), "tiny.onnx", opts(dir), fast_locks()).model;
-            } catch (const std::exception& e) {
-                errors[i] = e.what();
-            }
-        });
-    }
-    for (auto& t : threads) t.join();
-    for (int i = 0; i < callers; ++i) {
-        ASSERT_TRUE(errors[i].empty());
-        ASSERT_STREQ(slurp(results[i]).c_str(), model_bytes.c_str());
-    }
-    ASSERT_EQ(srv.requests.size(), 3u);  // checksum, model, readme: once, not once per caller
-    ASSERT_EQ(dir.listing().size(), 3u);  // no lock directory, no .part files
+    return n;
 }
 
-UTEST(download_lock, a_lock_without_heartbeat_belongs_to_a_dead_process_and_is_taken_over) {
-    temp_dir dir("stale");
+UTEST(fetch_model, the_transport_gets_the_checksum_the_model_must_match_and_force_only_for_ignore_cache) {
+    temp_dir dir("request");
     fake_server srv;
     srv.publish(release_tiny, "tiny.onnx");
-    const fs::path lock = dir.path / "tiny.onnx.lock";
-    fs::create_directories(lock);
-    std::ofstream(lock / "alive") << "999999 7\n";
-    const auto long_ago = fs::file_time_type::clock::now() - std::chrono::hours(1);
-    fs::last_write_time(lock / "alive", long_ago);
-    fs::last_write_time(lock, long_ago);
+    const std::string digest = speech::utils::sha256_hex(model_bytes.data(), model_bytes.size());
+    sm::detail::fetch_model_with(srv.fetch(), "tiny.onnx", opts(dir));
+    ASSERT_EQ(srv.asked.size(), 3u);
+    // the sidecars: always fresh, no checksum of their own, no progress bar, staged under *.new
+    ASSERT_TRUE(srv.asked[0].force);
+    ASSERT_TRUE(srv.asked[0].sha256.empty());
+    ASSERT_FALSE(srv.asked[0].show_progress);
+    ASSERT_STREQ(srv.asked[0].dest.extension().string().c_str(), ".new");
+    ASSERT_TRUE(srv.asked[0].dest.filename().string().rfind("tiny.onnx.sha256.", 0) == 0);
+    ASSERT_STREQ(srv.asked[1].dest.extension().string().c_str(), ".new");
+    ASSERT_TRUE(srv.asked[1].dest.filename().string().rfind("tiny.onnx.readme.", 0) == 0);
+    // the model: verified against the checksum file, straight to its final path, with a progress bar
+    ASSERT_STREQ(srv.asked[2].sha256.c_str(), digest.c_str());
+    ASSERT_TRUE(srv.asked[2].dest == dir.path / "tiny.onnx");
+    ASSERT_TRUE(srv.asked[2].show_progress);
+    ASSERT_FALSE(srv.asked[2].force);  // a waiter must be able to take the finished file of another process
 
-    const auto start = std::chrono::steady_clock::now();
-    const sm::model_files f = sm::detail::fetch_model_with(srv.fetch(), "tiny.onnx", opts(dir), fast_locks());
-    const auto waited = std::chrono::duration_cast<milliseconds>(std::chrono::steady_clock::now() - start);
-    ASSERT_STREQ(slurp(f.model).c_str(), model_bytes.c_str());
-    ASSERT_TRUE(waited < milliseconds(1500));  // it did not wait for the dead owner
-    ASSERT_FALSE(dir.has("tiny.onnx.lock"));
-    ASSERT_EQ(dir.listing().size(), 3u);
+    sm::detail::fetch_model_with(srv.fetch(), "tiny.onnx", opts(dir, /*ignore_cache=*/true));
+    ASSERT_EQ(srv.asked.size(), 6u);
+    ASSERT_TRUE(srv.asked[5].force);
 }
 
-UTEST(download_lock, a_live_lock_makes_the_caller_wait_until_it_is_released) {
-    temp_dir dir("wait");
+UTEST(fetch_model, an_explicit_url_without_checksum_asks_for_no_verification) {
+    temp_dir dir("urlrequest");
     fake_server srv;
-    srv.publish(release_tiny, "tiny.onnx");
-    lock_owner owner(dir.path / "tiny.onnx.lock");
-
-    std::atomic<bool> done{false};
-    fs::path result;
-    std::thread caller([&] {
-        result = sm::detail::fetch_model_with(srv.fetch(), "tiny.onnx", opts(dir), fast_locks()).model;
-        done = true;
-    });
-    std::this_thread::sleep_for(milliseconds(400));  // many polls, and inside stale_after
-    const bool still_waiting = !done.load();
-    const std::size_t requests_while_waiting = srv.request_count();
-    owner.stop();
-    fs::remove_all(dir.path / "tiny.onnx.lock");  // the owner is finished
-    caller.join();
-
-    ASSERT_TRUE(still_waiting);
-    ASSERT_EQ(requests_while_waiting, 0u);
-    ASSERT_STREQ(slurp(result).c_str(), model_bytes.c_str());
+    const std::string url = "http://example.invalid/m/tiny.onnx";
+    srv.files[url] = model_bytes;
+    sm::detail::fetch_model_with(srv.fetch(), url, opts(dir));
+    ASSERT_STREQ(srv.requests.back().c_str(), url.c_str());
+    ASSERT_TRUE(srv.asked.back().sha256.empty());
 }
 
-UTEST(download_lock, a_waiter_takes_the_model_the_lock_owner_put_in_the_cache) {
-    temp_dir dir("handover");
+UTEST(fetch_model, the_sidecars_are_installed_only_after_the_model_has_arrived) {
+    temp_dir dir("staged");
     fake_server srv;
     srv.publish(release_tiny, "tiny.onnx");
-    lock_owner owner(dir.path / "tiny.onnx.lock");
-
-    std::atomic<bool> done{false};
-    std::thread caller([&] {
-        sm::detail::fetch_model_with(srv.fetch(), "tiny.onnx", opts(dir), fast_locks());
-        done = true;
-    });
-    std::this_thread::sleep_for(milliseconds(200));
-    // The owner finishes: it installs the three files, then releases the lock.
-    {
-        std::ofstream(dir.path / "tiny.onnx", std::ios::binary) << model_bytes;
-        std::ofstream(dir.path / "tiny.onnx.sha256", std::ios::binary) << sum_line(model_bytes, "tiny.onnx");
-        std::ofstream(dir.path / "tiny.onnx.readme", std::ios::binary) << readme_text;
-    }
-    owner.stop();
-    fs::remove_all(dir.path / "tiny.onnx.lock");
-    caller.join();
-    ASSERT_TRUE(done.load());
-    ASSERT_EQ(srv.requests.size(), 0u);  // nothing was downloaded: the waiter used what the owner left
-}
-
-UTEST(download_lock, a_waiter_gives_up_on_a_live_lock_after_max_wait_and_leaves_that_lock_alone) {
-    temp_dir dir("giveup");
-    fake_server srv;
-    srv.publish(release_tiny, "tiny.onnx");
-    lock_owner owner(dir.path / "tiny.onnx.lock");
-    sm::detail::lock_timing t = fast_locks();
-    t.max_wait = milliseconds(300);
-    const sm::model_files f = sm::detail::fetch_model_with(srv.fetch(), "tiny.onnx", opts(dir), t);
-    ASSERT_STREQ(slurp(f.model).c_str(), model_bytes.c_str());
-    ASSERT_TRUE(dir.has("tiny.onnx.lock"));  // it is not ours: we must not delete it
-    owner.stop();
-}
-
-UTEST(download_lock, leftovers_of_killed_downloads_are_removed) {
-    temp_dir dir("orphans");
-    for (const char* name : {"tiny.onnx.dead-1.part", "tiny.onnx.sha256.dead-2.part", "tiny.onnx.readme.part"}) {
-        std::ofstream(dir.path / name) << "half a download";
-    }
-    std::ofstream(dir.path / "other.onnx.dead-3.part") << "belongs to another model";
-    fake_server srv;
-    srv.publish(release_tiny, "tiny.onnx");
-    sm::detail::fetch_model_with(srv.fetch(), "tiny.onnx", opts(dir), fast_locks());
-    ASSERT_FALSE(dir.has("tiny.onnx.dead-1.part"));
-    ASSERT_FALSE(dir.has("tiny.onnx.sha256.dead-2.part"));
-    ASSERT_FALSE(dir.has("tiny.onnx.readme.part"));
-    ASSERT_TRUE(dir.has("other.onnx.dead-3.part"));
-    ASSERT_EQ(dir.listing().size(), 4u);  // the model's three files + the unrelated leftover
-}
-
-UTEST(download_lock, a_cache_hit_does_not_touch_the_lock) {
-    temp_dir dir("nolock");
-    fake_server srv;
-    srv.publish(release_tiny, "tiny.onnx");
-    sm::detail::fetch_model_with(srv.fetch(), "tiny.onnx", opts(dir), fast_locks());
-    // Someone else holds the lock (e.g. a refresh with ignore_cache): reading the cache must not wait for it.
-    lock_owner owner(dir.path / "tiny.onnx.lock");
-    const auto start = std::chrono::steady_clock::now();
-    sm::detail::fetch_model_with(srv.fetch(), "tiny.onnx", opts(dir), fast_locks());
-    const auto took = std::chrono::duration_cast<milliseconds>(std::chrono::steady_clock::now() - start);
-    owner.stop();
-    ASSERT_TRUE(took < milliseconds(1000));
-}
-
-UTEST(download_lock, the_owner_keeps_its_lock_alive_for_as_long_as_it_downloads) {
-    temp_dir dir("keepalive");
-    fake_server srv;
-    srv.publish(release_tiny, "tiny.onnx");
-    srv.on_fetch = [](const std::string& url) {
-        if (url == release_tiny) std::this_thread::sleep_for(milliseconds(1200));  // 3x stale_after
-    };
-    sm::detail::lock_timing t = fast_locks();
-    t.stale_after = milliseconds(400);
-    std::vector<std::thread> threads;
-    for (int i = 0; i < 2; ++i) {
-        threads.emplace_back([&] { sm::detail::fetch_model_with(srv.fetch(), "tiny.onnx", opts(dir), t); });
-    }
-    for (auto& th : threads) th.join();
-    // Without the heartbeat the second caller would think the first one died and download again.
-    ASSERT_EQ(srv.requests.size(), 3u);
-}
-
-UTEST(download_lock, if_our_temporary_files_vanish_the_finished_download_of_the_other_process_is_used) {
-    temp_dir dir("vanish");
-    fake_server srv;
-    srv.publish(release_tiny, "tiny.onnx");
+    bool checked = false;
     srv.on_fetch = [&](const std::string& url) {
-        if (url != release_tiny + ".readme") return;
-        // Meanwhile "another process" took over our lock (it thought we had died), deleted our temporary files
-        // and finished the download itself.
-        std::vector<fs::path> parts;
-        for (const auto& e : fs::directory_iterator(dir.path)) {
-            if (e.path().extension() == ".part") parts.push_back(e.path());
-        }
-        for (const auto& p : parts) fs::remove(p);
-        std::ofstream(dir.path / "tiny.onnx", std::ios::binary) << model_bytes;
-        std::ofstream(dir.path / "tiny.onnx.sha256", std::ios::binary) << sum_line(model_bytes, "tiny.onnx");
-        std::ofstream(dir.path / "tiny.onnx.readme", std::ios::binary) << readme_text;
+        if (url != release_tiny) return;  // the moment the model is requested
+        checked = true;
+        ASSERT_EQ(count_staged(dir.path), 2u);
+        ASSERT_FALSE(dir.has("tiny.onnx.sha256"));
+        ASSERT_FALSE(dir.has("tiny.onnx.readme"));
     };
-    const sm::model_files f = sm::detail::fetch_model_with(srv.fetch(), "tiny.onnx", opts(dir), fast_locks());
-    ASSERT_STREQ(slurp(f.model).c_str(), model_bytes.c_str());
-    ASSERT_FALSE(f.sha256.empty());
-    ASSERT_EQ(srv.requests.size(), 3u);  // the other process's checksum file was kept, not deleted and fetched again
+    sm::detail::fetch_model_with(srv.fetch(), "tiny.onnx", opts(dir));
+    ASSERT_TRUE(checked);
+    ASSERT_TRUE(dir.has("tiny.onnx.sha256"));
+    ASSERT_EQ(count_staged(dir.path), 0u);
+}
+
+UTEST(fetch_model, a_failed_refresh_never_replaces_the_old_checksum_of_the_old_model) {
+    temp_dir dir("keepsum");
+    fake_server srv;
+    srv.publish(release_tiny, "tiny.onnx");
+    sm::detail::fetch_model_with(srv.fetch(), "tiny.onnx", opts(dir));
+
+    const std::string newer = "a newer version of the weights";
+    srv.publish(release_tiny, "tiny.onnx", newer);
+    srv.files.erase(release_tiny);  // checksum and readme are new, but the model cannot be fetched
+    ASSERT_FALSE(error_of([&] { sm::detail::fetch_model_with(srv.fetch(), "tiny.onnx", opts(dir, true)); }).empty());
+    ASSERT_STREQ(slurp(dir.path / "tiny.onnx").c_str(), model_bytes.c_str());
     ASSERT_STREQ(slurp(dir.path / "tiny.onnx.sha256").c_str(), sum_line(model_bytes, "tiny.onnx").c_str());
-    ASSERT_EQ(dir.listing().size(), 3u);
+    ASSERT_EQ(dir.listing().size(), 3u);  // and no *.new left behind
+}
+
+UTEST(fetch_model, two_downloads_of_the_same_model_never_share_a_staged_file) {
+    // They would install (move away) each other's file: with a shared name one could find its checksum gone.
+    temp_dir dir("unique");
+    fake_server srv;
+    srv.publish(release_tiny, "tiny.onnx");
+    sm::detail::fetch_model_with(srv.fetch(), "tiny.onnx", opts(dir));
+    sm::detail::fetch_model_with(srv.fetch(), "tiny.onnx", opts(dir, /*ignore_cache=*/true));
+    ASSERT_EQ(srv.asked.size(), 6u);
+    ASSERT_TRUE(srv.asked[0].dest != srv.asked[3].dest);  // checksum, first vs second download
+    ASSERT_TRUE(srv.asked[1].dest != srv.asked[4].dest);  // readme
 }

@@ -7,6 +7,7 @@
 #include <stdexcept>
 
 #include <httpp/download.hpp>
+#include <httpp/sha256.hpp>
 
 #include "libspeech/utils/utils.h"
 
@@ -124,6 +125,13 @@ std::filesystem::path speech::utils::download_file(const std::string& url, const
 
     return final_output_path;
 }
+
+// --- SHA-256 ------------------------------------------------------------------------------------
+// httpp does the hashing (it needs it to verify downloads); these are the same functions under libspeech's names.
+
+std::string speech::utils::sha256_hex(const void* data, std::size_t size) { return httpp::sha256_hex(data, size); }
+
+std::string speech::utils::sha256_file(const std::filesystem::path& path) { return httpp::sha256_file(path.string()); }
 
 // --- log level ----------------------------------------------------------------------------------
 // The state itself lives in libspeech/detail/log.h (inline, shared by every library bundled into

@@ -1,7 +1,8 @@
 """Checksums, model downloading and the model readme.
 
 The download tests talk to a small HTTP server on 127.0.0.1 that serves a fake model plus its
-`.sha256` / `.readme` files, so they run offline and exercise the real HTTP client. Digests are
+`.sha256` / `.readme` files, so they run offline and exercise the real HTTP client (and httpp's download lock,
+resume and checksum check that fetch_model relies on). Digests are
 checked against hashlib. The tests marked `models` talk to the real `models` release (run with
 `pytest -m models`).
 """
@@ -63,13 +64,14 @@ def test_sha256_errors(tmp_path):
 class _Server:
     def __init__(self):
         self.files: dict[str, bytes] = {}
-        self.requests: list[str] = []
+        self.requests: list[str] = []  # GET requests, in order
+        self.heads: list[str] = []  # HEAD requests (httpp asks for the size before it downloads)
+        self.ranges: list[str] = []  # Range headers of the GETs that resumed a partial file
         self.model_delay = 0.0  # seconds the model body takes (sent in two halves), to make downloads overlap
         outer = self
 
         class Handler(http.server.BaseHTTPRequestHandler):
-            def do_GET(self):
-                outer.requests.append(self.path)
+            def _send(self, with_body: bool):
                 body = outer.files.get(self.path)
                 if body is None:  # like a real 404 page
                     page = b"<!DOCTYPE html><html><body>404 Not Found</body></html>"
@@ -77,11 +79,23 @@ class _Server:
                     self.send_header("Content-Type", "text/html")
                     self.send_header("Content-Length", str(len(page)))
                     self.end_headers()
-                    self.wfile.write(page)
+                    if with_body:
+                        self.wfile.write(page)
                     return
-                self.send_response(200)
-                self.send_header("Content-Length", str(len(body)))
+                start = 0
+                rng = self.headers.get("Range")
+                if with_body and rng:  # "bytes=N-": the server honours resume requests, like GitHub does
+                    outer.ranges.append(rng)
+                    start = int(rng.split("=")[1].split("-")[0])
+                    self.send_response(206)
+                    self.send_header("Content-Range", f"bytes {start}-{len(body) - 1}/{len(body)}")
+                else:
+                    self.send_response(200)
+                self.send_header("Content-Length", str(len(body) - start))
                 self.end_headers()
+                if not with_body:
+                    return
+                body = body[start:]
                 if self.path == "/tiny.onnx" and outer.model_delay:
                     half = len(body) // 2
                     self.wfile.write(body[:half])
@@ -90,6 +104,14 @@ class _Server:
                     self.wfile.write(body[half:])
                 else:
                     self.wfile.write(body)
+
+            def do_HEAD(self):
+                outer.heads.append(self.path)
+                self._send(with_body=False)
+
+            def do_GET(self):
+                outer.requests.append(self.path)
+                self._send(with_body=True)
 
             def log_message(self, *args):  # silence
                 pass
@@ -123,13 +145,13 @@ def _listing(d: Path) -> list[str]:
     return sorted(p.name for p in d.iterdir())
 
 
-def test_fetch_model_downloads_checksum_then_model_then_readme(server, tmp_path):
+def test_fetch_model_downloads_checksum_then_readme_then_model(server, tmp_path):
     path = libspeech.fetch_model(server.url, cache_dir=tmp_path)
     assert Path(path) == tmp_path / "tiny.onnx"
     assert Path(path).read_bytes() == MODEL
     assert (tmp_path / "tiny.onnx.readme").read_text() == README
     assert (tmp_path / "tiny.onnx.sha256").read_bytes() == _sum_line(MODEL)
-    assert server.requests == ["/tiny.onnx.sha256", "/tiny.onnx", "/tiny.onnx.readme"]
+    assert server.requests == ["/tiny.onnx.sha256", "/tiny.onnx.readme", "/tiny.onnx"]
     assert _listing(tmp_path) == ["tiny.onnx", "tiny.onnx.readme", "tiny.onnx.sha256"]
 
 
@@ -212,8 +234,9 @@ def test_concurrent_threads_download_the_model_once(server, tmp_path):
     assert not errors
     assert len(set(results)) == 1
     assert Path(results[0]).read_bytes() == MODEL
-    assert sorted(server.requests) == ["/tiny.onnx", "/tiny.onnx.readme", "/tiny.onnx.sha256"]  # once, not 6 times
-    assert _listing(tmp_path) == ALL_THREE  # no lock directory, no .part files
+    assert server.requests.count("/tiny.onnx") == 1  # the big file once, not 6 times
+    assert set(server.requests) == {"/tiny.onnx", "/tiny.onnx.readme", "/tiny.onnx.sha256"}
+    assert _listing(tmp_path) == ALL_THREE  # no lock directory, no .part / .new files
 
 
 def test_concurrent_processes_download_the_model_once(server, tmp_path):
@@ -231,22 +254,36 @@ def test_concurrent_processes_download_the_model_once(server, tmp_path):
     outputs = [p.communicate(timeout=120) for p in procs]
     for p, (_out, err) in zip(procs, outputs):
         assert p.returncode == 0, err
-    assert sorted(server.requests) == ["/tiny.onnx", "/tiny.onnx.readme", "/tiny.onnx.sha256"]
+    assert server.requests.count("/tiny.onnx") == 1  # one download for four processes
+    assert set(server.requests) == {"/tiny.onnx", "/tiny.onnx.readme", "/tiny.onnx.sha256"}
     assert (tmp_path / "tiny.onnx").read_bytes() == MODEL
     assert _listing(tmp_path) == ALL_THREE
 
 
-def test_a_dead_processes_lock_and_leftovers_do_not_block_a_download(server, tmp_path):
+def test_a_dead_processes_lock_does_not_block_a_download_for_ever(server, tmp_path):
+    # The owner died: its heartbeat file is never rewritten. httpp notices that after its stale timeout
+    # (15 s, measured on the waiter's own clock) and takes the lock over.
     lock = tmp_path / "tiny.onnx.lock"
     lock.mkdir()
     (lock / "alive").write_text("999999 7\n")
-    (tmp_path / "tiny.onnx.1a2b-3c4d-0.part").write_bytes(b"half a download")
-    long_ago = time.time() - 3600
-    os.utime(lock / "alive", (long_ago, long_ago))
-    os.utime(lock, (long_ago, long_ago))
     start = time.monotonic()
     path = libspeech.fetch_model(server.url, cache_dir=tmp_path)
-    assert time.monotonic() - start < 5  # the lock's heartbeat is an hour old: taken over at once, no waiting
+    assert time.monotonic() - start < 60
+    assert Path(path).read_bytes() == MODEL
+    assert _listing(tmp_path) == ALL_THREE  # the dead lock is gone
+
+
+def test_a_half_downloaded_file_of_a_killed_process_is_resumed(server, tmp_path):
+    (tmp_path / "tiny.onnx.part").write_bytes(MODEL[:20])
+    path = libspeech.fetch_model(server.url, cache_dir=tmp_path)
+    assert Path(path).read_bytes() == MODEL
+    assert server.ranges == ["bytes=20-"]  # only the rest was asked for
+    assert _listing(tmp_path) == ALL_THREE
+
+
+def test_a_corrupt_leftover_download_is_caught_by_the_checksum_and_replaced(server, tmp_path):
+    (tmp_path / "tiny.onnx.part").write_bytes(b"this was never part of the model")
+    path = libspeech.fetch_model(server.url, cache_dir=tmp_path)
     assert Path(path).read_bytes() == MODEL
     assert _listing(tmp_path) == ALL_THREE
 

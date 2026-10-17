@@ -6,7 +6,6 @@ This product is licensed under the Apache License, Version 2.0 (see LICENSE).
 It includes third-party code under its own licenses, kept next to that code:
   src/third_party/audioflux   (MIT)
   src/third_party/aixlog      (MIT)
-  src/third_party/picosha2    (MIT)
   src/third_party/miniaudio   (see its LICENSE)
 
 The ONNX models libspeech downloads are NOT covered by this license; each has its own

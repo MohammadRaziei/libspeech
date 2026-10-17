@@ -37,12 +37,6 @@ SPEECH_API std::filesystem::path download_file(const std::string& url,
 SPEECH_API std::string sha256_hex(const void* data, std::size_t size);
 SPEECH_API std::string sha256_file(const std::filesystem::path& path);
 
-// Which implementation sha256_* uses: "sha-ni" (x86 SHA extensions, picked automatically when the CPU
-// has them) or "portable". set_sha256_hardware_enabled(false) forces the portable code (for tests and
-// benchmarks); the digest is identical either way.
-SPEECH_API const char* sha256_backend() noexcept;
-SPEECH_API void set_sha256_hardware_enabled(bool enabled) noexcept;
-
 // Function to get the system's temporary directory as a filesystem::path
 SPEECH_API std::filesystem::path get_temp_directory();
 

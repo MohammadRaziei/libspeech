@@ -3,7 +3,6 @@
 #ifndef LIBSPEECH_MODEL_FILES_DETAIL_H
 #define LIBSPEECH_MODEL_FILES_DETAIL_H
 
-#include <chrono>
 #include <filesystem>
 #include <functional>
 #include <string>
@@ -12,19 +11,28 @@
 
 namespace speech::models::detail {
 
-/** Downloads `url` to the file `dest`; returns false on failure. May leave a partial file behind. */
-using fetch_fn = std::function<bool(const std::string& url, const std::filesystem::path& dest)>;
-
-/** Timing of the cross-process download lock (see download_lock in model_files.cpp). Tests shrink it. */
-struct lock_timing {
-    std::chrono::milliseconds heartbeat{1000};     ///< the process that downloads rewrites <lock>/alive this often
-    std::chrono::milliseconds stale_after{15000};  ///< a lock whose heartbeat is older than this belongs to a dead process
-    std::chrono::milliseconds poll{200};           ///< how often a waiting process looks at the lock
-    std::chrono::milliseconds max_wait{3600000};   ///< a waiter gives up on a live lock after this long and downloads anyway
+/** What the transport is asked to fetch. */
+struct fetch_request {
+    std::string url;
+    std::filesystem::path dest;  ///< the final path: the transport writes it atomically (temporary file + rename)
+    std::string sha256;          ///< expected digest of the file; empty = not verified. A mismatch deletes `dest`.
+    bool force = false;          ///< download again even if `dest` already holds the complete file
+    bool show_progress = false;
 };
 
-model_files fetch_model_with(const fetch_fn& fetch, const std::string& model, const fetch_options& options,
-                             const lock_timing& timing = {});
+struct fetch_result {
+    bool ok = false;
+    std::string error;  ///< why it failed (HTTP status, checksum mismatch, ...); empty if ok
+};
+
+/**
+ * Downloads one file. The real transport is httpp::download(...).resume(): only one process at a time
+ * downloads a given `dest` (the others wait and then find it complete), the file appears under its name only
+ * when it is complete, and a file that fails its checksum is deleted.
+ */
+using fetch_fn = std::function<fetch_result(const fetch_request&)>;
+
+model_files fetch_model_with(const fetch_fn& fetch, const std::string& model, const fetch_options& options);
 
 }  // namespace speech::models::detail
 
