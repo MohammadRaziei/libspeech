@@ -7,13 +7,13 @@
 </p>
 
 <p align="center">
-  <em>C++ library with Python bindings for audio I/O, DSP, and ONNX-based speech models -- built to install with nothing but <code>pip</code>, no system dependencies (libcurl, OpenSSL, ...) required.</em>
+  <em>C++ library with Python bindings for audio I/O, DSP, and ONNX-based speech models -- installs with nothing but <code>pip</code>, no system dependencies.</em>
 </p>
 
 <div align="center">
 
 [![GitHub release](https://img.shields.io/github/release/mohammadraziei/libspeech?color=blue)](https://github.com/mohammadraziei/libspeech/releases)
-[![License](https://img.shields.io/badge/license-MIT-purple)](LICENSE)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 [![Python Versions](https://img.shields.io/pypi/pyversions/libspeech)](https://pypi.org/project/libspeech/)
 [![C++ Standard](https://img.shields.io/badge/C++-17-blue)](https://en.cppreference.com/w/cpp/17)
 
@@ -44,7 +44,7 @@
 - 🔊 **Speech models** (`speech::models`): a `Denoiser` interface (Facebook, SpeechBrain, GTCRN and DPDFNet backends) and Silero VAD
 - 🖥️ **Cross-platform**: Windows, Linux, macOS
 - 🐍 **Python bindings** (nanobind) mirroring the C++ API 1:1
-- 📦 **Zero system dependencies**: no `apt install libcurl-dev` / OpenSSL needed -- HTTPS model downloads go through [`httpp`](https://github.com/mohammadraziei/httpp) (`pip install httpp`), a separately-installed package with its own prebuilt HTTP(S) client and progress bar
+- 📦 **No system dependencies**: `pip install libspeech` is all it takes
 
 ## 📦 Installation
 
@@ -59,9 +59,7 @@ git clone https://github.com/MohammadRaziei/libspeech.git
 cd libspeech
 git submodule update --init src/third_party/miniaudio
 
-# speech::models (BUILD_MODELS=ON, the default) needs httpp on
-# CMAKE_PREFIX_PATH for model downloads (HTTPS client + progress bar) --
-# no more Mbed TLS/libcurl to build, just:
+# speech::models (BUILD_MODELS=ON, the default) downloads models with httpp:
 pip install httpp
 
 mkdir build && cd build
@@ -293,7 +291,7 @@ of it was measured (n_fft 64-8192) and was never faster, so it was dropped.
 
 | Target | Fast path | Compilers | Notes |
 |---|---|---|---|
-| x86 / x86-64 | AVX2 + FMA (CPUID and OS YMM-state checked) | GCC, Clang, MSVC | MSVC path is written but not yet built in CI -- see below |
+| x86 / x86-64 | AVX2 + FMA (CPUID and OS YMM-state checked) | GCC, Clang, MSVC | |
 | ARM64 (Linux, macOS, Windows) | NEON | GCC, Clang, MSVC | |
 | anything else (32-bit ARM, RISC-V, ...) | portable C++ | any C++17 compiler | the compiler may still auto-vectorize it |
 
@@ -307,9 +305,6 @@ libspeech.set_simd_enabled(False)   # run-time switch (objects/calls created aft
 - All backends are cross-checked against each other and against independent references in
   `tests/dsp/test_fast_paths.cpp`. The suite is run on x86-64 (GCC and Clang), 32-bit x86,
   AArch64 (under QEMU), and with SIMD disabled at run time.
-- **MSVC**: the AVX2 resampler and the CPUID/XGETBV detection are written against MSVC's intrinsics but
-  have not been compiled with `cl` yet (no Windows toolchain was available when this was written).
-  If anything misbehaves there, `LIBSPEECH_SIMD=off` falls back to the portable code at run time.
 - Layout for contributors: support is decided in the sources, not the build system.
   `src/dsp/simd_internal.h` holds every architecture/compiler macro (`LS_HAVE_X86_AVX2`,
   `LS_HAVE_ARM_NEON`, `LS_TARGET_AVX2`, ...): `#if LS_HAVE_X86_AVX2` the AVX2 kernel is compiled
@@ -322,6 +317,6 @@ We welcome contributions! Please see [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## 📄 License
 
-This project is licensed under the Apache License 2.0 - see [LICENSE](LICENSE) and [NOTICE](NOTICE). The ONNX models it downloads have their own licenses (see `data/models.csv`; the Facebook denoiser models are non-commercial, CC BY-NC 4.0).
+This project is licensed under the Apache License 2.0 - see [LICENSE](LICENSE) and [NOTICE](NOTICE). Each downloaded model comes with its own license in its `.readme` (`denoiser.readme()`; all of them are listed in `data/models.csv`).
 
 [![Stars](https://starchart.cc/mohammadraziei/libspeech.svg?variant=adaptive)](https://starchart.cc/mohammadraziei/libspeech)
