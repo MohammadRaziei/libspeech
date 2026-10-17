@@ -37,6 +37,14 @@ This file starts at 0.3.1; older history is in `git log`.
   downloaded again if it does not match; a model cached by an older version just gets its two files. A bare
   model name (the `models` release) must have all three; an explicit URL may lack the sidecar files and is then
   used unverified with a warning (a malformed checksum file is still an error).
+- **Several processes, one download.** Downloading a model takes a lock, the directory `<model>.onnx.lock`
+  (creating a directory is atomic), whose file `alive` the downloading process rewrites every second. Another
+  process (or thread) that wants the same model sees a live lock, waits, and then finds the model in the cache
+  instead of downloading it again; a lock whose heartbeat is older than 15 s belongs to a dead process and is
+  taken over (an hour of waiting is the limit for a lock that stays alive). Temporary files are named per
+  download (`<model>.<pid>-<random>.part`), so even an overlap cannot mix two downloads, and `.part` files left
+  by killed downloads are deleted. If our temporary files vanish because another process took the lock over
+  and finished, its result is used. A cache hit never takes the lock.
 - **`ignore_cache`**: `Denoiser(..., ignore_cache=True)`, `SileroVad(..., ignore_cache=True)`,
   `libspeech.fetch_model(..., ignore_cache=True)`; C++ `denoiser::create(..., ignore_cache)`, the model
   constructors and `fetch_options::ignore_cache`. Downloads everything again; if that fails the old cache is untouched.

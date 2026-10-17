@@ -56,6 +56,8 @@ denoiser->close();
 model is in `~/.libspeech`: it downloads `<model>.onnx.sha256` first (one line, `<sha256>  <name>`; anything
 else, e.g. an HTML page, is an error), then the model, which is hashed and compared, then `<model>.onnx.readme`.
 Nothing is installed until all three are there and the hash matched. A cached model is hashed on every call.
+Several processes can ask for the same model at once: one downloads (it holds `<model>.onnx.lock/`, a directory
+whose `alive` file it rewrites every second), the others wait and then find the model in the cache.
 Pass `ignore_cache = true` (`denoiser::create(..., ignore_cache)`, `fetch_options`) to download again.
 `denoiser::readme()` / `speech::models::model_readme(name)` return the readme; `data/models.csv` lists every
 model with its license and whether commercial use is allowed.

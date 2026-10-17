@@ -12,7 +12,10 @@ import csv
 import hashlib
 import http.server
 import os
+import subprocess
+import sys
 import threading
+import time
 import urllib.request
 from pathlib import Path
 
@@ -61,6 +64,7 @@ class _Server:
     def __init__(self):
         self.files: dict[str, bytes] = {}
         self.requests: list[str] = []
+        self.model_delay = 0.0  # seconds the model body takes (sent in two halves), to make downloads overlap
         outer = self
 
         class Handler(http.server.BaseHTTPRequestHandler):
@@ -78,7 +82,14 @@ class _Server:
                 self.send_response(200)
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
-                self.wfile.write(body)
+                if self.path == "/tiny.onnx" and outer.model_delay:
+                    half = len(body) // 2
+                    self.wfile.write(body[:half])
+                    self.wfile.flush()
+                    time.sleep(outer.model_delay)
+                    self.wfile.write(body[half:])
+                else:
+                    self.wfile.write(body)
 
             def log_message(self, *args):  # silence
                 pass
@@ -177,6 +188,67 @@ def test_url_without_sidecar_files_is_used_unverified(server, tmp_path):
     assert _listing(tmp_path) == ["tiny.onnx"]
     with pytest.raises(RuntimeError, match="readme"):
         libspeech.model_readme(server.url, cache_dir=tmp_path)
+
+
+ALL_THREE = ["tiny.onnx", "tiny.onnx.readme", "tiny.onnx.sha256"]
+
+
+def test_concurrent_threads_download_the_model_once(server, tmp_path):
+    server.model_delay = 0.6
+    results: list[str] = []
+    errors: list[Exception] = []
+
+    def work():
+        try:
+            results.append(libspeech.fetch_model(server.url, cache_dir=tmp_path))
+        except Exception as e:
+            errors.append(e)
+
+    threads = [threading.Thread(target=work) for _ in range(6)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert not errors
+    assert len(set(results)) == 1
+    assert Path(results[0]).read_bytes() == MODEL
+    assert sorted(server.requests) == ["/tiny.onnx", "/tiny.onnx.readme", "/tiny.onnx.sha256"]  # once, not 6 times
+    assert _listing(tmp_path) == ALL_THREE  # no lock directory, no .part files
+
+
+def test_concurrent_processes_download_the_model_once(server, tmp_path):
+    server.model_delay = 1.0
+    code = "import sys, libspeech; print(libspeech.fetch_model(sys.argv[1], cache_dir=sys.argv[2]))"
+    procs = [
+        subprocess.Popen(
+            [sys.executable, "-c", code, server.url, str(tmp_path)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        for _ in range(4)
+    ]
+    outputs = [p.communicate(timeout=120) for p in procs]
+    for p, (_out, err) in zip(procs, outputs):
+        assert p.returncode == 0, err
+    assert sorted(server.requests) == ["/tiny.onnx", "/tiny.onnx.readme", "/tiny.onnx.sha256"]
+    assert (tmp_path / "tiny.onnx").read_bytes() == MODEL
+    assert _listing(tmp_path) == ALL_THREE
+
+
+def test_a_dead_processes_lock_and_leftovers_do_not_block_a_download(server, tmp_path):
+    lock = tmp_path / "tiny.onnx.lock"
+    lock.mkdir()
+    (lock / "alive").write_text("999999 7\n")
+    (tmp_path / "tiny.onnx.1a2b-3c4d-0.part").write_bytes(b"half a download")
+    long_ago = time.time() - 3600
+    os.utime(lock / "alive", (long_ago, long_ago))
+    os.utime(lock, (long_ago, long_ago))
+    start = time.monotonic()
+    path = libspeech.fetch_model(server.url, cache_dir=tmp_path)
+    assert time.monotonic() - start < 5  # the lock's heartbeat is an hour old: taken over at once, no waiting
+    assert Path(path).read_bytes() == MODEL
+    assert _listing(tmp_path) == ALL_THREE
 
 
 def test_model_readme_returns_the_text(server, tmp_path):

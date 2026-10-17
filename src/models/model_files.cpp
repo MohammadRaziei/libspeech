@@ -1,12 +1,24 @@
 #include "libspeech/models/model_files.h"
 
+#include <atomic>
 #include <cctype>
+#include <chrono>
+#include <condition_variable>
 #include <fstream>
 #include <iterator>
+#include <mutex>
+#include <random>
 #include <sstream>
 #include <stdexcept>
 #include <system_error>
+#include <thread>
 #include <vector>
+
+#ifdef _WIN32
+#include <process.h>
+#else
+#include <unistd.h>
+#endif
 
 #include "aixlog.hpp"
 #include "libspeech/detail/log.h"
@@ -73,11 +85,149 @@ struct part_guard {
 void install(const fs::path& from, const fs::path& to) {
     std::error_code ec;
     fs::rename(from, to, ec);
-    if (ec) {  // some platforms refuse to rename over an existing file
-        fs::remove(to, ec);
-        fs::rename(from, to);  // throws fs::filesystem_error (a std::runtime_error) if it fails again
+    if (!ec) return;
+    // Do not touch `to` if the file to install is gone: whoever deleted it may have installed `to` itself.
+    if (!fs::exists(from)) throw std::runtime_error("The downloaded file " + from.string() + " has disappeared");
+    fs::remove(to, ec);    // some platforms refuse to rename over an existing file
+    fs::rename(from, to);  // throws fs::filesystem_error (a std::runtime_error) if it fails again
+}
+
+long current_pid() {
+#ifdef _WIN32
+    return static_cast<long>(_getpid());
+#else
+    return static_cast<long>(getpid());
+#endif
+}
+
+// A name part that no other process or thread uses, so two downloads of the same model never write to the
+// same temporary file.
+std::string unique_tag() {
+    static std::atomic<unsigned long long> counter{0};
+    std::random_device rd;
+    std::ostringstream ss;
+    ss << std::hex << current_pid() << '-' << rd() << '-' << counter++;
+    return ss.str();
+}
+
+// Removes the temporary files (`<model>[.sha256|.readme][.<tag>].part`) that downloads which were killed
+// left behind. Called while holding the download lock.
+void remove_orphan_parts(const fs::path& dir, const std::string& file_name) {
+    static const char* const suffixes[] = {"", ".sha256", ".readme"};
+    std::error_code ec;
+    for (fs::directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec)) {
+        const std::string name = it->path().filename().string();
+        if (name.size() <= 5 || name.compare(name.size() - 5, 5, ".part") != 0) continue;
+        const std::string stem = name.substr(0, name.size() - 5);
+        for (const char* suffix : suffixes) {
+            const std::string base = file_name + suffix;
+            if (stem == base || (stem.size() > base.size() + 1 && stem.compare(0, base.size() + 1, base + ".") == 0)) {
+                remove_quietly(it->path());
+                break;
+            }
+        }
     }
 }
+
+// Keeps several processes (or threads) that want the same model from downloading it at the same time.
+// The lock is a directory `<model>.lock`, because creating a directory is atomic everywhere. While the owner
+// downloads, a helper thread rewrites `<model>.lock/alive` every `heartbeat`; a waiter that sees a lock whose
+// heartbeat is older than `stale_after` knows the owner died and takes the lock over. A waiter that sees a
+// live lock waits, and when the lock is gone it looks at the cache again (the owner has put the model there).
+//
+// The lock only saves work: every download writes to its own temporary files and the result is verified
+// before it is installed, so the rare overlap (two waiters taking over the same dead lock at the same
+// moment, or a waiter that gave up after `max_wait`) costs a duplicate download, not a damaged cache.
+class download_lock {
+   public:
+    download_lock(fs::path path, const detail::lock_timing& timing, const std::string& what)
+        : path_(std::move(path)), timing_(timing) {
+        using clock = std::chrono::steady_clock;
+        const auto give_up = clock::now() + timing_.max_wait;
+        bool announced = false;
+        for (;;) {
+            std::error_code ec;
+            if (fs::create_directory(path_, ec) && !ec) {
+                owned_ = true;
+                break;
+            }
+            if (ec && !fs::exists(path_)) break;  // cannot create it (read-only cache?): go on without a lock
+            if (is_stale()) {
+                SPEECH_LOG(WARNING) << TAG(log_tag) << "The download lock " << path_
+                                    << " has no heartbeat; its process is gone. Taking it over." << std::endl;
+                fs::remove_all(path_, ec);
+                continue;
+            }
+            if (!announced) {
+                SPEECH_LOG(INFO) << TAG(log_tag) << "Another process is downloading " << what << "; waiting for it."
+                                 << std::endl;
+                announced = true;
+            }
+            waited_ = true;
+            if (clock::now() >= give_up) {
+                SPEECH_LOG(WARNING) << TAG(log_tag) << "Still locked by another download after "
+                                    << std::chrono::duration_cast<std::chrono::seconds>(timing_.max_wait).count()
+                                    << " s; downloading " << what << " anyway." << std::endl;
+                break;
+            }
+            std::this_thread::sleep_for(timing_.poll);
+        }
+        if (owned_) {
+            beat(0);
+            heart_ = std::thread([this] { run_heartbeat(); });
+        }
+    }
+
+    ~download_lock() {
+        if (!owned_) return;  // never touch a lock that belongs to someone else
+        {
+            std::lock_guard<std::mutex> guard(mutex_);
+            stop_ = true;
+        }
+        wake_.notify_all();
+        if (heart_.joinable()) heart_.join();
+        std::error_code ec;
+        fs::remove_all(path_, ec);
+    }
+
+    download_lock(const download_lock&) = delete;
+    download_lock& operator=(const download_lock&) = delete;
+
+    /** true if the lock was held by someone else at some point, i.e. the cache may have been filled meanwhile. */
+    bool waited() const noexcept { return waited_; }
+
+   private:
+    bool is_stale() const {
+        std::error_code ec;
+        auto last = fs::last_write_time(path_ / "alive", ec);
+        if (ec) last = fs::last_write_time(path_, ec);  // the owner has not written `alive` yet
+        if (ec) return false;                           // gone, or unreadable: look again
+        return fs::file_time_type::clock::now() - last > timing_.stale_after;
+    }
+
+    void beat(unsigned long long n) const {
+        std::ofstream out(path_ / "alive", std::ios::binary | std::ios::trunc);
+        out << current_pid() << ' ' << n << '\n';
+    }
+
+    void run_heartbeat() {
+        std::unique_lock<std::mutex> lk(mutex_);
+        unsigned long long n = 0;
+        while (!stop_) {
+            beat(++n);
+            wake_.wait_for(lk, timing_.heartbeat, [this] { return stop_; });
+        }
+    }
+
+    fs::path path_;
+    detail::lock_timing timing_;
+    bool owned_ = false;
+    bool waited_ = false;
+    bool stop_ = false;
+    std::mutex mutex_;
+    std::condition_variable wake_;
+    std::thread heart_;
+};
 
 }  // namespace
 
@@ -120,7 +270,8 @@ std::string parse_checksum(const std::string& text, const std::string& file_name
 
 namespace detail {
 
-model_files fetch_model_with(const fetch_fn& fetch, const std::string& model, const fetch_options& options) {
+model_files fetch_model_with(const fetch_fn& fetch, const std::string& model, const fetch_options& options,
+                             const lock_timing& timing) {
     const bool is_url = starts_with(model, "http://") || starts_with(model, "https://");
     const std::string url = is_url ? model : std::string(release_url) + model;
     const bool required = !is_url;  // checksum + readme are mandatory for the libspeech release
@@ -141,10 +292,10 @@ model_files fetch_model_with(const fetch_fn& fetch, const std::string& model, co
     const std::string readme_url = url + ".readme";
 
     part_guard parts;
+    const std::string tag = unique_tag();
     const auto part = [&](const fs::path& final_path) {
         fs::path p = final_path;
-        p += ".part";
-        remove_quietly(p);  // leftover of an interrupted download
+        p += "." + tag + ".part";  // unique to this call: no other download writes here
         parts.paths.push_back(p);
         return p;
     };
@@ -156,7 +307,12 @@ model_files fetch_model_with(const fetch_fn& fetch, const std::string& model, co
     };
 
     // ---- 1. the cache -------------------------------------------------------------------------
-    if (!options.ignore_cache && fs::exists(out.model)) {
+    // Returns true (and fills `out`) if the model is cached and passes its checksum.
+    const auto try_cache = [&]() -> bool {
+        out.sha256.clear();
+        out.checksum.clear();
+        out.readme.clear();
+        if (!fs::exists(out.model)) return false;
         std::string expected;
         bool have_checksum = false;
         if (fs::exists(sum_path)) {
@@ -191,20 +347,27 @@ model_files fetch_model_with(const fetch_fn& fetch, const std::string& model, co
             SPEECH_LOG(WARNING) << TAG(log_tag) << "Cached model " << out.model
                                 << " does not match its SHA-256; downloading it again." << std::endl;
             remove_quietly(out.model);
+            return false;
         }
-        if (fs::exists(out.model)) {  // cache hit (verified, or unverifiable offline)
-            if (!fs::exists(readme_path)) {
-                const fs::path tmp = part(readme_path);
-                if (fetch_sidecar(readme_url, tmp)) {
-                    install(tmp, readme_path);
-                } else {
-                    SPEECH_LOG(WARNING) << TAG(log_tag) << "Could not get " << readme_url << std::endl;
-                }
+        // cache hit (verified, or unverifiable offline)
+        if (!fs::exists(readme_path)) {
+            const fs::path tmp = part(readme_path);
+            if (fetch_sidecar(readme_url, tmp)) {
+                install(tmp, readme_path);
+            } else {
+                SPEECH_LOG(WARNING) << TAG(log_tag) << "Could not get " << readme_url << std::endl;
             }
-            out.readme = fs::exists(readme_path) ? readme_path : fs::path();
-            return out;
         }
-    }
+        out.readme = fs::exists(readme_path) ? readme_path : fs::path();
+        return true;
+    };
+    if (!options.ignore_cache && try_cache()) return out;
+
+    // Only one process downloads a model at a time; the others wait and then find it in the cache. (With
+    // ignore_cache a process that had to wait also takes the fresh download its predecessor made.)
+    download_lock lock(dir / (file_name + ".lock"), timing, file_name);
+    if (lock.waited() && try_cache()) return out;
+    remove_orphan_parts(dir, file_name);  // what killed downloads left behind
 
     // ---- 2. download: checksum first, then the model, then the readme ---------------------------
     SPEECH_LOG(DEBUG) << TAG(log_tag) << "Downloading model from: " << url << std::endl;
@@ -240,9 +403,16 @@ model_files fetch_model_with(const fetch_fn& fetch, const std::string& model, co
 
     // Everything is here and verified: only now touch the cache. The model goes last, so a model file
     // in the cache always has its sidecars next to it.
-    if (have_readme) install(readme_tmp, readme_path);
-    if (!expected.empty()) install(sum_tmp, sum_path);
-    install(model_tmp, out.model);
+    try {
+        if (have_readme) install(readme_tmp, readme_path);
+        if (!expected.empty()) install(sum_tmp, sum_path);
+        install(model_tmp, out.model);
+    } catch (const std::exception&) {
+        // Our temporary files are gone: another process took over our lock (we were suspended for longer than the
+        // heartbeat timeout), cleaned them up and downloaded the model itself. If it has finished, use that.
+        if (try_cache()) return out;
+        throw;
+    }
     out.sha256 = expected;
     out.checksum = expected.empty() ? fs::path() : sum_path;
     out.readme = have_readme ? readme_path : fs::path();

@@ -1,11 +1,16 @@
 #include "utest.h"
 
+#include <atomic>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <map>
+#include <mutex>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "libspeech/models/model_files.h"
@@ -30,16 +35,29 @@ std::string sum_line(const std::string& bytes, const std::string& name) {
 struct fake_server {
     std::map<std::string, std::string> files;  // url -> body; absent = 404
     std::vector<std::string> requests;
+    std::function<void(const std::string&)> on_fetch;  // called for every request, e.g. to be slow
+    std::mutex mutex;                                   // the concurrency tests call fetch() from several threads
 
     sm::detail::fetch_fn fetch() {
         return [this](const std::string& url, const fs::path& dest) {
-            requests.push_back(url);
-            const auto it = files.find(url);
-            if (it == files.end()) return false;
+            if (on_fetch) on_fetch(url);
+            std::string body;
+            {
+                std::lock_guard<std::mutex> guard(mutex);
+                requests.push_back(url);
+                const auto it = files.find(url);
+                if (it == files.end()) return false;
+                body = it->second;
+            }
             std::ofstream out(dest, std::ios::binary);
-            out << it->second;
+            out << body;
             return true;
         };
+    }
+
+    std::size_t request_count() {
+        std::lock_guard<std::mutex> guard(mutex);
+        return requests.size();
     }
 
     // A complete, correct model under `url`.
@@ -342,4 +360,228 @@ UTEST(fetch_model, cached_model_still_works_offline_when_it_has_no_checksum_yet)
     const sm::model_files f = sm::detail::fetch_model_with(srv.fetch(), "tiny.onnx", opts(dir));
     ASSERT_STREQ(slurp(f.model).c_str(), model_bytes.c_str());
     ASSERT_TRUE(f.sha256.empty());  // not verified, and it says so
+}
+
+// ---- several callers at once (the download lock) -------------------------------------------------
+
+namespace {
+
+using std::chrono::milliseconds;
+
+// Short timings, so that the tests are quick; max_wait is small so that a bug shows up as a failure, not a hang.
+sm::detail::lock_timing fast_locks() {
+    sm::detail::lock_timing t;
+    t.heartbeat = milliseconds(50);
+    t.stale_after = milliseconds(2000);
+    t.poll = milliseconds(20);
+    t.max_wait = milliseconds(6000);
+    return t;
+}
+
+// Pretends to be another process that holds the lock: rewrites <lock>/alive until stopped.
+struct lock_owner {
+    fs::path lock;
+    std::atomic<bool> beating{true};
+    std::thread thread;
+    explicit lock_owner(const fs::path& lock_dir) : lock(lock_dir) {
+        fs::create_directories(lock);
+        std::ofstream(lock / "alive") << "1 0\n";
+        thread = std::thread([this] {
+            while (beating) {
+                std::ofstream(lock / "alive", std::ios::trunc) << "1 1\n";
+                std::this_thread::sleep_for(milliseconds(20));
+            }
+        });
+    }
+    void stop() {
+        beating = false;
+        if (thread.joinable()) thread.join();
+    }
+    ~lock_owner() { stop(); }
+};
+
+}  // namespace
+
+UTEST(download_lock, concurrent_callers_download_the_model_once) {
+    temp_dir dir("concurrent");
+    fake_server srv;
+    srv.publish(release_tiny, "tiny.onnx");
+    srv.on_fetch = [](const std::string& url) {
+        if (url == release_tiny) std::this_thread::sleep_for(milliseconds(300));  // long enough to overlap
+    };
+    constexpr int callers = 4;
+    std::vector<fs::path> results(callers);
+    std::vector<std::string> errors(callers);
+    std::vector<std::thread> threads;
+    for (int i = 0; i < callers; ++i) {
+        threads.emplace_back([&, i] {
+            try {
+                results[i] = sm::detail::fetch_model_with(srv.fetch(), "tiny.onnx", opts(dir), fast_locks()).model;
+            } catch (const std::exception& e) {
+                errors[i] = e.what();
+            }
+        });
+    }
+    for (auto& t : threads) t.join();
+    for (int i = 0; i < callers; ++i) {
+        ASSERT_TRUE(errors[i].empty());
+        ASSERT_STREQ(slurp(results[i]).c_str(), model_bytes.c_str());
+    }
+    ASSERT_EQ(srv.requests.size(), 3u);  // checksum, model, readme: once, not once per caller
+    ASSERT_EQ(dir.listing().size(), 3u);  // no lock directory, no .part files
+}
+
+UTEST(download_lock, a_lock_without_heartbeat_belongs_to_a_dead_process_and_is_taken_over) {
+    temp_dir dir("stale");
+    fake_server srv;
+    srv.publish(release_tiny, "tiny.onnx");
+    const fs::path lock = dir.path / "tiny.onnx.lock";
+    fs::create_directories(lock);
+    std::ofstream(lock / "alive") << "999999 7\n";
+    const auto long_ago = fs::file_time_type::clock::now() - std::chrono::hours(1);
+    fs::last_write_time(lock / "alive", long_ago);
+    fs::last_write_time(lock, long_ago);
+
+    const auto start = std::chrono::steady_clock::now();
+    const sm::model_files f = sm::detail::fetch_model_with(srv.fetch(), "tiny.onnx", opts(dir), fast_locks());
+    const auto waited = std::chrono::duration_cast<milliseconds>(std::chrono::steady_clock::now() - start);
+    ASSERT_STREQ(slurp(f.model).c_str(), model_bytes.c_str());
+    ASSERT_TRUE(waited < milliseconds(1500));  // it did not wait for the dead owner
+    ASSERT_FALSE(dir.has("tiny.onnx.lock"));
+    ASSERT_EQ(dir.listing().size(), 3u);
+}
+
+UTEST(download_lock, a_live_lock_makes_the_caller_wait_until_it_is_released) {
+    temp_dir dir("wait");
+    fake_server srv;
+    srv.publish(release_tiny, "tiny.onnx");
+    lock_owner owner(dir.path / "tiny.onnx.lock");
+
+    std::atomic<bool> done{false};
+    fs::path result;
+    std::thread caller([&] {
+        result = sm::detail::fetch_model_with(srv.fetch(), "tiny.onnx", opts(dir), fast_locks()).model;
+        done = true;
+    });
+    std::this_thread::sleep_for(milliseconds(400));  // many polls, and inside stale_after
+    const bool still_waiting = !done.load();
+    const std::size_t requests_while_waiting = srv.request_count();
+    owner.stop();
+    fs::remove_all(dir.path / "tiny.onnx.lock");  // the owner is finished
+    caller.join();
+
+    ASSERT_TRUE(still_waiting);
+    ASSERT_EQ(requests_while_waiting, 0u);
+    ASSERT_STREQ(slurp(result).c_str(), model_bytes.c_str());
+}
+
+UTEST(download_lock, a_waiter_takes_the_model_the_lock_owner_put_in_the_cache) {
+    temp_dir dir("handover");
+    fake_server srv;
+    srv.publish(release_tiny, "tiny.onnx");
+    lock_owner owner(dir.path / "tiny.onnx.lock");
+
+    std::atomic<bool> done{false};
+    std::thread caller([&] {
+        sm::detail::fetch_model_with(srv.fetch(), "tiny.onnx", opts(dir), fast_locks());
+        done = true;
+    });
+    std::this_thread::sleep_for(milliseconds(200));
+    // The owner finishes: it installs the three files, then releases the lock.
+    {
+        std::ofstream(dir.path / "tiny.onnx", std::ios::binary) << model_bytes;
+        std::ofstream(dir.path / "tiny.onnx.sha256", std::ios::binary) << sum_line(model_bytes, "tiny.onnx");
+        std::ofstream(dir.path / "tiny.onnx.readme", std::ios::binary) << readme_text;
+    }
+    owner.stop();
+    fs::remove_all(dir.path / "tiny.onnx.lock");
+    caller.join();
+    ASSERT_TRUE(done.load());
+    ASSERT_EQ(srv.requests.size(), 0u);  // nothing was downloaded: the waiter used what the owner left
+}
+
+UTEST(download_lock, a_waiter_gives_up_on_a_live_lock_after_max_wait_and_leaves_that_lock_alone) {
+    temp_dir dir("giveup");
+    fake_server srv;
+    srv.publish(release_tiny, "tiny.onnx");
+    lock_owner owner(dir.path / "tiny.onnx.lock");
+    sm::detail::lock_timing t = fast_locks();
+    t.max_wait = milliseconds(300);
+    const sm::model_files f = sm::detail::fetch_model_with(srv.fetch(), "tiny.onnx", opts(dir), t);
+    ASSERT_STREQ(slurp(f.model).c_str(), model_bytes.c_str());
+    ASSERT_TRUE(dir.has("tiny.onnx.lock"));  // it is not ours: we must not delete it
+    owner.stop();
+}
+
+UTEST(download_lock, leftovers_of_killed_downloads_are_removed) {
+    temp_dir dir("orphans");
+    for (const char* name : {"tiny.onnx.dead-1.part", "tiny.onnx.sha256.dead-2.part", "tiny.onnx.readme.part"}) {
+        std::ofstream(dir.path / name) << "half a download";
+    }
+    std::ofstream(dir.path / "other.onnx.dead-3.part") << "belongs to another model";
+    fake_server srv;
+    srv.publish(release_tiny, "tiny.onnx");
+    sm::detail::fetch_model_with(srv.fetch(), "tiny.onnx", opts(dir), fast_locks());
+    ASSERT_FALSE(dir.has("tiny.onnx.dead-1.part"));
+    ASSERT_FALSE(dir.has("tiny.onnx.sha256.dead-2.part"));
+    ASSERT_FALSE(dir.has("tiny.onnx.readme.part"));
+    ASSERT_TRUE(dir.has("other.onnx.dead-3.part"));
+    ASSERT_EQ(dir.listing().size(), 4u);  // the model's three files + the unrelated leftover
+}
+
+UTEST(download_lock, a_cache_hit_does_not_touch_the_lock) {
+    temp_dir dir("nolock");
+    fake_server srv;
+    srv.publish(release_tiny, "tiny.onnx");
+    sm::detail::fetch_model_with(srv.fetch(), "tiny.onnx", opts(dir), fast_locks());
+    // Someone else holds the lock (e.g. a refresh with ignore_cache): reading the cache must not wait for it.
+    lock_owner owner(dir.path / "tiny.onnx.lock");
+    const auto start = std::chrono::steady_clock::now();
+    sm::detail::fetch_model_with(srv.fetch(), "tiny.onnx", opts(dir), fast_locks());
+    const auto took = std::chrono::duration_cast<milliseconds>(std::chrono::steady_clock::now() - start);
+    owner.stop();
+    ASSERT_TRUE(took < milliseconds(1000));
+}
+
+UTEST(download_lock, the_owner_keeps_its_lock_alive_for_as_long_as_it_downloads) {
+    temp_dir dir("keepalive");
+    fake_server srv;
+    srv.publish(release_tiny, "tiny.onnx");
+    srv.on_fetch = [](const std::string& url) {
+        if (url == release_tiny) std::this_thread::sleep_for(milliseconds(1200));  // 3x stale_after
+    };
+    sm::detail::lock_timing t = fast_locks();
+    t.stale_after = milliseconds(400);
+    std::vector<std::thread> threads;
+    for (int i = 0; i < 2; ++i) {
+        threads.emplace_back([&] { sm::detail::fetch_model_with(srv.fetch(), "tiny.onnx", opts(dir), t); });
+    }
+    for (auto& th : threads) th.join();
+    // Without the heartbeat the second caller would think the first one died and download again.
+    ASSERT_EQ(srv.requests.size(), 3u);
+}
+
+UTEST(download_lock, if_our_temporary_files_vanish_the_finished_download_of_the_other_process_is_used) {
+    temp_dir dir("vanish");
+    fake_server srv;
+    srv.publish(release_tiny, "tiny.onnx");
+    srv.on_fetch = [&](const std::string& url) {
+        if (url != release_tiny + ".readme") return;
+        // Meanwhile "another process" took over our lock (it thought we had died), deleted our temporary files
+        // and finished the download itself.
+        std::vector<fs::path> parts;
+        for (const auto& e : fs::directory_iterator(dir.path)) {
+            if (e.path().extension() == ".part") parts.push_back(e.path());
+        }
+        for (const auto& p : parts) fs::remove(p);
+        std::ofstream(dir.path / "tiny.onnx", std::ios::binary) << model_bytes;
+        std::ofstream(dir.path / "tiny.onnx.sha256", std::ios::binary) << sum_line(model_bytes, "tiny.onnx");
+        std::ofstream(dir.path / "tiny.onnx.readme", std::ios::binary) << readme_text;
+    };
+    const sm::model_files f = sm::detail::fetch_model_with(srv.fetch(), "tiny.onnx", opts(dir), fast_locks());
+    ASSERT_STREQ(slurp(f.model).c_str(), model_bytes.c_str());
+    ASSERT_FALSE(f.sha256.empty());
+    ASSERT_EQ(srv.requests.size(), 3u);  // the other process's checksum file was kept, not deleted and fetched again
+    ASSERT_STREQ(slurp(dir.path / "tiny.onnx.sha256").c_str(), sum_line(model_bytes, "tiny.onnx").c_str());
+    ASSERT_EQ(dir.listing().size(), 3u);
 }
