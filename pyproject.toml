@@ -6,7 +6,7 @@
 # installed and configure fails with "ModuleNotFoundError: No module named
 # 'httpp'", even though a normal `pip install .` / local dev environment
 # has it (declared under a normal dependency elsewhere) and never hits this.
-requires = ["scikit-build-core>=0.8.0", "nanobind>=2.0.0", "httpp"]
+requires = ["scikit-build-core>=0.8.0", "nanobind>=2.0.0", "httpp>=0.7,<0.8"]
 build-backend = "scikit_build_core.build"
 
 
@@ -41,7 +41,7 @@ dependencies = [
   # httpp.get_lib_dir() rather than bundling a copy, so libspeech won't
   # import at all without it actually installed. >=0.6.0 because that's
   # the first version confirmed to ship get_lib_dir().
-  "httpp>=0.6.0",
+  "httpp>=0.7,<0.8",  # httpp's API is still changing: stay inside one minor series
 ]
 
 [project.optional-dependencies]

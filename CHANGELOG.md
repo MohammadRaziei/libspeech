@@ -43,7 +43,7 @@ This file starts at 0.3.1; older history is in `git log`.
   belongs to a dead process and is taken over. A download that was killed is resumed from its `.part` file and
   verified against the checksum. The checksum and readme are fetched under per-download temporary names
   (`*.<tag>.new`) and installed only after the model arrived and matched, so a failed refresh leaves the old
-  cache as it was. A cache hit never takes the lock. Needs a httpp with the download lock (not in 0.6.1 from PyPI).
+  cache as it was. A cache hit never takes the lock. Needs httpp 0.7.x (the download lock and `sha256` are not in 0.6.x); libspeech pins `httpp>=0.7,<0.8` because its API is still changing.
 - **`ignore_cache`**: `Denoiser(..., ignore_cache=True)`, `SileroVad(..., ignore_cache=True)`,
   `libspeech.fetch_model(..., ignore_cache=True)`; C++ `denoiser::create(..., ignore_cache)`, the model
   constructors and `fetch_options::ignore_cache`. Downloads everything again; if that fails the old cache is untouched.
