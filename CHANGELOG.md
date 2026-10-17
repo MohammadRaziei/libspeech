@@ -3,7 +3,12 @@
 All notable changes to libspeech. The version lives in `include/libspeech/version.h`.
 This file starts at 0.3.1; older history is in `git log`.
 
-## Unreleased (since 0.3.1)
+## Unreleased
+
+## 0.4.0 (2026-10-17)
+
+Needs **httpp 0.7.x** (`httpp>=0.7,<0.8`, in `pyproject.toml`): the download lock and the SHA-256 functions used
+here are not in 0.6.x, and httpp's API is still changing, so the range is deliberately narrow.
 
 ### Breaking
 - **C++ API renamed to snake_case, STL style** (types, enumerators, functions, methods,
@@ -30,20 +35,21 @@ This file starts at 0.3.1; older history is in `git log`.
 - **Verified model downloads.** A model now always comes with two small files next to it, and all three
   are downloaded: `<model>.onnx.sha256` (one line, `<sha256>  <file name>`, as `sha256sum` writes it) and
   `<model>.onnx.readme` (what the model is, who made it, license, provenance). The checksum file is fetched
-  **first** and must be exactly that one line (an HTML error page is rejected and deleted); then the model is
-  downloaded, hashed and compared; then the readme. Nothing reaches the cache until all three are in and the
-  hash matched, so a failed or interrupted download no longer leaves a broken file behind that later calls
-  would trust (`download_file` skipped any existing file). A cached model is hashed on every load and
-  downloaded again if it does not match; a model cached by an older version just gets its two files. A bare
-  model name (the `models` release) must have all three; an explicit URL may lack the sidecar files and is then
-  used unverified with a warning (a malformed checksum file is still an error).
-- **Several processes, one download.** The lock is httpp's (`httpp::download` always takes `<file>.lock/`, whose
-  `alive` file the downloading process keeps rewriting): another process (or thread) that wants the same model
-  waits and then finds the finished file instead of downloading it again; a lock that stops being updated
-  belongs to a dead process and is taken over. A download that was killed is resumed from its `.part` file and
-  verified against the checksum. The checksum and readme are fetched under per-download temporary names
-  (`*.<tag>.new`) and installed only after the model arrived and matched, so a failed refresh leaves the old
-  cache as it was. A cache hit never takes the lock. Needs httpp 0.7.x (the download lock and `sha256` are not in 0.6.x); libspeech pins `httpp>=0.7,<0.8` because its API is still changing.
+  **first** and must be exactly that one line (an HTML error page is rejected); then the readme (so a missing
+  one fails before the big download); then the model, which httpp checks against the checksum and deletes if it
+  does not match. The checksum and readme are installed next to the model only after it arrived and matched,
+  so a failed or interrupted download no longer leaves a broken file behind that later calls would trust
+  (`download_file` skipped any existing file). A cached model is hashed on every load and downloaded again if
+  it does not match; a model cached by an older version just gets its two files. A bare model name (the
+  `models` release) must have all three; an explicit URL may lack the sidecar files and is then used unverified
+  with a warning (a malformed checksum file is still an error).
+- **Several processes, one download.** The lock is httpp's: `httpp::download` always takes `<file>.lock/`,
+  whose `alive` file the downloading process keeps rewriting. Another process (or thread) that wants the same
+  model waits and then finds the finished file instead of downloading it again; a lock that stops being
+  updated belongs to a dead process and is taken over. A download that was killed is resumed from its `.part`
+  file and verified against the checksum. The checksum and readme are fetched under per-download temporary
+  names (`*.<tag>.new`), so a failed refresh (`ignore_cache`) leaves the old cache as it was. A cache hit
+  never takes the lock.
 - **`ignore_cache`**: `Denoiser(..., ignore_cache=True)`, `SileroVad(..., ignore_cache=True)`,
   `libspeech.fetch_model(..., ignore_cache=True)`; C++ `denoiser::create(..., ignore_cache)`, the model
   constructors and `fetch_options::ignore_cache`. Downloads everything again; if that fails the old cache is untouched.
@@ -53,8 +59,7 @@ This file starts at 0.3.1; older history is in `git log`.
   the model) and C++ `speech::models::fetch_model` / `fetch_options` / `parse_checksum`.
 - **SHA-256**: `libspeech.sha256(bytes)`, `libspeech.sha256_file(path)`, C++ `speech::utils::sha256_hex` /
   `sha256_file` (chunked, any file size). The hashing itself is httpp's (`httpp::sha256_hex`), which also
-  verifies the downloads; nothing is vendored for it.
-
+  verifies the downloads; no SHA-256 code is vendored.
 - **`data/models.csv`**: every model in the `models` release (name, file, backend, sample rate, size, sha256,
   license, `commercial_use`, source, notes). A test checks it against the release's `.sha256` files.
 - Python `libspeech.stft(...)` / `libspeech.istft(...)` (librosa style, NumPy in/out), and
@@ -102,7 +107,9 @@ This file starts at 0.3.1; older history is in `git log`.
 - `benchmarks/profile/`: profiling README and C++ timing scripts for DCT/FFT (2026-10-05).
 - DSP loops link `OpenMP_CXX`; the README documents the SIMD backends and the architecture-agnostic
   vectorization logic (2026-10-02).
+
 ### Changed
+- **httpp 0.7.x is required** (see above); libspeech no longer has its own download lock or SHA-256 code.
 - Resample output is numerically more accurate than before (up to ~6e-3 different from the
   old kernel). The default (`best`) is still ~8–18% slower than librosa/soxr on one core; use
   `resample_quality` to trade accuracy for speed.
@@ -119,6 +126,7 @@ This file starts at 0.3.1; older history is in `git log`.
 - The Python bindings bake the runtime library file names (ONNX Runtime, httpp) into `_about` at build time
   instead of guessing them at import time (which failed because `dlopen` ignores the RPATH).
 - Benchmarks import NumPy in isolation, so the timings are fair.
+
 ### Fixed
 - **Windows: `SPEECH_LOG(ERROR)` messages were never printed.** `<windows.h>` defines `ERROR` as 0,
   so the macro mapped it to the trace level. The severity is now pasted into a name
@@ -152,8 +160,16 @@ This file starts at 0.3.1; older history is in `git log`.
   supported window type (`tests/dsp/test_fast_paths.cpp`).
 - Python binding memory leak of `Denoiser` (the C++ object is held through a `shared_ptr` now); `close()`
   frees the model's memory explicitly.
+
 ### Known issues
-- Not measured or run on Windows/macOS/ARM or with multiple cores in this round of work; check CI.
+- Not run on Windows/macOS/ARM, or with several cores, while this version was written (Linux, x86-64 only);
+  the new download code has never been compiled with MSVC. Check CI.
+- GPU is not used: models run on the CPU (`available_providers()` / `is_cuda_available()` only report).
+- The Facebook denoiser models are licensed CC-BY-NC-4.0 (non-commercial); `data/models.csv` says so
+  (`commercial_use=no`), and so does the model's `.readme`.
+- A process killed during a download leaves its `*.new` files in the cache directory (harmless, not reused).
+  If two processes take over the same dead lock at the same moment they can write the same `.part` file;
+  the checksum catches the damage and the download fails instead of installing it.
 - `STFT` outside n_fft 16..8192 uses the AudioFlux fallback, which is mutex-locked; `FFT` is not
   thread-safe.
 
