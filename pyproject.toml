@@ -6,7 +6,7 @@
 # installed and configure fails with "ModuleNotFoundError: No module named
 # 'httpp'", even though a normal `pip install .` / local dev environment
 # has it (declared under a normal dependency elsewhere) and never hits this.
-requires = ["scikit-build-core>=0.8.0", "nanobind>=2.0.0", "httpp>=0.7,<0.8"]
+requires = ["scikit-build-core>=0.10.7", "nanobind>=2.2.0", "httpp>=0.7,<0.8"]
 build-backend = "scikit_build_core.build"
 
 
@@ -32,6 +32,9 @@ classifiers = [
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Programming Language :: Python :: 3.15",
+  "Programming Language :: Python :: Free Threading :: 2 - Beta",
 ]
 dependencies = [
   # "filelock"

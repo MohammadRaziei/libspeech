@@ -9,7 +9,11 @@ find_package(Python 3.8
 find_package(nanobind CONFIG REQUIRED)
 
 set(NB_MODULE _about)
-nanobind_add_module(${NB_MODULE} STABLE_ABI NB_STATIC ${PROJECT_SOURCE_DIR}/src/bindings/python/about.cpp)
+# STABLE_ABI: one cp312-abi3 wheel serves every regular CPython >= 3.12. FREE_THREADED: on a
+# free-threaded interpreter (cp313t and newer) nanobind drops STABLE_ABI by itself (the classic
+# abi3 does not exist there) and builds a version-specific module that declares it can run without
+# the GIL, so importing it does not turn the GIL back on. Both flags are ignored where they do not apply.
+nanobind_add_module(${NB_MODULE} STABLE_ABI FREE_THREADED NB_STATIC ${PROJECT_SOURCE_DIR}/src/bindings/python/about.cpp)
 libspeech_set_origin_rpath(${NB_MODULE})
 
 # __init__.py's cdll.LoadLibrary() calls need the *exact* on-disk
@@ -81,6 +85,10 @@ foreach(NB_MODULE_SOURCE IN LISTS PYTHON_BIND_MODULES_PATH)
             # the number of binary wheels that must be built. This
             # does nothing on older Python versions
             STABLE_ABI
+
+            # Free-threaded Python (3.13t and newer): the module declares it does not need
+            # the GIL (nanobind drops STABLE_ABI there by itself). Ignored elsewhere.
+            FREE_THREADED
 
             # Build libnanobind statically and merge it into the
             # extension (which itself remains a shared library)

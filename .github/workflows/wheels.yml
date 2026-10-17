@@ -86,8 +86,13 @@ jobs:
         # ships wheels from cp39-abi3 up on PyPI, not cp38 -- building a
         # cp38 wheel here would require httpp built from source instead.
         # (cibuildwheel 4.2 builds CPython 3.15 by default; this explicit list keeps the
-        # matrix at 3.9-3.12 -- the cp312 wheel is abi3, so it also serves 3.13 and newer.)
-        CIBW_BUILD: "cp39-* cp310-* cp311-* cp312-*"
+        # matrix at 3.9-3.12 -- the cp312 wheel is abi3, so it also serves every regular 3.13
+        # and newer.) cp314t and cp315t are the free-threaded interpreters: the classic abi3
+        # does not exist there, so each gets its own version-specific wheel (the modules are
+        # built with nanobind's FREE_THREADED flag, see src/bindings/python/CMakeLists.txt, so
+        # importing them keeps the GIL off). cibuildwheel 4 no longer builds 3.13t, see the
+        # separate step below.
+        CIBW_BUILD: "cp39-* cp310-* cp311-* cp312-* cp314t-* cp315t-*"
         # Per-Python-version env var overrides (SKBUILD_WHEEL_PY_API=cp312
         # for the cp312 build only, so scikit-build-core tags it as a
         # forward-compatible cp312-abi3 wheel instead of a version-locked
@@ -141,6 +146,22 @@ jobs:
         # equivalent of auditwheel's --exclude. This replicates
         # cibuildwheel's own default macOS repair command (--require-archs
         # {delocate_archs} -w {dest_dir} -v {wheel}) with only this added.
+        CIBW_REPAIR_WHEEL_COMMAND_MACOS: >-
+          delocate-wheel --require-archs {delocate_archs} --ignore-missing-dependencies -w {dest_dir} -v {wheel}
+
+    # cibuildwheel 4.x dropped free-threaded 3.13 (cp313t), so that one wheel comes from the 3.x
+    # series (same approach as httpp). Same wheelhouse/ folder: the file names differ by tag.
+    - name: Build wheels (free-threaded 3.13)
+      uses: pypa/cibuildwheel@v3.4.1
+      env:
+        MACOSX_DEPLOYMENT_TARGET: "13.3"
+        CIBW_ARCHS_MACOS: universal2
+        CIBW_BEFORE_BUILD: pip install httpp
+        CIBW_BUILD: "cp313t-*"
+        CIBW_ENABLE: cpython-freethreading
+        CIBW_SKIP: "pp* *-musllinux_* cp*-win32"
+        CIBW_REPAIR_WHEEL_COMMAND_LINUX: >-
+          auditwheel repair --exclude libhttpp_core.so -w {dest_dir} {wheel}
         CIBW_REPAIR_WHEEL_COMMAND_MACOS: >-
           delocate-wheel --require-archs {delocate_archs} --ignore-missing-dependencies -w {dest_dir} -v {wheel}
 

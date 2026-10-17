@@ -5,6 +5,16 @@ This file starts at 0.3.1; older history is in `git log`.
 
 ## Unreleased
 
+### Added
+- **Free-threaded Python wheels (`cp313t`, `cp314t`, `cp315t`).** Until now `pip install libspeech` on a free-threaded
+  interpreter found no wheel (the `cp312-abi3` wheel does not exist for them: abi3 is not available on free-threaded
+  CPython) and fell back to a source build. The extension modules are built with nanobind's `FREE_THREADED` flag, so
+  importing libspeech keeps the GIL off. cibuildwheel 4 no longer builds 3.13t, so `cp313t` has its own
+  cibuildwheel 3.x step in `wheels.yml`.
+  `tests/python/test_free_threading.py` checks that importing every module does not re-enable the GIL (skips on
+  regular interpreters).
+- Build requirements: `nanobind>=2.2.0` (first version with `FREE_THREADED`), `scikit-build-core>=0.10.7`.
+
 ## 0.4.0 (2026-10-17)
 
 Needs **httpp 0.7.x** (`httpp>=0.7,<0.8`, in `pyproject.toml`): the download lock and the SHA-256 functions used

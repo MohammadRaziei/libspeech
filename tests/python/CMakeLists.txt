@@ -51,6 +51,7 @@ if(TARGET speech_io_py)
         add_python_test(dsp)
         add_python_test(numpy_api)
         add_python_test(simd)
+        add_python_test(free_threading)   # only runs on free-threaded CPython (3.13t+); skips itself elsewhere
         add_python_test(librosa_compat)   # needs the `test` extra (librosa, soundfile, scipy); skips itself without
 
         # Heavy end-to-end Denoiser test (real ONNX model: download + ~1 GB RAM). It is marked
