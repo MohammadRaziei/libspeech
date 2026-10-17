@@ -13,6 +13,7 @@ import hashlib
 import http.server
 import os
 import threading
+import urllib.request
 from pathlib import Path
 
 import pytest
@@ -63,7 +64,7 @@ class _Server:
         outer = self
 
         class Handler(http.server.BaseHTTPRequestHandler):
-            def do_GET(self):  # noqa: N802
+            def do_GET(self):
                 outer.requests.append(self.path)
                 body = outer.files.get(self.path)
                 if body is None:  # like a real 404 page
@@ -193,7 +194,7 @@ def test_missing_release_model_raises_runtime_error():
 
 
 def _rows():
-    with open(ROOT / "data" / "models.csv", newline="") as f:
+    with (ROOT / "data" / "models.csv").open(newline="") as f:
         return list(csv.DictReader(f))
 
 
@@ -204,9 +205,11 @@ def test_models_csv_is_well_formed():
     assert len(set(names)) == len(names)
     for r in rows:
         assert r["file"] == r["name"] + ".onnx"
-        assert len(r["sha256"]) == 64 and all(c in "0123456789abcdef" for c in r["sha256"]), r["name"]
+        assert len(r["sha256"]) == 64, r["name"]
+        assert all(c in "0123456789abcdef" for c in r["sha256"]), r["name"]
         assert int(r["size_bytes"]) > 0
-        assert r["license"] and r["source"].startswith("https://")
+        assert r["license"]
+        assert r["source"].startswith("https://")
         assert r["commercial_use"] in ("yes", "no")
         assert r["backend"] in ("gtcrn", "dpdfnet", "facebook", "speechbrain", "silero_vad")
 
@@ -223,17 +226,16 @@ def test_models_csv_covers_every_default_model_and_flags_non_commercial():
         assert default in by_name
     for name, r in by_name.items():
         if name.startswith("facebook-"):
-            assert r["commercial_use"] == "no" and r["license"] == "CC-BY-NC-4.0"
+            assert r["commercial_use"] == "no"
+            assert r["license"] == "CC-BY-NC-4.0"
 
 
 @pytest.mark.models
 def test_models_csv_matches_the_release_checksums():
     # Every row's digest must equal the .sha256 file in the release (a few bytes each).
-    import urllib.request
-
     for r in _rows():
         url = f"https://github.com/MohammadRaziei/libspeech/releases/download/models/{r['file']}.sha256"
-        with urllib.request.urlopen(url, timeout=60) as resp:  # noqa: S310
+        with urllib.request.urlopen(url, timeout=60) as resp:
             text = resp.read().decode()
         assert text.split()[0] == r["sha256"], r["name"]
         assert text.split()[1] == r["file"]
