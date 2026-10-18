@@ -11,7 +11,7 @@ This file starts at 0.3.1; older history is in `git log`.
   CPython) and fell back to a source build. The extension modules are built with nanobind's `FREE_THREADED` flag, so
   importing libspeech keeps the GIL off. cibuildwheel 4 no longer builds 3.13t, so `cp313t` has its own
   cibuildwheel 3.x step in `wheels.yml`.
-  `tests/python/test_free_threading.py` checks that importing `import libspeech` does not re-enable the GIL (skips on
+  `tests/python/test_free_threading.py` checks that `import libspeech` does not re-enable the GIL (skips on
   regular interpreters).
 
 ### Removed
@@ -23,6 +23,8 @@ This file starts at 0.3.1; older history is in `git log`.
 - The `test` extra installs librosa/soundfile/scipy only on Python < 3.13 (they have no wheels for every free-threaded
   build, e.g. no scipy for `cp313t`, and there is no environment marker for free-threading). Where they are absent,
   `test_librosa_compat.py` skips itself.
+- Free-threaded wheel builds set `PIP_PREFER_BINARY=1` (cibuildwheel override), so the wheel tests take numpy 2.4.6
+  (which has `cp313t` wheels) instead of compiling the numpy 2.5 sdist, which has none for 3.13t.
 - Build requirements: `nanobind>=2.2.0` (first version with `FREE_THREADED`), `scikit-build-core>=0.10.7`.
 
 ## 0.4.0 (2026-10-17)

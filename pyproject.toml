@@ -111,6 +111,18 @@ test-extras = ["test"]
 repair-wheel-command = ""
 
 [[tool.cibuildwheel.overrides]]
+# Free-threaded builds (cp313t, cp314t, cp315t): prefer an older binary over compiling the newest
+# sdist. numpy is a runtime dependency (so it cannot be dropped with a marker like the librosa
+# chain above) and numpy 2.5.x ships no cp313t wheel on any platform, so on 3.13t pip picked the
+# 2.5.4 sdist and tried to build it: on macOS that died with "Multi-architecture builds are not
+# supported but $ARCHFLAGS='-arch arm64 -arch x86_64'" while testing the universal2 wheel; on Linux
+# and Windows it would compile numpy for ~10 minutes. With this, pip takes numpy 2.4.6, which has
+# cp313t wheels for macOS (arm64, x86_64), Linux and Windows. Its own `select`, so the cp312
+# override below (SKBUILD_WHEEL_PY_API) is untouched.
+select = "cp3??t-*"
+environment = { PIP_PREFER_BINARY = "1" }
+
+[[tool.cibuildwheel.overrides]]
 # Only the cp312 build's nanobind extensions are actually compiled
 # against the Limited API (STABLE_ABI in CMakeLists.txt's
 # nanobind_add_module(... STABLE_ABI ...) calls resolves to
