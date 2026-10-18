@@ -7,6 +7,7 @@
 
 #include "libspeech/models/onnx_model.h"
 
+#include <string>
 #include <vector>
 #include <cmath>
 
@@ -76,6 +77,9 @@ class SPEECH_API silero_vad_model : public onnx_model {
 
 
    private:
+    // Reads the input/output names from the session (inputs: audio, state[, sr]; outputs: probability, new state).
+    void init_node_names();
+
     // Context-related additions
     const int context_samples = 64;  // For 16kHz, 64 samples are added as context.
     std::vector<float> _context;     // Holds the last 64 samples from the previous chunk (initialized to zero).
@@ -91,7 +95,12 @@ class SPEECH_API silero_vad_model : public onnx_model {
 
     // ONNX Runtime input/output buffers
     std::vector<Ort::Value> ort_inputs;
-    std::vector<const char*> input_node_names = { "input", "state", "sr" };
+    // The tensor names are read from the loaded model (init_node_names()): the released models call the
+    // new state output "stateN", and silero-vad-half has no "sr" input at all.
+    std::vector<std::string> input_name_storage;
+    std::vector<std::string> output_name_storage;
+    std::vector<const char*> input_node_names;
+    bool has_sr_input = true;
     std::vector<float> input;
     unsigned int size_state = 2 * 1 * 128;
     std::vector<float> _state;
@@ -100,7 +109,7 @@ class SPEECH_API silero_vad_model : public onnx_model {
     const int64_t state_node_dims[3] = { 2, 1, 128 };
     const int64_t sr_node_dims[1] = { 1 };
     std::vector<Ort::Value> ort_outputs;
-    std::vector<const char*> output_node_names = { "output", "state_n" };
+    std::vector<const char*> output_node_names;
 
     // Model configuration parameters
     float threshold;

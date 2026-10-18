@@ -42,15 +42,28 @@ Test targets are named `speech_test_<language>_<module>` and are all
 discoverable via `cmake --build build --target help`:
 
 ```
-speech_test
+speech_test                               # everything
 ├── speech_test_cpp
-│   ├── speech_test_cpp_dsp       # cheap, no network/ONNX deps
+│   ├── speech_test_cpp_dsp               # cheap, no network/ONNX deps
 │   └── speech_test_cpp_models
 └── speech_test_python
-    ├── speech_test_python_audio
-    ├── speech_test_python_dsp
-    └── speech_test_python_models
+    ├── speech_test_python_audio          # Audio load/save/resample/to_mono
+    ├── speech_test_python_audio_interop  # np.asarray(audio), DLPack, Audio(array)
+    ├── speech_test_python_dsp            # FFT / STFT / MFCC / Resample classes
+    ├── speech_test_python_functional     # libspeech.stft / istft (librosa-style)
+    ├── speech_test_python_numpy_api      # NumPy in/out fast paths
+    ├── speech_test_python_simd           # SIMD backend selection and agreement
+    ├── speech_test_python_logging
+    ├── speech_test_python_models         # Denoiser / SileroVad bindings
+    ├── speech_test_python_model_files    # checksums, downloads (local HTTP server, offline)
+    ├── speech_test_python_free_threading # GIL stays off on free-threaded CPython (skips elsewhere)
+    ├── speech_test_python_readme_examples # runs the python blocks of README.md
+    └── speech_test_python_librosa_compat # needs the `test` extra; skips itself without
 ```
+
+`speech_test_python_models_e2e` is not part of `speech_test`: it needs the network (real model
+downloads) and runs the tests marked `models` (`pytest -m models`), including the model example in
+`README.md`.
 
 Each leaf is both a `ctest` entry and a directly buildable+runnable target
 (`cmake --build build --target speech_test_cpp_dsp` builds *and* runs it).
@@ -90,6 +103,37 @@ expected real behavior first, then make it pass.
 just needs `#include "utest.h"` and `UTEST(Suite, Name) { ... }` blocks --
 no `UTEST_MAIN()` needed in each file, there's exactly one shared `main()`
 in `tests/utest/utest_main.cxx`.
+
+## SIMD and portability
+
+Kernels that benefit from explicit SIMD (today the polyphase resampler, ~2.3x over its portable
+twin on AVX2) have a portable C++ implementation plus vectorized twins that are **selected at run
+time from the CPU**, never from build flags, so one wheel or one default CMake build is correct on
+every machine of its architecture and fast on the capable ones. No `-march=native`, no per-ISA build
+variants. The real-input FFT behind STFT/MFCC is plain portable C++ that the compiler vectorizes for
+the baseline ISA: a hand-targeted AVX2 clone of it was measured (n_fft 64-8192) and was never faster,
+so it was dropped.
+
+| Target | Fast path | Compilers |
+|---|---|---|
+| x86 / x86-64 | AVX2 + FMA (CPUID and OS YMM-state checked) | GCC, Clang, MSVC |
+| ARM64 (Linux, macOS, Windows) | NEON | GCC, Clang, MSVC |
+| anything else (32-bit ARM, RISC-V, ...) | portable C++ | any C++17 compiler |
+
+```python
+import libspeech
+libspeech.simd_backend()            # 'avx2+fma' | 'neon' | 'generic'
+libspeech.set_simd_enabled(False)   # run-time switch (objects/calls created afterwards)
+```
+
+- Environment: `LIBSPEECH_SIMD=off` forces the portable kernels (`LIBSPEECH_DISABLE_AVX2=1` still works).
+- All backends are cross-checked against each other and against independent references in
+  `tests/dsp/test_fast_paths.cpp`. The suite was run on x86-64 (GCC and Clang), 32-bit x86,
+  AArch64 (under QEMU), and with SIMD disabled at run time.
+- Support is decided in the sources, not the build system. `src/dsp/simd_internal.h` holds every
+  architecture/compiler macro (`LS_HAVE_X86_AVX2`, `LS_HAVE_ARM_NEON`, `LS_TARGET_AVX2`, ...):
+  `#if LS_HAVE_X86_AVX2` the AVX2 kernel is compiled and used when the CPU has it, otherwise the
+  portable one is. Kernels never test `__x86_64__`/`_MSC_VER` directly.
 
 ## Vendoring third-party C code
 
@@ -180,8 +224,20 @@ dropped when those pages are not in the output (`docs/FinishPages.cmake`).
 `lcov`; add `-DBUILD_PYTHON=ON` and `pip install coverage` for the Python
 side) gives you `speech_coverage`, which runs every component's tests
 instrumented, merges them, and writes a dashboard to
-`build/coverage/index.html`. It mirrors ctoon's setup -- see the "Docs &
-coverage" table in `README.md`. A new C++ module with its own test target
+`build/coverage/index.html`. It mirrors ctoon's setup (one target per component, a merged total,
+a dashboard tying the reports together):
+
+| Target | Covers | Output (under `build/coverage/`) |
+|---|---|---|
+| `speech_coverage_cpp_dsp` | `speech::dsp` (utest.h suite) | `cpp_dsp/` |
+| `speech_coverage_cpp_models` | `speech::models` + download utils | `cpp_models/` |
+| `speech_coverage_python` | the Python package's `.py` files (coverage.py) | `python/` |
+| `speech_coverage_total` | lcov merge of all of the above | `total/` |
+
+Each component (and the total) leaves a plain `coverage.lcov` next to its HTML, which is what CI
+uploads to Codecov. `BUILD_COVERAGE` is off by default: it instruments `speech_dsp`/`speech_models`
+with `--coverage`, which you do not want in a normal build. Without `BUILD_PYTHON` you get only the
+C++ components. A new C++ module with its own test target
 gets a coverage target by calling `speech_enable_coverage(<lib>)` and
 `speech_add_cpp_coverage_target(...)` next to its tests (see
 `tests/models/CMakeLists.txt` for a three-line example).

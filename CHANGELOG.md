@@ -22,6 +22,10 @@ This file starts at 0.3.1; older history is in `git log`.
   `audio::shared_samples()`. `to_numpy(channel)` is unchanged (a 1-D copy).
 
 ### Fixed
+- `SileroVad.process()` failed on every released model: the code looked up the output tensor as `state_n` (the models
+  call it `stateN`) and always fed an `sr` input (`silero-vad-half` has none). The tensor names are now read from the
+  loaded model, and a model with another signature is rejected with an error instead of being driven blindly.
+  Found by running the README example; nothing exercised `process()` before.
 - Loading a file into an `Audio` that already held audio with the same channel count kept the old length (a 4000
   sample file loaded after a 16000 sample one reported 16000 samples). The samples now live in one planar buffer that
   every load replaces as a whole (a failed load leaves the old audio untouched; views keep the buffer they were made
@@ -29,18 +33,21 @@ This file starts at 0.3.1; older history is in `git log`.
   bounds), a raw `.bin` on a fresh `Audio` fails cleanly (it divided by zero), and `Audio` assignment no longer breaks
   on self-assignment.
 
-### Removed
-- `libspeech.speech_audio_py`: a stale copy of `speech_io_py` (left over from the `bind_audio` -> `bind_io` rename,
-  without `Audio.to_numpy`). Nothing in the package imported it, and importing it made nanobind warn that `Audio` was
-  already registered. Use `libspeech.Audio`.
-
 ### Changed
+- README rewritten: shorter, aimed at someone installing the package for the first time. The Python examples in it
+  are run by `tests/python/test_readme_examples.py` (the model block under `-m models`). Coverage targets, the SIMD
+  layout and the test-target tree moved to `CONTRIBUTING.md`.
 - The `test` extra installs librosa/soundfile/scipy only on Python < 3.13 (they have no wheels for every free-threaded
   build, e.g. no scipy for `cp313t`, and there is no environment marker for free-threading). Where they are absent,
   `test_librosa_compat.py` skips itself.
 - Free-threaded wheel builds set `PIP_PREFER_BINARY=1` (cibuildwheel override), so the wheel tests take numpy 2.4.6
   (which has `cp313t` wheels) instead of compiling the numpy 2.5 sdist, which has none for 3.13t.
 - Build requirements: `nanobind>=2.2.0` (first version with `FREE_THREADED`), `scikit-build-core>=0.10.7`.
+
+### Removed
+- `libspeech.speech_audio_py`: a stale copy of `speech_io_py` (left over from the `bind_audio` -> `bind_io` rename,
+  without `Audio.to_numpy`). Nothing in the package imported it, and importing it made nanobind warn that `Audio` was
+  already registered. Use `libspeech.Audio`.
 
 ## 0.4.0 (2026-10-17)
 

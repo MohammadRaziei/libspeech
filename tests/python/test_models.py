@@ -10,6 +10,7 @@ from __future__ import annotations
 import subprocess
 import sys
 
+import numpy as np
 import pytest
 
 import libspeech
@@ -248,3 +249,22 @@ def test_dpdfnet_end_to_end():
         capture_output=True, text=True, timeout=300, check=False,
     )
     assert r.returncode == 0, f"exit={r.returncode}\n{r.stderr[-1200:]}"
+
+
+SILERO_RELEASE_MODELS = ["silero-vad.onnx", "silero-vad-half.onnx", "silero-vad-16k-op15.onnx"]
+
+
+@pytest.mark.models
+@pytest.mark.parametrize("model", SILERO_RELEASE_MODELS)
+def test_silero_vad_runs_on_every_released_model(model):
+    # Regression test: the output tensor was looked up as "state_n" and an "sr" input was always fed, but
+    # the released models name it "stateN" and silero-vad-half has no "sr" input, so process() raised
+    # "Invalid output name: state_n" (or "Invalid input name") on every one of them.
+    noise = (0.1 * np.random.default_rng(0).standard_normal(16000 * 3)).astype(np.float32).tolist()
+    vad = libspeech.SileroVad(model_path=model)
+    vad.process(noise)
+    first = [(s.start_s, s.end_s) for s in vad.get_speech_timestamps()]
+    vad.process(noise)  # process() resets the state, so the same input gives the same answer
+    assert [(s.start_s, s.end_s) for s in vad.get_speech_timestamps()] == first
+    for start, end in first:
+        assert 0.0 <= start <= end <= 3.0

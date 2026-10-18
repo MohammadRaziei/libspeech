@@ -4,6 +4,9 @@
 
 #include "libspeech/models/silero_vad.h"
 
+#include <stdexcept>
+#include <string>
+
 namespace speech::models {
 
 // Resets internal state (_state, _context, etc.)
@@ -37,7 +40,7 @@ void silero_vad_model::predict(const std::vector<float>& data_chunk) {
     ort_inputs.clear();
     ort_inputs.emplace_back(std::move(input_ort));
     ort_inputs.emplace_back(std::move(state_ort));
-    ort_inputs.emplace_back(std::move(sr_ort));
+    if (has_sr_input) ort_inputs.emplace_back(std::move(sr_ort));
 
     // Run inference.
     ort_outputs = session->Run(
@@ -139,6 +142,26 @@ silero_vad_model::silero_vad_model(const std::string& model_path,
     min_silence_samples = sr_per_ms * min_silence_duration_ms;
     min_silence_samples_at_max_speech = sr_per_ms * 98;
     init_onnx_model();
+    init_node_names();
+}
+
+void silero_vad_model::init_node_names() {
+    const size_t n_in = session->GetInputCount();
+    const size_t n_out = session->GetOutputCount();
+    // input, state [, sr] -> probability, new state. Anything else is not a Silero VAD this class can drive.
+    if ((n_in != 2 && n_in != 3) || n_out != 2) {
+        throw std::runtime_error("silero_vad_model: unexpected model signature (" + std::to_string(n_in) + " inputs, " +
+                                 std::to_string(n_out) + " outputs; expected audio, state[, sr] -> probability, state)");
+    }
+    input_name_storage.clear();
+    output_name_storage.clear();
+    for (size_t i = 0; i < n_in; ++i) input_name_storage.emplace_back(session->GetInputNameAllocated(i, allocator).get());
+    for (size_t i = 0; i < n_out; ++i) output_name_storage.emplace_back(session->GetOutputNameAllocated(i, allocator).get());
+    input_node_names.clear();
+    output_node_names.clear();
+    for (const auto& name : input_name_storage) input_node_names.push_back(name.c_str());
+    for (const auto& name : output_name_storage) output_node_names.push_back(name.c_str());
+    has_sr_input = n_in == 3;
 }
 
 // Process the entire audio input.
