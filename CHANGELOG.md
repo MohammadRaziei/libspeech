@@ -14,6 +14,21 @@ This file starts at 0.3.1; older history is in `git log`.
   `tests/python/test_free_threading.py` checks that `import libspeech` does not re-enable the GIL (skips on
   regular interpreters).
 
+- **Audio <-> array interop.** `Audio` has `channels`, `shape` (`(channels, samples)`), `__array__` / `numpy()`
+  (a float32 `(channels, samples)` view that shares the Audio's memory, no copy), `__dlpack__` /
+  `__dlpack_device__` (`np.from_dlpack(audio)`, `torch.from_dlpack(audio)`, ...; NumPy gets a read-only view), and
+  can be built from an array: `Audio(array, sample_rate)`, `Audio.from_numpy(...)`, `Audio.from_dlpack(...)`
+  (1-D mono or 2-D `(channels, samples)`, copied once; other dtypes are converted). New C++
+  `audio::shared_samples()`. `to_numpy(channel)` is unchanged (a 1-D copy).
+
+### Fixed
+- Loading a file into an `Audio` that already held audio with the same channel count kept the old length (a 4000
+  sample file loaded after a 16000 sample one reported 16000 samples). The samples now live in one planar buffer that
+  every load replaces as a whole (a failed load leaves the old audio untouched; views keep the buffer they were made
+  from). `Audio.load` of channels with different lengths now fails (it used to accept them and later read out of
+  bounds), a raw `.bin` on a fresh `Audio` fails cleanly (it divided by zero), and `Audio` assignment no longer breaks
+  on self-assignment.
+
 ### Removed
 - `libspeech.speech_audio_py`: a stale copy of `speech_io_py` (left over from the `bind_audio` -> `bind_io` rename,
   without `Audio.to_numpy`). Nothing in the package imported it, and importing it made nanobind warn that `Audio` was

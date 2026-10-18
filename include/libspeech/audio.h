@@ -39,6 +39,10 @@ class SPEECH_API audio {
     // and stores the sample count in *length. Valid until this Audio is next
     // modified (load/assign). Throws std::out_of_range on a bad channel index.
     [[nodiscard]] const float* channel_data(int index, size_t* length) const;
+    // All samples as one planar block: channel c is [c * size(), (c + 1) * size()). The returned
+    // pointer co-owns the buffer, so it stays valid even if this Audio is loaded again or destroyed
+    // (a load builds a new buffer and never touches the old one). Null when nothing is loaded.
+    [[nodiscard]] std::shared_ptr<float> shared_samples() const;
     [[nodiscard]] int channels() const;
     [[nodiscard]] int sample_rate() const;
     [[nodiscard]] double duration() const;

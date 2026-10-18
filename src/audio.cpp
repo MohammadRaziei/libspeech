@@ -28,10 +28,26 @@ namespace speech::io {
 
 class audio_impl {
    public:
-    std::vector<std::vector<float>> audio_data; // Each channel has its own data
+    // Planar samples in ONE buffer: channel c is [c * frames, (c + 1) * frames). The buffer is never
+    // resized or overwritten in place: every successful load builds a new one and swaps it in. So a
+    // NumPy / DLPack view, which co-owns the buffer (shared_samples()), stays valid after a later
+    // load(), and a failed load leaves the old audio untouched.
+    std::shared_ptr<std::vector<float>> samples;
+    size_t frames = 0;
     int sample_rate = 0;
     int channels = 0;
     bool loaded = false;
+
+    float* channel(int c) { return samples->data() + static_cast<size_t>(c) * frames; }
+    const float* channel(int c) const { return samples->data() + static_cast<size_t>(c) * frames; }
+    bool has_samples() const { return samples && channels > 0 && frames > 0; }
+    void adopt(std::shared_ptr<std::vector<float>> buf, int ch, size_t n_frames, int rate) {
+        samples = std::move(buf);
+        channels = ch;
+        frames = n_frames;
+        sample_rate = rate;
+        loaded = true;
+    }
 
     bool load_wav(const std::filesystem::path& file_path);
     bool load_mp3(const std::filesystem::path& file_path);
@@ -70,34 +86,36 @@ bool speech::io::audio_impl::load_with_miniaudio(const std::filesystem::path& fi
 
     ma_uint32 out_channels = 0, out_sample_rate = 0;
     ma_decoder_get_data_format(&decoder, nullptr, &out_channels, &out_sample_rate, nullptr, 0);
-    channels = static_cast<int>(out_channels);
-    sample_rate = static_cast<int>(out_sample_rate);
+    const int new_channels = static_cast<int>(out_channels);
+    const int new_rate = static_cast<int>(out_sample_rate);
 
     ma_uint64 num_frames = 0;
     ma_decoder_get_length_in_pcm_frames(&decoder, &num_frames);
-    audio_data.resize(channels, std::vector<float>(num_frames)); // Allocate memory for each channel
+    // A fresh buffer for every load (see audio_impl::samples): nothing below touches the current audio
+    // until the decode is done.
+    auto buf = std::make_shared<std::vector<float>>(static_cast<size_t>(num_frames) * new_channels);
 
     ma_uint64 frames_read = 0;
-    if (channels == 1) {
+    if (new_channels == 1) {
         // Mono is already "deinterleaved": decode straight into the channel buffer
         // (no intermediate interleaved buffer, no copy loop).
-        ma_decoder_read_pcm_frames(&decoder, audio_data[0].data(), num_frames, &frames_read);
-    } else {
-        std::vector<float> interleaved_data(num_frames * channels);
+        ma_decoder_read_pcm_frames(&decoder, buf->data(), num_frames, &frames_read);
+    } else if (new_channels > 1) {
+        std::vector<float> interleaved_data(static_cast<size_t>(num_frames) * new_channels);
         ma_decoder_read_pcm_frames(&decoder, interleaved_data.data(), num_frames, &frames_read);
 
         // Deinterleave the data into separate channels
-        for (int c = 0; c < channels; ++c) {
-            float* dst = audio_data[c].data();
+        for (int c = 0; c < new_channels; ++c) {
+            float* dst = buf->data() + static_cast<size_t>(c) * num_frames;
             const float* src = interleaved_data.data() + c;
             for (ma_uint64 i = 0; i < frames_read; ++i) {
-                dst[i] = src[i * channels];
+                dst[i] = src[i * new_channels];
             }
         }
     }
 
     ma_decoder_uninit(&decoder);
-    loaded = true;
+    adopt(std::move(buf), new_channels, static_cast<size_t>(num_frames), new_rate);
     SPEECH_LOG(DEBUG) << TAG("speech::io::Audio") << "Loaded " << format_name << ": " << file_path << ", Sample Rate: " << sample_rate << ", Channels: " << channels << std::endl;
     return true;
 }
@@ -131,8 +149,14 @@ bool speech::io::audio_impl::load_bin(const std::filesystem::path& file_path) {
         return false;
     }
     size_t total_samples = size / sizeof(float);
-    size_t num_frames = total_samples / channels; // Assuming channels is known beforehand
-    audio_data.resize(channels, std::vector<float>(num_frames)); // Allocate memory for each channel
+    if (channels <= 0) {
+        // The channel count of a raw .bin comes from the audio already in this object, so there is
+        // nothing to split the samples by on a fresh one (this used to divide by zero).
+        SPEECH_LOG(ERROR) << TAG("speech::io::Audio") << "A .bin file needs the channel count of already loaded audio: " << file_path << std::endl;
+        return false;
+    }
+    size_t num_frames = total_samples / channels; // channels comes from the audio loaded before
+    auto buf = std::make_shared<std::vector<float>>(num_frames * channels);
 
     std::vector<float> interleaved_data(total_samples);
     file.read(reinterpret_cast<char*>(interleaved_data.data()), size);
@@ -140,12 +164,12 @@ bool speech::io::audio_impl::load_bin(const std::filesystem::path& file_path) {
     // Deinterleave the data into separate channels
     for (size_t i = 0; i < num_frames; ++i) {
         for (int c = 0; c < channels; ++c) {
-            audio_data[c][i] = interleaved_data[i * channels + c];
+            (*buf)[static_cast<size_t>(c) * num_frames + i] = interleaved_data[i * channels + c];
         }
     }
 
     file.close();
-    loaded = true;
+    adopt(std::move(buf), channels, num_frames, sample_rate);
     SPEECH_LOG(DEBUG) << TAG("speech::io::Audio") << "Loaded BIN: " << file_path << ", Total Samples: " << total_samples << std::endl;
     return true;
 }
@@ -156,10 +180,18 @@ bool speech::io::audio_impl::load_vector(const std::vector<std::vector<float>>& 
         SPEECH_LOG(ERROR) << TAG("speech::io::Audio") << "Invalid audio data provided to load_vector!" << std::endl;
         return false;
     }
-    audio_data = input_data;
-    sample_rate = input_sample_rate;
-    channels = input_data.size();
-    loaded = true;
+    const size_t n_frames = input_data[0].size();
+    for (const auto& ch : input_data) {
+        if (ch.size() != n_frames) {
+            SPEECH_LOG(ERROR) << TAG("speech::io::Audio") << "All channels must have the same number of samples." << std::endl;
+            return false;
+        }
+    }
+    auto buf = std::make_shared<std::vector<float>>(n_frames * input_data.size());
+    for (size_t c = 0; c < input_data.size(); ++c) {
+        std::copy(input_data[c].begin(), input_data[c].end(), buf->begin() + c * n_frames);
+    }
+    adopt(std::move(buf), static_cast<int>(input_data.size()), n_frames, input_sample_rate);
     SPEECH_LOG(DEBUG) << TAG("speech::io::Audio") << "Loaded audio from vector, Sample Rate: " << sample_rate << ", Channels: " << channels << std::endl;
     return true;
 }
@@ -167,16 +199,16 @@ bool speech::io::audio_impl::load_vector(const std::vector<std::vector<float>>& 
 // **Play (Simulation)**
 void audio_callback(ma_device* device, void* output, const void* input, ma_uint32 frame_count) {
     speech::io::audio_impl* audio = reinterpret_cast<speech::io::audio_impl*>(device->pUserData);
-    if (!audio || audio->audio_data.empty()) return;
+    if (!audio || !audio->has_samples()) return;
 
     static size_t current_frame = 0;
-    size_t frames_to_copy = std::min(static_cast<size_t>(frame_count), audio->audio_data[0].size() - current_frame);
+    size_t frames_to_copy = std::min(static_cast<size_t>(frame_count), audio->frames - current_frame);
 
     if (frames_to_copy > 0) {
         float* out = static_cast<float*>(output);
         for (size_t i = 0; i < frames_to_copy; ++i) {
             for (int c = 0; c < audio->channels; ++c) {
-                out[i * audio->channels + c] = audio->audio_data[c][current_frame + i];
+                out[i * audio->channels + c] = audio->channel(c)[current_frame + i];
             }
         }
         current_frame += frames_to_copy;
@@ -232,18 +264,18 @@ void speech::io::audio_impl::play(){
 
 // **Save as WAV**
 bool speech::io::audio_impl::save_wav(const std::filesystem::path& output_path) {
-    if (!loaded) {
+    if (!loaded || !samples) {
         SPEECH_LOG(WARNING) << TAG("speech::io::Audio") << "No audio loaded to save!" << std::endl;
         return false;
     }
 
-    size_t num_frames = audio_data[0].size();
+    size_t num_frames = frames;
     std::vector<float> interleaved_data(num_frames * channels);
 
     // Interleave the data from separate channels
     for (size_t i = 0; i < num_frames; ++i) {
         for (int c = 0; c < channels; ++c) {
-            interleaved_data[i * channels + c] = audio_data[c][i];
+            interleaved_data[i * channels + c] = channel(c)[i];
         }
     }
 
@@ -263,8 +295,8 @@ bool speech::io::audio_impl::save_wav(const std::filesystem::path& output_path) 
 }
 
 double speech::io::audio_impl::duration() const {
-    if (audio_data.empty() || audio_data[0].empty()) return 0.0;
-    return static_cast<double>(audio_data[0].size()) / sample_rate;
+    if (!has_samples()) return 0.0;
+    return static_cast<double>(frames) / sample_rate;
 }
 
 void speech::io::audio_impl::to_mono() {
@@ -274,26 +306,23 @@ void speech::io::audio_impl::to_mono() {
     }
 
     // Calculate the number of samples per channel.
-    size_t num_frames = audio_data[0].size();
+    size_t num_frames = frames;
 
     // Create a new mono channel to store the averaged data.
-    std::vector<float> mono_data(num_frames, 0.0f);
+    auto mono = std::make_shared<std::vector<float>>(num_frames, 0.0f);
+    std::vector<float>& mono_data = *mono;
 
     // Average the samples across all channels.
     for (size_t i = 0; i < num_frames; ++i) {
         float sum = 0.0f;
         for (int c = 0; c < channels; ++c) {
-            sum += audio_data[c][i];
+            sum += channel(c)[i];
         }
         mono_data[i] = sum / static_cast<float>(channels);
     }
 
     // Replace the multi-channel data with the mono channel.
-    audio_data.clear();
-    audio_data.push_back(mono_data);
-
-    // Update the number of channels.
-    channels = 1;
+    adopt(std::move(mono), 1, num_frames, sample_rate);
 
     SPEECH_LOG(DEBUG) << TAG("speech::io::Audio") << "Converted to mono audio." << std::endl;
 }
@@ -310,7 +339,9 @@ speech::io::audio::audio() : impl_(std::make_unique<audio_impl>()) {}
 
 speech::io::audio::audio(const audio& other) {
     impl_ = std::make_unique<audio_impl>();
-    impl_->audio_data = other.impl_->audio_data;
+    // A deep copy: the samples may be written through a NumPy view, so two Audio objects never share them.
+    if (other.impl_->samples) impl_->samples = std::make_shared<std::vector<float>>(*other.impl_->samples);
+    impl_->frames = other.impl_->frames;
     impl_->sample_rate = other.impl_->sample_rate;
     impl_->channels = other.impl_->channels;
     impl_->loaded = other.impl_->loaded;
@@ -357,7 +388,11 @@ bool speech::io::audio::save(const std::filesystem::path& output_path) {
 
 // **Get Audio Data**
 std::vector<std::vector<float>> speech::io::audio::data() const {
-    return impl_->audio_data;
+    std::vector<std::vector<float>> out(impl_->has_samples() ? impl_->channels : 0);
+    for (int c = 0; c < static_cast<int>(out.size()); ++c) {
+        out[c].assign(impl_->channel(c), impl_->channel(c) + impl_->frames);
+    }
+    return out;
 }
 
 // **Get Sample Rate**
@@ -384,7 +419,7 @@ speech::io::audio speech::io::audio::resample(int target_sample_rate) const {
     // Perform resampling for each channel
     std::vector<std::vector<float>> resampled_data(impl_->channels);
     for (int c = 0; c < impl_->channels; ++c) {
-        resampled_data[c] = resampler.process(impl_->audio_data[c]);
+        resampled_data[c] = resampler.process(std::vector<float>(impl_->channel(c), impl_->channel(c) + impl_->frames));
     }
 
     resampled_audio.load(resampled_data, target_sample_rate);
@@ -404,21 +439,27 @@ std::vector<float> speech::io::audio::data(int index) const {
             "Invalid channel index: " + std::to_string(index) << std::endl;
         throw std::out_of_range("Invalid channel index: " + std::to_string(index));
     }
-    return impl_->audio_data[index];
+    return std::vector<float>(impl_->channel(index), impl_->channel(index) + impl_->frames);
 }
 size_t speech::io::audio::size() const {
     // Was `this->data(0).size()`, which copied the whole channel just to read its length.
-    return (impl_->channels > 0 && !impl_->audio_data.empty()) ? impl_->audio_data[0].size() : 0;
+    return impl_->has_samples() ? impl_->frames : 0;
 }
 
 const float* speech::io::audio::channel_data(int index, size_t* length) const {
-    if (index < 0 || index >= impl_->channels || index >= static_cast<int>(impl_->audio_data.size())) {
+    if (index < 0 || index >= impl_->channels || !impl_->samples) {
         SPEECH_LOG(ERROR) << TAG("speech::io::Audio") <<
             "Invalid channel index: " + std::to_string(index) << std::endl;
         throw std::out_of_range("Invalid channel index: " + std::to_string(index));
     }
-    if (length) *length = impl_->audio_data[index].size();
-    return impl_->audio_data[index].data();
+    if (length) *length = impl_->frames;
+    return impl_->channel(index);
+}
+
+std::shared_ptr<float> speech::io::audio::shared_samples() const {
+    if (!impl_->samples) return nullptr;
+    // Aliasing constructor: points at the first sample and keeps the whole buffer alive.
+    return std::shared_ptr<float>(impl_->samples, impl_->samples->data());
 }
 
 int speech::io::audio::channels() const {
@@ -426,9 +467,12 @@ int speech::io::audio::channels() const {
 }
 
 speech::io::audio &speech::io::audio::operator=(const speech::io::audio &other) {
+    if (this == &other) return *this;
     impl_.reset();
     impl_ = std::make_unique<audio_impl>();
-    impl_->audio_data = other.impl_->audio_data;
+    // A deep copy: the samples may be written through a NumPy view, so two Audio objects never share them.
+    if (other.impl_->samples) impl_->samples = std::make_shared<std::vector<float>>(*other.impl_->samples);
+    impl_->frames = other.impl_->frames;
     impl_->sample_rate = other.impl_->sample_rate;
     impl_->channels = other.impl_->channels;
     impl_->loaded = other.impl_->loaded;

@@ -79,6 +79,7 @@ cmake --build . -j$(nproc)
 ### Python
 
 ```python
+import numpy as np
 import libspeech
 
 # --- Audio I/O ---
@@ -94,6 +95,10 @@ coefficients = mfcc.compute(resampled.data(0))   # [num_frames][num_coefficients
 
 # --- NumPy: float32 in, NumPy out, no list conversion ---
 x = resampled.to_numpy()                          # float32 1-D array (any float array works)
+
+# Audio <-> arrays: samples are one planar float32 block, shape (channels, samples).
+a = np.asarray(audio)                             # a view, no copy (np.from_dlpack / torch.from_dlpack too)
+audio2 = libspeech.Audio(a, 16000)                # from a 1-D or 2-D array (copied once); also Audio.from_dlpack
 
 # The everyday functions follow librosa: keyword-only n_fft / hop_length / window / center,
 # a one-sided complex64 result of shape (bins, frames), center=True padding.
