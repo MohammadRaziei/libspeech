@@ -11,8 +11,15 @@ This file starts at 0.3.1; older history is in `git log`.
   CPython) and fell back to a source build. The extension modules are built with nanobind's `FREE_THREADED` flag, so
   importing libspeech keeps the GIL off. cibuildwheel 4 no longer builds 3.13t, so `cp313t` has its own
   cibuildwheel 3.x step in `wheels.yml`.
-  `tests/python/test_free_threading.py` checks that importing every module does not re-enable the GIL (skips on
+  `tests/python/test_free_threading.py` checks that importing `import libspeech` does not re-enable the GIL (skips on
   regular interpreters).
+
+### Removed
+- `libspeech.speech_audio_py`: a stale copy of `speech_io_py` (left over from the `bind_audio` -> `bind_io` rename,
+  without `Audio.to_numpy`). Nothing in the package imported it, and importing it made nanobind warn that `Audio` was
+  already registered. Use `libspeech.Audio`.
+
+### Changed
 - Build requirements: `nanobind>=2.2.0` (first version with `FREE_THREADED`), `scikit-build-core>=0.10.7`.
 
 ## 0.4.0 (2026-10-17)

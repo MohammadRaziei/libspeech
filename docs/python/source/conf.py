@@ -44,7 +44,7 @@ napoleon_numpy_docstring = True
 
 # The compiled modules are an implementation detail (libspeech.speech_dsp_py, ...): show every
 # public name as ``libspeech.<name>``.
-_PRIVATE = ("speech_audio_py", "speech_dsp_py", "speech_io_py", "speech_models_py", "_about")
+_PRIVATE = ("speech_dsp_py", "speech_io_py", "speech_models_py", "_about")
 
 
 def _rename(text):
