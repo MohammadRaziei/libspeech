@@ -89,3 +89,36 @@ jobs:
         with:
           password: ${{ secrets.PYPI_PASSWORD }}
           user: ${{ secrets.PYPI_USERNAME }}
+
+  # Publishes the docs built by cmake.yml (the `cmake-documentation` artifact) to GitHub Pages
+  # at https://mohammadraziei.github.io/libspeech. Only on pushes to master, never on tags or PRs.
+  # One-time setup: repository Settings -> Pages -> Source: "GitHub Actions".
+  deploy-docs:
+    if: github.ref == 'refs/heads/master'
+    needs: [ cmake ]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Download documentation artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: cmake-documentation
+          path: site
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
