@@ -20,6 +20,9 @@ This file starts at 0.3.1; older history is in `git log`.
   already registered. Use `libspeech.Audio`.
 
 ### Changed
+- The `test` extra installs librosa/soundfile/scipy only on Python < 3.13 (they have no wheels for every free-threaded
+  build, e.g. no scipy for `cp313t`, and there is no environment marker for free-threading). Where they are absent,
+  `test_librosa_compat.py` skips itself.
 - Build requirements: `nanobind>=2.2.0` (first version with `FREE_THREADED`), `scikit-build-core>=0.10.7`.
 
 ## 0.4.0 (2026-10-17)
