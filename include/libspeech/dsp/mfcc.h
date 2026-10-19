@@ -72,7 +72,14 @@ class SPEECH_API mfcc {
     // sparse mel -> log -> DCT), so no spectrogram is ever materialized.
     mfcc_matrix compute_flat(const float* signal, std::size_t n);
 
+    // Log-mel filterbank energies (the "fbank" feature): the same pipeline as compute_flat() minus the DCT.
+    // Returns a [num_frames][num_mel_filters] matrix (mfcc_matrix::num_coefficients == num_mel_filters),
+    // values are log(mel_energy + 1e-10); MFCCs are exactly the orthonormal DCT-II of these rows.
+    mfcc_matrix compute_log_mel_flat(const float* signal, std::size_t n);
+
    private:
+    mfcc_matrix run(const float* signal, std::size_t n, bool apply_dct);
+
     params params_;
     std::unique_ptr<stft> stft_;
     std::vector<std::vector<float>> mel_filter_bank_;  // [num_mel_filters][fft_length/2 + 1] (dense, reference)

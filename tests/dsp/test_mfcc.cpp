@@ -1,9 +1,11 @@
 #include "utest.h"
 
+#include <algorithm>
 #include <cmath>
 #include <stdexcept>
 #include <vector>
 
+#include "libspeech/dsp/dct.h"
 #include "libspeech/dsp/mfcc.h"
 
 namespace {
@@ -126,3 +128,82 @@ UTEST(mfcc, too_many_coefficients_throws) {
     ASSERT_TRUE(threw);
 }
 
+
+// ---- log-mel (fbank) -------------------------------------------------------------------------
+
+UTEST(mfcc, log_mel_shape_is_frames_by_mel_filters) {
+    speech::dsp::mfcc::params params;
+    params.sample_rate = 16000;
+    params.num_mel_filters = 26;
+    params.num_coefficients = 13;
+    params.radix2_exp = 9;
+    speech::dsp::mfcc mfcc(params);
+
+    auto signal = make_sine(512 + 128 * 9, 440.0f, 16000);
+    auto mel = mfcc.compute_log_mel_flat(signal.data(), signal.size());
+
+    ASSERT_EQ(mel.num_frames, 10);
+    ASSERT_EQ(mel.num_coefficients, 26);  // mel bands, not cepstral coefficients
+    ASSERT_EQ(mel.data.size(), static_cast<size_t>(10 * 26));
+}
+
+// MFCC is by definition the orthonormal DCT-II of the log-mel row: recomputing it from the
+// log-mel output with an independent dct_ii_plan must reproduce compute_flat() frame by frame.
+UTEST(mfcc, log_mel_followed_by_dct_equals_mfcc) {
+    speech::dsp::mfcc::params params;
+    params.sample_rate = 16000;
+    params.num_mel_filters = 40;
+    params.num_coefficients = 13;
+    params.radix2_exp = 9;
+    speech::dsp::mfcc mfcc(params);
+
+    auto signal = make_sine(16000, 1000.0f, 16000);
+    for (std::size_t i = 0; i < signal.size(); ++i) signal[i] += 0.1f * std::sin(0.37f * i);
+
+    auto mel = mfcc.compute_log_mel_flat(signal.data(), signal.size());
+    auto ref = mfcc.compute_flat(signal.data(), signal.size());
+    ASSERT_EQ(mel.num_frames, ref.num_frames);
+
+    speech::dsp::dct_ii_plan dct(40, 13, /*orthonormal=*/true);
+    std::vector<float> row(13);
+    float worst = 0.0f;
+    for (int f = 0; f < ref.num_frames; ++f) {
+        dct.apply(mel.data.data() + static_cast<size_t>(f) * 40, row.data());
+        for (int c = 0; c < 13; ++c) {
+            worst = std::max(worst, std::fabs(row[c] - ref.data[static_cast<size_t>(f) * 13 + c]));
+        }
+    }
+    ASSERT_LT(worst, 1e-4f);
+}
+
+// A pure tone must light up the mel band containing it far more than a band an octave+ away.
+UTEST(mfcc, log_mel_peaks_in_the_band_of_the_tone) {
+    speech::dsp::mfcc::params params;
+    params.sample_rate = 16000;
+    params.num_mel_filters = 40;
+    params.num_coefficients = 13;
+    params.radix2_exp = 10;
+    speech::dsp::mfcc mfcc(params);
+
+    auto low = make_sine(8000, 300.0f, 16000);
+    auto high = make_sine(8000, 4000.0f, 16000);
+    auto mel_low = mfcc.compute_log_mel_flat(low.data(), low.size());
+    auto mel_high = mfcc.compute_log_mel_flat(high.data(), high.size());
+
+    const int frame = mel_low.num_frames / 2;
+    auto argmax = [&](const speech::dsp::mfcc_matrix& m) {
+        const float* r = m.data.data() + static_cast<size_t>(frame) * 40;
+        return static_cast<int>(std::max_element(r, r + 40) - r);
+    };
+    ASSERT_LT(argmax(mel_low), 12);
+    ASSERT_GT(argmax(mel_high), 25);
+}
+
+UTEST(mfcc, log_mel_of_empty_signal_is_empty) {
+    speech::dsp::mfcc::params params;
+    params.sample_rate = 16000;
+    speech::dsp::mfcc mfcc(params);
+    std::vector<float> tiny(10, 0.0f);
+    auto mel = mfcc.compute_log_mel_flat(tiny.data(), tiny.size());
+    ASSERT_EQ(mel.num_frames, 0);
+}

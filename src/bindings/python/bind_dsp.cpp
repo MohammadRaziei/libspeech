@@ -369,6 +369,20 @@ NB_MODULE(NB_MODULE_NAME, m) {
              nb::arg("signal"),
              "Float32 1-D array in; returns a float32 NumPy array of shape "
              "(num_frames, num_coefficients).")
+        .def("log_mel",
+             [](speech::dsp::mfcc& self, speech::py::in_array_1d x) {
+                 speech::dsp::mfcc_matrix m;
+                 {
+                     nb::gil_scoped_release release;
+                     m = self.compute_log_mel_flat(x.data(), x.size());
+                 }
+                 const std::size_t frames = static_cast<std::size_t>(m.num_frames);
+                 const std::size_t bands = static_cast<std::size_t>(m.num_coefficients);
+                 return speech::py::wrap<speech::py::out_array_2d>(std::move(m.data), {frames, bands});
+             },
+             nb::arg("signal"),
+             "Float32 1-D array in; returns float32 log-mel filterbank energies of shape "
+             "(num_frames, num_mel_filters). `compute` is the orthonormal DCT-II of these rows.")
         .def("compute", &speech::dsp::mfcc::compute, nb::arg("signal"),
              "Returns a [num_frames][num_coefficients] matrix of MFCCs.");
 }

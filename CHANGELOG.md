@@ -6,6 +6,11 @@ This file starts at 0.3.1; older history is in `git log`.
 ## Unreleased
 
 ### Added
+- **Log-mel filterbank features.** `mfcc::compute_log_mel_flat()` (C++) and `MFCC.log_mel(x)` (Python) return the
+  `(num_frames, num_mel_filters)` log-mel energies the MFCC pipeline already computed internally, without the DCT
+  (the usual "fbank" model input). MFCCs are exactly the orthonormal DCT-II of these rows; tests check that against
+  an independent DCT (`dct_ii_plan` in C++, `scipy.fft.dct` in Python).
+
 - **Free-threaded Python wheels (`cp313t`, `cp314t`, `cp315t`).** Until now `pip install libspeech` on a free-threaded
   interpreter found no wheel (the `cp312-abi3` wheel does not exist for them: abi3 is not available on free-threaded
   CPython) and fell back to a source build. The extension modules are built with nanobind's `FREE_THREADED` flag, so

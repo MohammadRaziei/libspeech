@@ -105,3 +105,44 @@ def test_resample_quality_levels():
         assert float(np.abs(y[mid] - ref[mid]).max()) < 0.01, quality  # same tone, same phase
     with pytest.raises(ValueError):
         libspeech.Resample(44100, 16000, "ultra")
+
+
+def _mfcc(num_mel=40, num_coef=13, exp=9):
+    params = libspeech.MFCCParams()
+    params.sample_rate = 16000
+    params.num_mel_filters = num_mel
+    params.num_coefficients = num_coef
+    params.radix2_exp = exp
+    return libspeech.MFCC(params)
+
+
+def test_mfcc_log_mel_shape_and_dtype():
+    np = pytest.importorskip("numpy")
+    x = np.asarray(make_sine(16000, 440.0, 16000), dtype=np.float32)
+    mel = _mfcc(num_mel=26).log_mel(x)
+    assert mel.dtype == np.float32
+    assert mel.ndim == 2 and mel.shape[1] == 26
+    assert mel.shape[0] == len(_mfcc(num_mel=26).compute(x))
+    assert np.isfinite(mel).all()
+
+
+def test_mfcc_is_orthonormal_dct_of_log_mel():
+    np = pytest.importorskip("numpy")
+    scipy_fft = pytest.importorskip("scipy.fft")
+    rng = np.random.default_rng(0)
+    x = (np.asarray(make_sine(16000, 700.0, 16000)) + 0.05 * rng.standard_normal(16000)).astype(np.float32)
+    m = _mfcc(num_mel=40, num_coef=13)
+    mel = m.log_mel(x)
+    ref = scipy_fft.dct(mel.astype(np.float64), type=2, norm="ortho", axis=1)[:, :13]
+    got = np.asarray(m.compute(x))
+    assert got.shape == ref.shape
+    np.testing.assert_allclose(got, ref, atol=2e-3)
+
+
+def test_mfcc_log_mel_tone_lands_in_expected_band():
+    np = pytest.importorskip("numpy")
+    m = _mfcc(num_mel=40, exp=10)
+    low = m.log_mel(np.asarray(make_sine(8000, 300.0, 16000), dtype=np.float32))
+    high = m.log_mel(np.asarray(make_sine(8000, 4000.0, 16000), dtype=np.float32))
+    assert low[low.shape[0] // 2].argmax() < 12
+    assert high[high.shape[0] // 2].argmax() > 25

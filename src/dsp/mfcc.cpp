@@ -131,12 +131,20 @@ std::vector<std::vector<float>> mfcc::build_mel_filter_bank(int num_mel_filters,
 }
 
 mfcc_matrix mfcc::compute_flat(const float* signal, std::size_t n) {
+    return run(signal, n, /*apply_dct=*/true);
+}
+
+mfcc_matrix mfcc::compute_log_mel_flat(const float* signal, std::size_t n) {
+    return run(signal, n, /*apply_dct=*/false);
+}
+
+mfcc_matrix mfcc::run(const float* signal, std::size_t n, bool apply_dct) {
     constexpr float log_epsilon = 1e-10f;
     const int fft_length = stft_->fft_length();
     const int num_bins = fft_length / 2 + 1;
     const int num_frames = stft_->cal_time_length(static_cast<int>(n));
     const int num_mel = params_.num_mel_filters;
-    const int num_coef = params_.num_coefficients;
+    const int num_coef = apply_dct ? params_.num_coefficients : num_mel;  // columns per output frame
 
     mfcc_matrix out;
     out.num_coefficients = num_coef;
@@ -175,13 +183,18 @@ mfcc_matrix mfcc::compute_flat(const float* signal, std::size_t n) {
                     }
                     mel_buf[m] = std::log(energy + log_epsilon);
                 }
-                dct_->apply(mel_buf, out_data + static_cast<std::size_t>(f0 + fr) * num_coef);
+                float* dst = out_data + static_cast<std::size_t>(f0 + fr) * num_coef;
+                if (apply_dct) {
+                    dct_->apply(mel_buf, dst);
+                } else {
+                    std::copy(mel_buf, mel_buf + num_mel, dst);
+                }
             }
         }
     }
 
-    SPEECH_LOG(DEBUG) << TAG(log_tag) << "Computed MFCC: " << n << " samples -> " << num_frames
-               << " frames x " << num_coef << " coefficients." << std::endl;
+    SPEECH_LOG(DEBUG) << TAG(log_tag) << (apply_dct ? "Computed MFCC: " : "Computed log-mel: ") << n << " samples -> " << num_frames
+               << " frames x " << num_coef << (apply_dct ? " coefficients." : " mel bands.") << std::endl;
     return out;
 }
 
