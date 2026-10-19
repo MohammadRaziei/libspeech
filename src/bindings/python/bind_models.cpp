@@ -206,6 +206,22 @@ NB_MODULE(NB_MODULE_NAME, m) {
              "Runs voice-activity detection over the full input audio "
              "(mono, [-1, 1]-normalized floats at the model's sample_rate).",
              nb::arg("input_audio"))
+        .def("feed",
+             [](speech::models::silero_vad_model& self, const std::vector<float>& chunk) {
+                 self.feed(chunk.data(), chunk.size());
+             },
+             nb::arg("chunk"),
+             "Streaming: appends a chunk of audio (any length; mono, [-1, 1] floats at the model's sample_rate). "
+             "Complete windows are processed right away. Splitting the audio differently never changes the result: "
+             "feed(all) + finish() equals process(all).")
+        .def("finish", &speech::models::silero_vad_model::finish,
+             "Streaming: ends the stream and closes a speech segment that is still open.")
+        .def("pop_speech_timestamps", &speech::models::silero_vad_model::pop_speech_timestamps,
+             "Streaming: the segments completed since the previous call (each is returned once).")
+        .def_prop_ro("in_speech", &speech::models::silero_vad_model::in_speech,
+                     "True while a speech segment has started and its end is not decided yet.")
+        .def_prop_ro("samples_fed", &speech::models::silero_vad_model::samples_fed,
+                     "Samples fed since the last reset().")
         .def("get_speech_timestamps", &speech::models::silero_vad_model::get_speech_timestamps,
              "Returns the detected speech segments (call after process()).")
         .def("reset", &speech::models::silero_vad_model::reset,

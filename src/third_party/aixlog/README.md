@@ -8,5 +8,5 @@ here directly instead, to avoid an extra submodule clone/init step for
 something this small.
 
 Unmodified from upstream. If libspeech ever needs to patch this header,
-document the change the same way as `/audioflux_issues.md` does for
+document the change the same way as `../audioflux/ISSUES.md` does for
 AudioFlux.

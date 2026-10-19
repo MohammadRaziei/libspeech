@@ -41,7 +41,7 @@ its tests are green (see `AGENTS`/conversation ground rules).
   - [x] TDD tests (`tests/dsp/test_resample.cpp`), 5/5 passing
   - [x] Found + fixed AudioFlux bug: `sourceRate==targetRate` corrupts ratio (Issue 1)
   - [x] Found + fixed amplitude bug: `isScale=1` energy-scales output ~1.66x on downsample (Issue 2)
-  - [x] Documented both in `/audioflux_issues.md`
+  - [x] Documented both in `src/third_party/audioflux/ISSUES.md` (originally `/audioflux_issues.md`)
 - [x] Wire DSP layer into main CMake build: new lightweight `speech_dsp` static
   library target (src/dsp/*.cpp + vendored audioflux, no ONNXRuntime/CURL
   dependency), `tests/CMakeLists.txt` wiring all 6 DSP test suites via
@@ -139,7 +139,7 @@ its tests are green (see `AGENTS`/conversation ground rules).
 
 ## Documentation
 
-- [x] `/audioflux_issues.md` — running log of every AudioFlux bug/quirk found + fixed, PR-ready
+- [x] `src/third_party/audioflux/ISSUES.md` (moved from the project root `/audioflux_issues.md`) — running log of every AudioFlux bug/quirk found + fixed, PR-ready
 - [x] `src/third_party/audioflux/README.md` — explains why vendored instead of submoduled
 - [x] Update root `README.md` Quick Start to match actual current API —
   the Quick Start itself was already fixed (real `Audio`/`MFCC`/`Denoiser`/
@@ -162,7 +162,7 @@ its tests are green (see `AGENTS`/conversation ground rules).
   methods (it takes only `input_audio`), the undocumented `sample_rate` on
   `ONNXModel`'s constructor, and a copy-pasted "Destructor for
   FacebookDenoiser" on `SpeechBrainDenoiser`. Also: README's relative links
-  to `checklist.md`/`audioflux_issues.md`/`CONTRIBUTING.md` only resolve if
+  to `checklist.md`/`ISSUES.md`/`CONTRIBUTING.md` only resolve if
   those files are in Doxygen's `INPUT` (added), and Doxygen's markdown
   parser choked on two multi-line `**bold**` spans and a `__repr__`-style
   dunder name in `checklist.md` (reworded).
@@ -613,3 +613,21 @@ Previously: `speech_dsp`/`speech_io`/`speech_models` (C++ static libs) but
   **Note:** `benchmarks/cpp/CMakeLists.txt` points at the real
   `https://github.com/MohammadRaziei/libspeech.git` (`master` branch) for
   actual use -- it will only succeed once these changes are pushed there.
+
+## Open items: speed of the new feature extractors (log-mel, delta)
+
+- [ ] **Speed not measured, not optimized**: `mfcc::compute_log_mel_flat()` / `MFCC.log_mel()` and `speech::dsp::delta()` /
+  `libspeech.delta()` were added with correctness tests only (C++ unit tests, plus cross-checks against librosa and
+  an independent NumPy reference in `tests/python/test_dsp.py`). No timing or memory numbers exist for them yet, and
+  they are not in `benchmarks/`.
+- [ ] `delta()` is a plain scalar loop: no OpenMP, no SIMD kernel (`simd.h`), no blocking. Frames are independent,
+  so it should parallelize the way `mfcc::run()` does (`#pragma omp parallel if (num_frames >= N)`); the right
+  threshold needs a measurement first.
+- [ ] `log_mel` shares `mfcc::run()` with MFCC, so it inherits that function's OpenMP path, but nobody has timed the
+  OpenMP-vs-serial difference for it either.
+- [ ] Add `log_mel` and `delta` to the Python benchmark suite (`benchmarks/python/`, `benchmarks/report/`). Not
+  comparable 1:1 with librosa: librosa's mel scale is Slaney with area normalization, libspeech uses HTK triangular
+  filters, so such a row only says "speed of the same call with these parameters", like the MFCC row.
+- [ ] **Multi-core is still untested.** The dev sandbox has 1 core (`nproc` = 1), so any OpenMP speedup claim
+  (STFT, MFCC, log-mel, delta) needs a re-run on a real multi-core machine before it goes into a README or paper.
+  Timing noise on this sandbox is 5-15 %, so improvements of a few percent can't be confirmed here either.

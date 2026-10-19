@@ -582,7 +582,7 @@ resample::resample(int source_rate, int target_rate)
     // resampling by default for a general audio pipeline (feeding VAD,
     // denoisers, playback, etc.); advanced users who want the energy-scaled
     // behavior can use the extended constructor with is_scale=true.
-    // Full write-up: /audioflux_issues.md (Issue 2).
+    // Full write-up: src/third_party/audioflux/ISSUES.md (Issue 2).
     if (is_identity) {
         SPEECH_LOG(DEBUG) << TAG(log_tag) << "Source/target rate both " << source_rate
                    << "Hz; using identity passthrough (skipping AudioFlux)." << std::endl;

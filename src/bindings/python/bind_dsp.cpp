@@ -7,6 +7,7 @@
 
 #include "libspeech/dsp/dct.h"
 #include "libspeech/dsp/fft.h"
+#include "libspeech/dsp/delta.h"
 #include "libspeech/dsp/mfcc.h"
 #include "libspeech/dsp/resample.h"
 #include "libspeech/dsp/simd.h"
@@ -385,4 +386,41 @@ NB_MODULE(NB_MODULE_NAME, m) {
              "(num_frames, num_mel_filters). `compute` is the orthonormal DCT-II of these rows.")
         .def("compute", &speech::dsp::mfcc::compute, nb::arg("signal"),
              "Returns a [num_frames][num_coefficients] matrix of MFCCs.");
+
+    // --- delta -----------------------------------------------------------
+    m.def(
+        "delta",
+        [](speech::py::in_array_2d x, int half_window, int order, const std::string& edge_name) {
+            speech::dsp::delta_edge edge;
+            if (edge_name == "replicate") {
+                edge = speech::dsp::delta_edge::replicate;
+            } else if (edge_name == "interp") {
+                edge = speech::dsp::delta_edge::interp;
+            } else {
+                throw std::invalid_argument("edge must be 'replicate' or 'interp'.");
+            }
+            if (order < 1) throw std::invalid_argument("order must be >= 1.");
+            const int frames = static_cast<int>(x.shape(0));
+            const int features = static_cast<int>(x.shape(1));
+            speech::detail::uninit_vector<float> cur;
+            {
+                nb::gil_scoped_release release;
+                cur.resize(static_cast<std::size_t>(frames) * features);
+                speech::dsp::delta_into(x.data(), frames, features, half_window, edge, cur.data());
+                for (int o = 1; o < order; ++o) {
+                    speech::detail::uninit_vector<float> next;
+                    next.resize(cur.size());
+                    speech::dsp::delta_into(cur.data(), frames, features, half_window, edge, next.data());
+                    cur = std::move(next);
+                }
+            }
+            return speech::py::wrap<speech::py::out_array_2d>(
+                std::move(cur), {static_cast<std::size_t>(frames), static_cast<std::size_t>(features)});
+        },
+        nb::arg("features"), nb::arg("half_window") = 2, nb::arg("order") = 1, nb::arg("edge") = "replicate",
+        "Delta features of a float32 (num_frames, num_features) array: the least-squares slope over a "
+        "(2*half_window+1)-frame window. order=2 is delta-delta (delta applied twice, as in HTK/Kaldi; this is not "
+        "librosa's order=2, which is a quadratic-fit second derivative). edge='replicate' (HTK/Kaldi/torchaudio) "
+        "repeats the edge frame; edge='interp' matches librosa.feature.delta(width=2*half_window+1, "
+        "mode='interp') and needs at least 2*half_window+1 frames.");
 }

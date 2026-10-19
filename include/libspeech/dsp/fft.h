@@ -67,7 +67,7 @@ class SPEECH_API fft {
     std::vector<float> dct(const std::vector<float>& data, bool is_norm = true);
 
     // Inverse of dct(). Does NOT mutate the caller's `data` (see
-    // audioflux_issues.md, Issue 3 -- the underlying AudioFlux call mutates
+    // third_party/audioflux/ISSUES.md, Issue 3 -- the underlying AudioFlux call mutates
     // its input in place, so we pass it a copy internally).
     std::vector<float> idct(const std::vector<float>& data, bool is_norm = true);
 

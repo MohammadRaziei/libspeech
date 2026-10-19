@@ -83,7 +83,7 @@ UTEST(fft, dct_idct_round_trip) {
 }
 
 UTEST(fft, idct_does_not_mutate_input) {
-    // Regression test for audioflux_issues.md Issue 3: AudioFlux's
+    // Regression test for third_party/audioflux/ISSUES.md Issue 3: AudioFlux's
     // fftObj_idct() mutates its input array in place. Our wrapper must copy
     // internally so the caller's vector is untouched.
     const int n = 64;

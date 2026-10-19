@@ -7,9 +7,10 @@
 
 #include "libspeech/models/onnx_model.h"
 
+#include <cmath>
+#include <cstddef>
 #include <string>
 #include <vector>
-#include <cmath>
 
 #include "libspeech/utils/utils.h"
 #include "libspeech/export.h"
@@ -71,6 +72,36 @@ class SPEECH_API silero_vad_model : public onnx_model {
     // Returns the detected speech timestamps.
     const std::vector<speech_timestamp> get_speech_timestamps() const;
 
+    // ---- Streaming -------------------------------------------------------------------------
+    // Feed audio in chunks of any size (a microphone callback, a socket, ...) instead of one whole vector.
+    // Typical loop:
+    //     vad.reset();
+    //     for each chunk: vad.feed(chunk.data(), chunk.size());
+    //                     for (auto& seg : vad.pop_speech_timestamps()) ...   // segments that just ended
+    //     vad.finish();                                                    // end of audio: closes an open segment
+    //     for (auto& seg : vad.pop_speech_timestamps()) ...
+    // Timestamps are in samples counted from the last reset(). process_on_vector() is implemented as
+    // reset() + feed(all) + finish(), so streaming gives exactly the same segments as the batch call no matter
+    // how the audio is split into chunks. Not thread-safe (same as the rest of this class).
+
+    // Appends `n` samples (mono, [-1, 1], at the model's sample rate). Complete windows are processed
+    // immediately; a partial window is kept until the next call.
+    void feed(const float* data, std::size_t n);
+
+    // Ends the stream: an open speech segment is closed at the last sample fed. A trailing partial window is
+    // dropped (as in process_on_vector). Call reset() before feeding unrelated audio.
+    void finish();
+
+    // Segments completed since the previous call (each segment is returned once). A segment is only reported
+    // after the silence that ends it has been seen, or by finish(). get_speech_timestamps() keeps returning all.
+    std::vector<speech_timestamp> pop_speech_timestamps();
+
+    // True while a speech segment is open (speech has started and its end has not been decided yet).
+    bool in_speech() const { return triggered; }
+
+    // Samples fed since the last reset().
+    std::size_t samples_fed() const { return total_fed; }
+
     // Public method to reset the internal state.
     void reset();
 
@@ -119,6 +150,11 @@ class SPEECH_API silero_vad_model : public onnx_model {
     float max_speech_samples;
     int speech_pad_samples;
     int audio_length_samples;
+
+    // Streaming state: samples waiting for a complete window, total fed, and how many of `speeches` pop_*() returned.
+    std::vector<float> pending;
+    std::size_t total_fed = 0;
+    std::size_t popped = 0;
 
     // State management
     bool triggered = false;

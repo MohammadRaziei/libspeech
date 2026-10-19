@@ -11,6 +11,19 @@ This file starts at 0.3.1; older history is in `git log`.
   (the usual "fbank" model input). MFCCs are exactly the orthonormal DCT-II of these rows; tests check that against
   an independent DCT (`dct_ii_plan` in C++, `scipy.fft.dct` in Python).
 
+- **Streaming `SileroVad`.** `feed(chunk)`, `pop_speech_timestamps()`, `finish()`, plus `in_speech` and `samples_fed`
+  (C++ and Python) let audio arrive in chunks of any size (microphone callback, socket) and report each speech
+  segment as soon as the silence that ends it has been seen. `process()` is now implemented as `reset()` +
+  `feed(all)` + `finish()`, so every chunking gives exactly the segments the batch call gives (tested with
+  chunk sizes from 1 sample to 4000, against the real model).
+
+- **Delta / delta-delta features.** `speech::dsp::delta()` / `delta_into()` (C++, `dsp/delta.h`) and
+  `libspeech.delta(features, half_window=2, order=1, edge="replicate")` (Python) compute the least-squares slope of each
+  feature column over a `2*half_window+1` frame window (the HTK/Kaldi regression formula); `order=2` applies it twice
+  (delta-delta). `edge="replicate"` repeats the edge frame (HTK, Kaldi, torchaudio); `edge="interp"` matches
+  `librosa.feature.delta(width=2*half_window+1, mode="interp")` on the whole matrix. Note that librosa's own `order=2`
+  is a different quantity (second derivative of a quadratic fit), not delta applied twice.
+
 - **Free-threaded Python wheels (`cp313t`, `cp314t`, `cp315t`).** Until now `pip install libspeech` on a free-threaded
   interpreter found no wheel (the `cp312-abi3` wheel does not exist for them: abi3 is not available on free-threaded
   CPython) and fell back to a source build. The extension modules are built with nanobind's `FREE_THREADED` flag, so

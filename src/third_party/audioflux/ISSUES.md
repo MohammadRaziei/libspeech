@@ -153,7 +153,7 @@ AudioFlux, so waveform amplitude is preserved by default:
 
 ```cpp
 // src/dsp/resample.cpp
-int is_scale = 0;  // amplitude-preserving default; see audioflux_issues.md
+int is_scale = 0;  // amplitude-preserving default; see ISSUES.md
 ```
 
 The extended constructor (`Resample(sourceRate, targetRate, zeroNum, nbit,

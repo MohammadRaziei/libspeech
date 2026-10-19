@@ -95,7 +95,7 @@ built test-first with `tests/utest/utest.h` (a vendored single-header
 framework -- see below), asserting real mathematical properties (impulse
 response, energy compaction, round-trip identity) rather than mocking
 internals. This caught several real bugs before they shipped -- see
-`audioflux_issues.md` for concrete examples with repro steps. Please follow
+`src/third_party/audioflux/ISSUES.md` for concrete examples with repro steps. Please follow
 the same approach for new DSP/model code: write the test against the
 expected real behavior first, then make it pass.
 
@@ -143,7 +143,7 @@ what's already vendored under `src/third_party/`:
 1. Copy only the specific `.c`/`.h` files actually needed (not the whole
    upstream project) into `src/third_party/<name>/`.
 2. If you need to patch the vendored code, document the patch --
-   what/why/before-after -- in `audioflux_issues.md` (or a new file
+   what/why/before-after -- in `src/third_party/audioflux/ISSUES.md` (or a new file
    following that structure for a different vendored project), so it can
    become an upstream PR later.
 3. Security/network-critical code is a different story: `httpp`

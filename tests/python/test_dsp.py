@@ -121,7 +121,8 @@ def test_mfcc_log_mel_shape_and_dtype():
     x = np.asarray(make_sine(16000, 440.0, 16000), dtype=np.float32)
     mel = _mfcc(num_mel=26).log_mel(x)
     assert mel.dtype == np.float32
-    assert mel.ndim == 2 and mel.shape[1] == 26
+    assert mel.ndim == 2
+    assert mel.shape[1] == 26
     assert mel.shape[0] == len(_mfcc(num_mel=26).compute(x))
     assert np.isfinite(mel).all()
 
@@ -146,3 +147,70 @@ def test_mfcc_log_mel_tone_lands_in_expected_band():
     high = m.log_mel(np.asarray(make_sine(8000, 4000.0, 16000), dtype=np.float32))
     assert low[low.shape[0] // 2].argmax() < 12
     assert high[high.shape[0] // 2].argmax() > 25
+
+
+# ---- delta features (cross-checked against librosa and an independent NumPy reference) -----------------
+
+
+def _delta_replicate_reference(x, half_window):
+    """Straight-from-the-definition float64 reference with replicate padding; x is (frames, features)."""
+    np = pytest.importorskip("numpy")
+    T = x.shape[0]
+    den = 2 * sum(n * n for n in range(1, half_window + 1))
+    out = np.zeros(x.shape, dtype=np.float64)
+    for t in range(T):
+        for n in range(1, half_window + 1):
+            out[t] += n * (x[min(t + n, T - 1)] - x[max(t - n, 0)])
+    return out / den
+
+
+@pytest.mark.parametrize("half_window", [1, 2, 4])
+def test_delta_replicate_matches_numpy_reference(half_window):
+    np = pytest.importorskip("numpy")
+    x = np.random.default_rng(1).standard_normal((50, 13)).astype(np.float32)
+    got = libspeech.delta(x, half_window=half_window)
+    np.testing.assert_allclose(got, _delta_replicate_reference(x.astype(np.float64), half_window), atol=1e-5)
+
+
+@pytest.mark.parametrize("half_window", [1, 2, 4])
+@pytest.mark.parametrize("order", [1, 2])
+def test_delta_interp_matches_librosa(half_window, order):
+    np = pytest.importorskip("numpy")
+    librosa = pytest.importorskip("librosa")
+    x = np.random.default_rng(2).standard_normal((60, 13)).astype(np.float32)  # (frames, features)
+    # librosa wants (features, frames) and a window width of 2*half_window + 1. Our order=2 is delta-delta in the
+    # HTK/Kaldi sense (delta applied twice), so the reference applies librosa's order=1 twice: librosa's own
+    # order=2 is a different quantity (second derivative of a quadratic Savitzky-Golay fit).
+    want = x.T.astype(np.float64)
+    for _ in range(order):
+        want = librosa.feature.delta(want, width=2 * half_window + 1, order=1, axis=-1, mode="interp")
+    want = want.T
+    got = libspeech.delta(x, half_window=half_window, order=order, edge="interp")
+    assert got.shape == x.shape
+    assert got.dtype == np.float32
+    np.testing.assert_allclose(got, want, atol=2e-5)
+
+
+def test_delta_of_real_mfcc_matches_librosa_on_libspeech_features():
+    np = pytest.importorskip("numpy")
+    librosa = pytest.importorskip("librosa")
+    x = np.asarray(make_sine(16000, 440.0, 16000), dtype=np.float32)
+    x += 0.1 * np.random.default_rng(3).standard_normal(x.size).astype(np.float32)
+    feats = np.asarray(_mfcc(num_mel=40, num_coef=13).compute(x), dtype=np.float32)
+    d1 = librosa.feature.delta(feats.T.astype(np.float64), width=9, order=1, axis=-1, mode="interp")
+    want = librosa.feature.delta(d1, width=9, order=1, axis=-1, mode="interp").T
+    got = libspeech.delta(feats, half_window=4, order=2, edge="interp")
+    np.testing.assert_allclose(got, want, atol=1e-4)
+
+
+def test_delta_argument_validation():
+    np = pytest.importorskip("numpy")
+    x = np.zeros((4, 3), dtype=np.float32)
+    with pytest.raises(ValueError):
+        libspeech.delta(x, edge="nearest")
+    with pytest.raises(ValueError):
+        libspeech.delta(x, order=0)
+    with pytest.raises(ValueError):
+        libspeech.delta(x, half_window=0)
+    with pytest.raises(ValueError):
+        libspeech.delta(x, half_window=2, edge="interp")  # 4 frames < 2*2+1

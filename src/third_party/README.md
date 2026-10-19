@@ -26,7 +26,7 @@ git submodule update --init src/third_party/miniaudio
 - **`audioflux/`** — a subset of [libAudioFlux/audioflux](https://github.com/libAudioFlux/audioflux)'s
   C sources, powering `speech::dsp::Resample`, `speech::dsp::window`,
   `speech::dsp::FFT`, and `speech::dsp::STFT`. See `audioflux/README.md` and
-  `/audioflux_issues.md` (project root) for what's vendored and why.
+  `audioflux/ISSUES.md` for what's vendored and why.
 - **`aixlog/`** — [badaix/aixlog](https://github.com/badaix/aixlog)'s single
   header (`aixlog.hpp`), used project-wide for logging. See `aixlog/README.md`.
 

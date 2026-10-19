@@ -19,6 +19,9 @@ void silero_vad_model::reset_states() {
     speeches.clear();
     current_speech = speech_timestamp();
     std::fill(_context.begin(), _context.end(), 0.0f);
+    pending.clear();
+    total_fed = 0;
+    popped = 0;
 }
 
 // Inference: runs inference on one chunk of input data.
@@ -164,19 +167,33 @@ void silero_vad_model::init_node_names() {
     has_sr_input = n_in == 3;
 }
 
-// Process the entire audio input.
+// Process the entire audio input: exactly reset() + feed(all) + finish().
 void silero_vad_model::process_on_vector(const std::vector<float>& input_wav) {
     reset_states();
-    audio_length_samples = static_cast<int>(input_wav.size());
+    feed(input_wav.data(), input_wav.size());
+    finish();
+}
 
-    // Process audio in chunks of window_size_samples (e.g., 512 samples)
-    for (size_t j = 0; j < static_cast<size_t>(audio_length_samples); j += static_cast<size_t>(window_size_samples)) {
-        if (j + static_cast<size_t>(window_size_samples) > static_cast<size_t>(audio_length_samples))
-            break;
-        std::vector<float> chunk(&input_wav[j], &input_wav[j] + window_size_samples);
+void silero_vad_model::feed(const float* data, std::size_t n) {
+    if (n == 0) return;
+    if (data == nullptr) throw std::invalid_argument("silero_vad_model::feed: null data.");
+    pending.insert(pending.end(), data, data + n);
+    total_fed += n;
+
+    // Process every complete window (e.g. 512 samples); the remainder waits for the next call.
+    const std::size_t window = static_cast<std::size_t>(window_size_samples);
+    std::size_t consumed = 0;
+    while (pending.size() - consumed >= window) {
+        std::vector<float> chunk(pending.begin() + static_cast<std::ptrdiff_t>(consumed),
+                                 pending.begin() + static_cast<std::ptrdiff_t>(consumed + window));
         predict(chunk);
+        consumed += window;
     }
+    pending.erase(pending.begin(), pending.begin() + static_cast<std::ptrdiff_t>(consumed));
+}
 
+void silero_vad_model::finish() {
+    audio_length_samples = static_cast<int>(total_fed);
     if (current_speech.start >= 0) {
         current_speech.end = audio_length_samples;
         speeches.push_back(current_speech);
@@ -186,6 +203,12 @@ void silero_vad_model::process_on_vector(const std::vector<float>& input_wav) {
         temp_end = 0;
         triggered = false;
     }
+}
+
+std::vector<speech_timestamp> silero_vad_model::pop_speech_timestamps() {
+    std::vector<speech_timestamp> out(speeches.begin() + static_cast<std::ptrdiff_t>(popped), speeches.end());
+    popped = speeches.size();
+    return out;
 }
 
 // Returns the detected speech timestamps.

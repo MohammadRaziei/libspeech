@@ -24,7 +24,7 @@ vector/complex ops, wave utils (for `speech::dsp::Resample` and
 built on top of the FFT engine and windowing).
 
 **Modifications:** any change made to this code vs. the original upstream
-source is recorded in `/audioflux_issues.md` (project root), so it can be
+source is recorded in [`ISSUES.md`](ISSUES.md), so it can be
 turned into a PR against AudioFlux later. Do not silently edit these files
 without adding an entry there.
 

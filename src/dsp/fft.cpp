@@ -137,7 +137,7 @@ void fft::dct_into(const float* data, float* out, bool is_norm) {
 void fft::idct_into(const float* data, float* out, bool is_norm) {
     require_buffers(data, out, "idct_into()");
     // AudioFlux's fftObj_idct() mutates data_arr1 (its first argument) in place -- see
-    // audioflux_issues.md, Issue 3. It gets a private copy so callers never see their input
+    // third_party/audioflux/ISSUES.md, Issue 3. It gets a private copy so callers never see their input
     // silently modified.
     detail::uninit_vector<float> input_copy(data, data + length_);
     fftObj_idct(fft_obj_, input_copy.data(), out, is_norm ? 1 : 0);

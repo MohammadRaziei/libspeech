@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://github.com/MohammadRaziei/libspeech">
-    <img src="https://raw.githubusercontent.com/MohammadRaziei/libspeech/master/docs/logo/libspeech-logo-pods.svg" alt="libspeech logo" width="280">
+    <img src="https://raw.githubusercontent.com/MohammadRaziei/libspeech/master/docs/logo/libspeech-logo.svg" alt="libspeech logo" width="280">
   </a>
 </p>
 
@@ -24,7 +24,7 @@ spectral features, and runs speech-enhancement and voice-activity models on ONNX
 PyTorch. The Python API works on NumPy arrays and follows librosa where the two overlap.
 
 - **Audio I/O**: load WAV, MP3 and FLAC; save WAV; play, resample, mix down to mono. `Audio` converts to and from NumPy and DLPack.
-- **DSP**: FFT/IFFT, DCT/IDCT, STFT/ISTFT, MFCC, window functions and a polyphase resampler, with SIMD kernels chosen at run time from the CPU (AVX2/FMA, NEON, or portable C++).
+- **DSP**: FFT/IFFT, DCT/IDCT, STFT/ISTFT, MFCC / log-mel / delta features, window functions and a polyphase resampler, with SIMD kernels chosen at run time from the CPU (AVX2/FMA, NEON, or portable C++).
 - **Models**: speech denoising (Facebook Denoiser, SpeechBrain SepFormer, GTCRN, DPDFNet) and Silero voice-activity detection. Weights are downloaded on first use and verified with SHA-256.
 - **Platforms**: Linux, macOS and Windows, on x86-64 and ARM64.
 

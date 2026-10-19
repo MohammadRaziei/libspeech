@@ -8,7 +8,7 @@ INPUT                  = @PROJECT_SOURCE_DIR@/include \
                          @PROJECT_SOURCE_DIR@/README.md \
                          @PROJECT_SOURCE_DIR@/CONTRIBUTING.md \
                          @PROJECT_SOURCE_DIR@/checklist.md \
-                         @PROJECT_SOURCE_DIR@/audioflux_issues.md
+                         @PROJECT_SOURCE_DIR@/src/third_party/audioflux/ISSUES.md
 RECURSIVE              = YES
 FILE_PATTERNS          = *.h *.hpp *.md
 
