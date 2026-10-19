@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "libspeech/export.h"
+#include "libspeech/models/denoiser_stream.h"
 #include "libspeech/models/model_files.h"
 
 namespace speech::models {
@@ -26,6 +27,8 @@ namespace speech::models {
  *    object. (Language bindings and `delete` through the base rely on that.)
  *  - process()/close() are non-virtual (NVI): argument checks, the "already closed" check and
  *    thread-safety live here once; backends only implement process_impl()/close_impl().
+ *  - Streaming is optional: a backend that can work chunk by chunk overrides supports_streaming() and
+ *    create_stream_impl(); create_stream() is non-virtual for the same reason as process().
  *  - Thread-safety: process() may be called concurrently from several threads. close() waits for
  *    running process() calls to finish, then releases the model; it is safe to call repeatedly.
  */
@@ -46,6 +49,17 @@ class SPEECH_API denoiser {
 
     /** Same as above for a raw buffer (no copy of the input). */
     std::vector<float> process(const float* data, std::size_t size);
+
+    /** True if create_stream() works for this backend (currently "gtcrn"). */
+    virtual bool supports_streaming() const noexcept { return false; }
+
+    /**
+     * Starts a streaming session: feed audio in chunks and get enhanced audio back with a small delay.
+     * See denoiser_stream. Every call gives an independent session with fresh model state.
+     * @throws std::runtime_error if the backend does not support streaming (see supports_streaming()) or the
+     *         denoiser was closed.
+     */
+    std::unique_ptr<denoiser_stream> create_stream();
 
     /**
      * Releases the model and the memory it holds right away instead of at destruction.
@@ -91,6 +105,9 @@ class SPEECH_API denoiser {
 
     /** Backend hook: runs the model. Input is already validated; the denoiser is open. */
     virtual std::vector<float> process_impl(const float* data, std::size_t size) = 0;
+
+    /** Backend hook for create_stream(); the default throws "does not support streaming". */
+    virtual std::unique_ptr<denoiser_stream> create_stream_impl();
 
     /** Backend hook: frees the model. Called at most once. */
     virtual void close_impl() noexcept = 0;

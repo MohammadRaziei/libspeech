@@ -9,6 +9,7 @@
 #include <complex>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -182,6 +183,161 @@ std::vector<float> stft_apply_istft(const float* x, std::size_t n, const real_ff
     }
     return out;
 }
+
+
+/**
+ * The streaming twin of stft_apply_istft(): the same frames, the same per_frame calls in the same order and the
+ * same arithmetic, but the audio arrives in chunks of any size and the enhanced samples leave as soon as no
+ * later frame can change them. The concatenated output of push()...push(), finish() is therefore bit-identical
+ * to stft_apply_istft() on the whole signal, whatever the chunking.
+ *
+ *  - Frame t needs input up to sample t*hop + n_fft/2 - 1 (frame 0 also the reflected samples 1..n_fft/2, so
+ *    n_fft/2 + 1 of them), so at most `max_lag()` = n_fft - 1 + shift samples are fed but not yet returned.
+ *  - finish() produces the tail (the frames at the end of the signal, which need torch.stft's end reflection and,
+ *    for `shift` > 0, silence) and so makes the total output exactly as long as the total input.
+ *  - Memory is bounded: only a few frames' worth of input and overlap-add state are kept.
+ *
+ * `fft` and `window` are referenced, not copied: they must outlive the streamer. Not thread-safe.
+ */
+class stft_streamer {
+   public:
+    using per_frame_fn = std::function<void(float* re, float* im)>;
+
+    stft_streamer(const real_fft& fft, const std::vector<float>& window, std::size_t hop, per_frame_fn per_frame,
+                  std::size_t shift = 0)
+        : fft_(&fft),
+          window_(&window),
+          hop_(hop),
+          n_fft_(fft.size()),
+          pad_(fft.size() / 2),
+          shift_(shift),
+          per_frame_(std::move(per_frame)),
+          frame_(fft.size()),
+          re_(fft.bins()),
+          im_(fft.bins()) {
+        if (hop == 0) throw std::invalid_argument("stft_streamer: hop must be >= 1");
+        if (window.size() != n_fft_) throw std::invalid_argument("stft_streamer: window size must equal the FFT size");
+    }
+
+    /** Largest number of samples that can be fed but not yet returned (the algorithmic latency). */
+    std::size_t max_lag() const { return n_fft_ - 1 + shift_; }
+    std::size_t samples_in() const { return total_in_; }
+    std::size_t samples_out() const { return emitted_; }
+    bool finished() const { return finished_; }
+
+    /** Feeds n samples; appends the output samples that became final to `out`. */
+    void push(const float* x, std::size_t n, std::vector<float>& out) {
+        if (finished_) throw std::logic_error("stft_streamer: push() after finish()");
+        in_.insert(in_.end(), x, x + n);
+        total_in_ += n;
+        for (;;) {
+            const std::ptrdiff_t first = frame_first(next_frame_);
+            const std::ptrdiff_t last = first + static_cast<std::ptrdiff_t>(n_fft_) - 1;
+            // Ready only when no sample the frame reads lies beyond the input so far (no end reflection yet) and
+            // the start reflection (samples 1..pad) is available.
+            const std::ptrdiff_t needed = std::max(last, first < 0 ? -first : std::ptrdiff_t{0});
+            if (static_cast<std::ptrdiff_t>(total_in_) <= needed) break;
+            process_frame(next_frame_++);
+        }
+        const std::size_t finalized = next_frame_ * hop_;  // padded samples below this can't change any more
+        emit(finalized > pad_ + shift_ ? finalized - pad_ - shift_ : 0, out);
+        trim();
+    }
+
+    /** Ends the stream: appends the remaining output, making samples_out() == samples_in(). */
+    void finish(std::vector<float>& out) {
+        if (finished_) return;
+        finished_ = true;
+        const std::size_t n = total_in_;
+        if (n == 0) return;
+        const std::size_t flush = (shift_ + hop_ - 1) / hop_;
+        const std::size_t frames = 1 + n / hop_ + flush;
+        for (std::size_t t = next_frame_; t < frames; ++t) process_frame(t);
+        next_frame_ = std::max(next_frame_, frames);
+        total_padded_ = (frames - 1) * hop_ + n_fft_;
+        emit(n, out);
+    }
+
+   private:
+    std::ptrdiff_t frame_first(std::size_t t) const {
+        return static_cast<std::ptrdiff_t>(t * hop_) - static_cast<std::ptrdiff_t>(pad_);
+    }
+
+    float input_at(std::ptrdiff_t idx) const {
+        // Same rule as stft_apply_istft: reflect at both ends, silence beyond that (flush frames only).
+        if (idx >= static_cast<std::ptrdiff_t>(total_in_ + pad_)) return 0.0f;
+        return in_[reflect_index(idx, total_in_) - in_base_];
+    }
+
+    void process_frame(std::size_t t) {
+        const std::ptrdiff_t first = frame_first(t);
+        const std::vector<float>& window = *window_;
+        for (std::size_t j = 0; j < n_fft_; ++j) {
+            frame_[j] = input_at(first + static_cast<std::ptrdiff_t>(j)) * window[j];
+        }
+        fft_->forward(frame_.data(), re_.data(), im_.data());
+        per_frame_(re_.data(), im_.data());
+        fft_->inverse(re_.data(), im_.data(), frame_.data());
+
+        const std::size_t begin = t * hop_ - ola_base_;
+        if (ola_.size() < begin + n_fft_) {
+            ola_.resize(begin + n_fft_, 0.0f);
+            env_.resize(begin + n_fft_, 0.0f);
+        }
+        for (std::size_t j = 0; j < n_fft_; ++j) {
+            ola_[begin + j] += frame_[j] * window[j];
+            env_[begin + j] += window[j] * window[j];
+        }
+    }
+
+    // Appends output samples [emitted_, upto) (clamped to what exists).
+    void emit(std::size_t upto, std::vector<float>& out) {
+        for (; emitted_ < upto; ++emitted_) {
+            const std::size_t p = emitted_ + pad_ + shift_;  // padded coordinate of output sample i
+            float v = 0.0f;
+            if ((!finished_ || p < total_padded_) && p >= ola_base_ && p - ola_base_ < ola_.size() &&
+                env_[p - ola_base_] > 1e-8f) {
+                v = ola_[p - ola_base_] / env_[p - ola_base_];
+            }
+            out.push_back(v);
+        }
+    }
+
+    // Drops what can no longer be needed, in big steps so the cost stays amortized O(1) per sample.
+    void trim() {
+        const std::size_t keep_ola = emitted_ + pad_ + shift_;
+        if (keep_ola > ola_base_ + 4 * n_fft_) {
+            const std::size_t drop = keep_ola - ola_base_;
+            ola_.erase(ola_.begin(), ola_.begin() + static_cast<std::ptrdiff_t>(drop));
+            env_.erase(env_.begin(), env_.begin() + static_cast<std::ptrdiff_t>(drop));
+            ola_base_ += drop;
+        }
+        // The next frame starts reading at its `first`; finish() may also read up to ~n_fft samples before the
+        // end (the end reflection), so keep a margin of 2 * n_fft below it.
+        const std::ptrdiff_t first = frame_first(next_frame_) - static_cast<std::ptrdiff_t>(2 * n_fft_);
+        if (first > static_cast<std::ptrdiff_t>(in_base_ + 4 * n_fft_)) {
+            const std::size_t drop = static_cast<std::size_t>(first) - in_base_;
+            in_.erase(in_.begin(), in_.begin() + static_cast<std::ptrdiff_t>(drop));
+            in_base_ += drop;
+        }
+    }
+
+    const real_fft* fft_;
+    const std::vector<float>* window_;
+    std::size_t hop_, n_fft_, pad_, shift_;
+    per_frame_fn per_frame_;
+    std::vector<float> frame_, re_, im_;
+
+    std::vector<float> in_;  // input samples [in_base_, total_in_)
+    std::size_t in_base_ = 0;
+    std::size_t total_in_ = 0;
+    std::vector<float> ola_, env_;  // overlap-add state for padded samples [ola_base_, ...)
+    std::size_t ola_base_ = 0;
+    std::size_t total_padded_ = 0;  // set by finish(): the padded signal's length in batch mode
+    std::size_t next_frame_ = 0;
+    std::size_t emitted_ = 0;
+    bool finished_ = false;
+};
 
 }  // namespace speech::models::detail
 

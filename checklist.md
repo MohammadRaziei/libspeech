@@ -631,3 +631,17 @@ Previously: `speech_dsp`/`speech_io`/`speech_models` (C++ static libs) but
 - [ ] **Multi-core is still untested.** The dev sandbox has 1 core (`nproc` = 1), so any OpenMP speedup claim
   (STFT, MFCC, log-mel, delta) needs a re-run on a real multi-core machine before it goes into a README or paper.
   Timing noise on this sandbox is 5-15 %, so improvements of a few percent can't be confirmed here either.
+
+## Open items: streaming
+
+- [ ] Streaming exists for `SileroVad` and the `gtcrn` denoiser only. `dpdfnet` is the natural next one: it is
+  frame-based like GTCRN and `detail::stft_streamer` already supports its `shift` (covered by a C++ test with the
+  DPDFNet geometry, n_fft 320 / hop 160, but not wired to the model). `facebook` (DNS64) and `speechbrain`
+  (SepFormer) work on whole waveforms in one graph call and would need chunked inference with overlap, which
+  changes their output compared with `process()`.
+- [ ] GTCRN streaming speed was measured on the 1-core sandbox with random noise as input: about 0.06x real time
+  (10 s of audio in ~0.6 s), worst single `feed()` of 10 ms chunks 2.4 ms. One run per chunk size, 5-15 % noise;
+  not a benchmark, and not in `benchmarks/`.
+- [ ] No microphone / socket example yet (only tests that feed arrays in chunks).
+- [ ] `SileroVad` streaming was tested with synthetic speech-like audio only; real speech and real-time
+  microphone input were not tried.

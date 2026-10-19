@@ -16,6 +16,28 @@ denoiser::denoiser(int sample_rate) : sample_rate(sample_rate) {}
 
 denoiser::~denoiser() = default;
 
+denoiser_stream::~denoiser_stream() = default;
+
+std::vector<float> denoiser_stream::feed(const float* data, std::size_t size) {
+    if (finished_) throw std::logic_error("denoiser_stream: feed() after finish().");
+    if (data == nullptr && size > 0) throw std::invalid_argument("denoiser_stream: null data.");
+    std::vector<float> out;
+    if (size == 0) return out;
+    feed_impl(data, size, out);
+    in_ += size;
+    out_ += out.size();
+    return out;
+}
+
+std::vector<float> denoiser_stream::finish() {
+    std::vector<float> out;
+    if (finished_) return out;
+    finished_ = true;
+    finish_impl(out);
+    out_ += out.size();
+    return out;
+}
+
 std::vector<float> denoiser::process(const std::vector<float>& input_audio) {
     return process(input_audio.data(), input_audio.size());
 }
@@ -30,6 +52,18 @@ std::vector<float> denoiser::process(const float* data, std::size_t size) {
         throw std::runtime_error("Denoiser is closed.");
     }
     return process_impl(data, size);
+}
+
+std::unique_ptr<denoiser_stream> denoiser::create_stream() {
+    std::shared_lock<std::shared_mutex> lock(mutex_);
+    if (closed_) {
+        throw std::runtime_error("Denoiser is closed.");
+    }
+    return create_stream_impl();
+}
+
+std::unique_ptr<denoiser_stream> denoiser::create_stream_impl() {
+    throw std::runtime_error("This denoiser backend does not support streaming (supports_streaming() is false).");
 }
 
 void denoiser::close() noexcept {

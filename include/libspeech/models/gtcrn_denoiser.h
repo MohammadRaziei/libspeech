@@ -44,13 +44,19 @@ class SPEECH_API gtcrn_denoiser final : public denoiser {
 
     ~gtcrn_denoiser() override;
 
+    /** GTCRN carries its own state frame by frame, so it streams: 511 samples (32 ms) of latency. */
+    bool supports_streaming() const noexcept override { return true; }
+
    protected:
     std::vector<float> process_impl(const float* data, std::size_t size) override;
+    std::unique_ptr<denoiser_stream> create_stream_impl() override;
     void close_impl() noexcept override;
 
    private:
     struct impl;  // ONNX Runtime state, defined in the .cpp
-    std::unique_ptr<impl> impl_;
+    friend class gtcrn_stream;
+    // shared with the streams created from this denoiser, so close() cannot pull the model out from under one
+    std::shared_ptr<impl> impl_;
 };
 
 }  // namespace speech::models

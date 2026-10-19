@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "libspeech/models/denoiser.h"
+#include "libspeech/models/denoiser_stream.h"
 #include "libspeech/models/dpdfnet_denoiser.h"
 #include "libspeech/models/gtcrn_denoiser.h"
 #include "libspeech/models/model_files.h"
@@ -117,6 +118,55 @@ NB_MODULE(NB_MODULE_NAME, m) {
         "Denoises mono audio (a list of [-1, 1]-normalized floats). Returns denoised audio, the "
         "same length as the input.";
 
+    // --- speech::models::DenoiserStream ---------------------------------------------------------
+    // vector -> float32 NumPy array without a copy (the vector lives in a capsule owned by the array).
+    const auto to_array = [](std::vector<float>&& v) {
+        auto* owner = new std::vector<float>(std::move(v));
+        nb::capsule keep(owner, [](void* p) noexcept { delete static_cast<std::vector<float>*>(p); });
+        return speech::py::out_array_1d(owner->data(), {owner->size()}, keep);
+    };
+    nb::class_<speech::models::denoiser_stream>(m, "DenoiserStream")
+        .def("feed",
+             [to_array](speech::models::denoiser_stream& self, speech::py::in_array_1d chunk) {
+                 std::vector<float> out;
+                 {
+                     nb::gil_scoped_release release;
+                     out = self.feed(chunk.data(), chunk.size());
+                 }
+                 return to_array(std::move(out));
+             },
+             nb::arg("chunk"),
+             "Feeds a chunk of mono audio (1-D NumPy array, [-1, 1]-normalized, any length). Returns a float32 "
+             "array with the samples that became final -- usually about as long as the chunk, but delayed by up to "
+             "latency_samples, so it can be shorter (even empty) or longer than the chunk. Raises RuntimeError after "
+             "finish().")
+        .def("feed",
+             [to_array](speech::models::denoiser_stream& self, const std::vector<float>& chunk) {
+                 std::vector<float> out;
+                 {
+                     nb::gil_scoped_release release;
+                     out = self.feed(chunk);
+                 }
+                 return to_array(std::move(out));
+             },
+             nb::arg("chunk"), "Same as feed() for a list of floats.")
+        .def("finish",
+             [to_array](speech::models::denoiser_stream& self) {
+                 std::vector<float> out;
+                 {
+                     nb::gil_scoped_release release;
+                     out = self.finish();
+                 }
+                 return to_array(std::move(out));
+             },
+             "Ends the stream and returns the remaining samples, so that the total output is exactly as long as the "
+             "total input. Safe to call more than once (later calls return an empty array).")
+        .def_prop_ro("samples_in", &speech::models::denoiser_stream::samples_in, "Samples fed so far.")
+        .def_prop_ro("samples_out", &speech::models::denoiser_stream::samples_out, "Samples returned so far.")
+        .def_prop_ro("latency_samples", &speech::models::denoiser_stream::latency_samples,
+                     "At most this many samples are fed but not yet returned (GTCRN: 511 = 32 ms at 16 kHz).")
+        .def_prop_ro("finished", &speech::models::denoiser_stream::finished, "True once finish() was called.");
+
     nb::class_<speech::models::denoiser>(m, "Denoiser")
         // Denoiser("facebook") -- the everyday way; `model` defaults to the backend's standard model
         // (downloaded to ~/.libspeech on first use). Denoiser.create(...) is the same thing spelled
@@ -156,6 +206,12 @@ NB_MODULE(NB_MODULE_NAME, m) {
         .def("process", process_list, list_doc, nb::arg("input_audio"))
         .def("__call__", process_array, array_doc, nb::arg("input_audio"))
         .def("__call__", process_list, list_doc, nb::arg("input_audio"))
+        .def_prop_ro("supports_streaming", &speech::models::denoiser::supports_streaming,
+                     "True if stream() works for this backend (currently 'gtcrn').")
+        .def("stream", &speech::models::denoiser::create_stream,
+             "Starts a streaming session (a DenoiserStream): feed audio in chunks of any size and get the enhanced "
+             "audio back with a small delay. Every call gives an independent session. Raises RuntimeError if the "
+             "backend cannot stream or the denoiser is closed.")
         .def("close", &speech::models::denoiser::close,
              "Releases the model and its memory right away. Safe to call more than once; "
              "process() raises RuntimeError afterwards.")

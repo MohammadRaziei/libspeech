@@ -59,38 +59,50 @@ struct gtcrn_denoiser::impl : onnx_model {
         for (const auto& s : out_names_) out_ptrs_.push_back(s.c_str());
     }
 
+    // One spectrogram frame through the model: re/im (257 bins) are replaced by the enhanced bins, `state` (the
+    // three recurrent caches) by the model's next state. `mix` is scratch space. Used by both process() and
+    // streams, so the two cannot drift apart. Thread-safe as long as each caller has its own state/mix.
+    void step(float* re, float* im, std::vector<std::vector<float>>& state, std::vector<float>& mix) const {
+        for (std::size_t k = 0; k < bins; ++k) {
+            mix[2 * k] = re[k];
+            mix[2 * k + 1] = im[k];
+        }
+        std::vector<Ort::Value> inputs;
+        inputs.push_back(Ort::Value::CreateTensor<float>(memory_info, mix.data(), mix.size(), shapes_[0].data(),
+                                                         shapes_[0].size()));
+        for (std::size_t i = 0; i < 3; ++i) {
+            inputs.push_back(Ort::Value::CreateTensor<float>(memory_info, state[i].data(), state[i].size(),
+                                                             shapes_[i + 1].data(), shapes_[i + 1].size()));
+        }
+        std::vector<Ort::Value> outputs = session->Run(Ort::RunOptions{nullptr}, in_ptrs_.data(), inputs.data(),
+                                                       inputs.size(), out_ptrs_.data(), out_ptrs_.size());
+        const float* enhanced = outputs[0].GetTensorData<float>();
+        for (std::size_t k = 0; k < bins; ++k) {
+            re[k] = enhanced[2 * k];
+            im[k] = enhanced[2 * k + 1];
+        }
+        for (std::size_t i = 0; i < 3; ++i) {
+            const float* next = outputs[i + 1].GetTensorData<float>();
+            std::copy(next, next + state[i].size(), state[i].begin());
+        }
+    }
+
+    std::vector<std::vector<float>> fresh_state() const {
+        std::vector<std::vector<float>> state(3);
+        for (std::size_t i = 0; i < 3; ++i) state[i].assign(sizes_[i + 1], 0.0f);
+        return state;
+    }
+
     // Safe to call from several threads at once: the caches are local to the call, and the members
     // are read-only after construction (ONNX Runtime's Run() is thread-safe).
     std::vector<float> run(const float* x, std::size_t n) const {
-        std::vector<std::vector<float>> state(3);
-        for (std::size_t i = 0; i < 3; ++i) state[i].assign(sizes_[i + 1], 0.0f);
+        std::vector<std::vector<float>> state = fresh_state();
         std::vector<float> mix(2 * bins);
-
-        return detail::stft_apply_istft(x, n, fft_, window_, hop, [&](float* re, float* im) {
-            for (std::size_t k = 0; k < bins; ++k) {
-                mix[2 * k] = re[k];
-                mix[2 * k + 1] = im[k];
-            }
-            std::vector<Ort::Value> inputs;
-            inputs.push_back(Ort::Value::CreateTensor<float>(memory_info, mix.data(), mix.size(), shapes_[0].data(),
-                                                             shapes_[0].size()));
-            for (std::size_t i = 0; i < 3; ++i) {
-                inputs.push_back(Ort::Value::CreateTensor<float>(memory_info, state[i].data(), state[i].size(),
-                                                                 shapes_[i + 1].data(), shapes_[i + 1].size()));
-            }
-            std::vector<Ort::Value> outputs = session->Run(Ort::RunOptions{nullptr}, in_ptrs_.data(), inputs.data(),
-                                                           inputs.size(), out_ptrs_.data(), out_ptrs_.size());
-            const float* enhanced = outputs[0].GetTensorData<float>();
-            for (std::size_t k = 0; k < bins; ++k) {
-                re[k] = enhanced[2 * k];
-                im[k] = enhanced[2 * k + 1];
-            }
-            for (std::size_t i = 0; i < 3; ++i) {
-                const float* next = outputs[i + 1].GetTensorData<float>();
-                std::copy(next, next + state[i].size(), state[i].begin());
-            }
-        });
+        return detail::stft_apply_istft(x, n, fft_, window_, hop, [&](float* re, float* im) { step(re, im, state, mix); });
     }
+
+    const detail::real_fft& fft() const { return fft_; }
+    const std::vector<float>& window() const { return window_; }
 
    private:
     detail::real_fft fft_;
@@ -107,11 +119,39 @@ gtcrn_denoiser::gtcrn_denoiser(const std::string& url, int sample_rate, int num_
         throw std::invalid_argument("GTCRN works on 16 kHz audio (got sample_rate=" + std::to_string(sample_rate) +
                                     "); resample first");
     }
-    impl_ = std::make_unique<impl>(url, sample_rate, num_threads, ignore_cache);
+    impl_ = std::make_shared<impl>(url, sample_rate, num_threads, ignore_cache);
     set_model_files(impl_->files());
 }
 
 gtcrn_denoiser::~gtcrn_denoiser() = default;
+
+// A streaming session: its own recurrent state and an incremental STFT/ISTFT; the model is shared.
+class gtcrn_stream final : public denoiser_stream {
+   public:
+    explicit gtcrn_stream(std::shared_ptr<gtcrn_denoiser::impl> model)
+        : denoiser_stream(n_fft - 1),
+          model_(std::move(model)),
+          state_(model_->fresh_state()),
+          mix_(2 * bins),
+          streamer_(model_->fft(), model_->window(), hop,
+                    [this](float* re, float* im) { model_->step(re, im, state_, mix_); }) {}
+
+   protected:
+    void feed_impl(const float* data, std::size_t size, std::vector<float>& out) override {
+        streamer_.push(data, size, out);
+    }
+    void finish_impl(std::vector<float>& out) override { streamer_.finish(out); }
+
+   private:
+    std::shared_ptr<gtcrn_denoiser::impl> model_;
+    std::vector<std::vector<float>> state_;
+    std::vector<float> mix_;
+    detail::stft_streamer streamer_;  // last: its callback uses the members above
+};
+
+std::unique_ptr<denoiser_stream> gtcrn_denoiser::create_stream_impl() {
+    return std::make_unique<gtcrn_stream>(impl_);
+}
 
 std::vector<float> gtcrn_denoiser::process_impl(const float* data, std::size_t size) {
     return impl_->run(data, size);

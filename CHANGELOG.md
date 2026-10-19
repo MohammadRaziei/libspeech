@@ -11,6 +11,16 @@ This file starts at 0.3.1; older history is in `git log`.
   (the usual "fbank" model input). MFCCs are exactly the orthonormal DCT-II of these rows; tests check that against
   an independent DCT (`dct_ii_plan` in C++, `scipy.fft.dct` in Python).
 
+- **Streaming denoiser (GTCRN).** `denoiser.create_stream()` (C++) / `Denoiser.stream()` (Python) start a
+  `denoiser_stream` / `DenoiserStream`: `feed(chunk)` takes audio in chunks of any size and returns the enhanced samples
+  that became final, `finish()` returns the tail, so the total output is exactly as long as the input. Latency is at
+  most 511 samples (32 ms at 16 kHz). The result is bit-identical to `process()` on the whole signal, however the
+  audio is chunked (tested with the real model, chunks from 1 sample to 10^6). Each stream has its own recurrent
+  state; streams of one denoiser are independent and a running stream survives `close()` of the denoiser. Backends
+  that cannot stream (`facebook`, `speechbrain`, `dpdfnet`) report `supports_streaming == False` and `stream()` raises
+  a clear error. The incremental STFT/ISTFT behind it (`detail::stft_streamer`, same frames and arithmetic as
+  `stft_apply_istft`, bounded memory, supports DPDFNet-style `shift`) is generic.
+
 - **Streaming `SileroVad`.** `feed(chunk)`, `pop_speech_timestamps()`, `finish()`, plus `in_speech` and `samples_fed`
   (C++ and Python) let audio arrive in chunks of any size (microphone callback, socket) and report each speech
   segment as soon as the silence that ends it has been seen. `process()` is now implemented as `reset()` +
