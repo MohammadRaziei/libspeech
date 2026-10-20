@@ -181,6 +181,37 @@ except RuntimeError:
 """
 
 
+_SPEECHBRAIN_LEVEL_SCRIPT = """
+import numpy as np, libspeech
+# The SepFormer was trained with a scale-invariant loss: its raw output is ~15x louder than its input, with samples
+# far beyond +-1. Denoiser("speechbrain") must hand back audio at the level of its input, whatever that level is.
+n = 3 * 16000
+rng = np.random.default_rng(0)
+t = np.arange(n) / 16000
+base = 0.3 * np.sin(2 * np.pi * 220 * t) * np.sin(2 * np.pi * 3 * t) ** 2 + 0.02 * rng.standard_normal(n)
+rms = lambda a: float(np.sqrt(np.mean(a ** 2)))
+with libspeech.Denoiser("speechbrain") as d:
+    for gain in (1.0, 0.02, 3.0):                    # normal, very quiet, above full scale
+        x = (gain * base).astype(np.float32)
+        y = d(x)
+        assert y.shape == x.shape and np.isfinite(y).all()
+        ceiling = max(0.99, float(np.abs(x).max()))
+        assert float(np.abs(y).max()) <= ceiling * 1.0001, (gain, float(np.abs(y).max()), ceiling)
+        assert 0.1 * rms(x) < rms(y) <= 1.001 * rms(x), (gain, rms(x), rms(y))
+    silent = d(np.zeros(8000, np.float32))
+    assert np.isfinite(silent).all()
+"""
+
+
+@pytest.mark.models
+def test_speechbrain_output_is_at_the_level_of_its_input():
+    r = subprocess.run(
+        [sys.executable, "-c", _SPEECHBRAIN_LEVEL_SCRIPT],
+        capture_output=True, text=True, timeout=600, check=False,
+    )
+    assert r.returncode == 0, f"exit={r.returncode}\n{r.stderr[-1200:]}"
+
+
 @pytest.mark.models
 def test_gtcrn_end_to_end():
     r = subprocess.run(

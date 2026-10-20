@@ -660,3 +660,18 @@ Previously: `speech_dsp`/`speech_io`/`speech_models` (C++ static libs) but
 - [ ] `logging.disable(...)` is not seen by the native side (lines are still built, then dropped in Python).
 - [ ] A stderr handler is added by `set_log_level()` / `LIBSPEECH_LOG` only when no logging is configured at that moment;
   if the application calls `logging.basicConfig()` afterwards, lines are printed twice (both handlers).
+
+## Audio loudness / normalization
+
+- [x] `Denoiser("speechbrain")` output is level-matched to its input (`src/models/level_match.h`; unit tests in
+  `tests/models/test_level_match.cpp`, real-model test `test_speechbrain_output_is_at_the_level_of_its_input` in
+  `tests/python/test_models.py`).
+- [ ] **RMS normalizer for audio**: a public `Audio` / functional API that scales a signal to a target RMS (in dBFS),
+  with a peak ceiling so it never clips, and the same for a batch/stream (running RMS). Reuse `match_level`'s logic
+  (RMS target, then a peak ceiling); decide the name and whether it is in `libspeech.functional`, a method on `Audio`, or both.
+  Related, not the same: peak normalization and perceptual loudness (LUFS, ITU-R BS.1770), listed under older features.
+- [x] Measured on a real 6 s speech clip scaled by 0.02 (peak 0.01), 1.0 and 6.0 (peak 3.3): output RMS / input RMS is
+  1.00 for `speechbrain` (level-matched), 0.94 to 1.01 for `gtcrn` and `dpdfnet`, and 1.00 to 1.01 for `facebook` at normal
+  and loud input. Only `facebook` on very quiet input (peak 0.01) comes back at 0.61: it removes more of a very quiet
+  signal (it treats it as noise). That is the model's behaviour, not clipping; not changed. One clip, one speaker: not a benchmark.
+

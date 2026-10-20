@@ -1,5 +1,6 @@
 #include "libspeech/models/speechbrain_denoiser.h"
 
+#include "level_match.h"
 #include "onnx_denoiser_impl.h"
 
 namespace speech::models {
@@ -17,7 +18,11 @@ speechbrain_denoiser::speechbrain_denoiser(const std::string& url, int sample_ra
 speechbrain_denoiser::~speechbrain_denoiser() = default;
 
 std::vector<float> speechbrain_denoiser::process_impl(const float* data, std::size_t size) {
-    return impl_->run(data, size);
+    // The model's output level is arbitrary (SI-SNR training): bring it back to the input's, so that it does not
+    // come out ~15x louder and clip when saved. See detail::match_level.
+    std::vector<float> out = impl_->run(data, size);
+    detail::match_level(data, size, out);
+    return out;
 }
 
 void speechbrain_denoiser::close_impl() noexcept {

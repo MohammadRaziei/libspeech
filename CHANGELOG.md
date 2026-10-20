@@ -61,6 +61,12 @@ This file starts at 0.3.1; older history is in `git log`.
   `audio::shared_samples()`. `to_numpy(channel)` is unchanged (a 1-D copy).
 
 ### Fixed
+- **`Denoiser("speechbrain")` returned audio about 15x louder than its input.** The SepFormer was trained with a
+  scale-invariant loss (SI-SNR), so the absolute level of its output is arbitrary: on real speech it came out at a
+  peak of 6 to 27 with 14 to 43% of the samples beyond full scale, i.e. clipped as soon as it was saved as 16-bit
+  PCM. The output is now scaled to the RMS level of the input and lowered if that would push its peak above
+  max(0.99, input peak); silent or non-finite input is left alone. `facebook`, `gtcrn` and `dpdfnet` were already at
+  the input's level and are unchanged.
 - `SileroVad.process()` failed on every released model: the code looked up the output tensor as `state_n` (the models
   call it `stateN`) and always fed an `sr` input (`silero-vad-half` has none). The tensor names are now read from the
   loaded model, and a model with another signature is rejected with an error instead of being driven blindly.

@@ -18,6 +18,10 @@ namespace speech::models {
 /**
  * SpeechBrain (SepFormer) denoiser. Normally created through Denoiser::Create("speechbrain", ...), but can be
  * constructed directly. Not copyable; see Denoiser for the process()/close() contract.
+ *
+ * Output level: the model was trained with a scale-invariant loss, so its raw output is much louder than its input
+ * (about 15x, with samples far beyond +-1). The output is therefore scaled to the RMS level of the input, and
+ * lowered if that would push its peak above max(0.99, peak of the input).
  */
 class SPEECH_API speechbrain_denoiser final : public denoiser {
    public:
