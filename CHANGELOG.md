@@ -6,6 +6,17 @@ This file starts at 0.3.1; older history is in `git log`.
 ## Unreleased
 
 ### Added
+- **The native log reaches Python's `logging`, and the Python logger controls it.** Every line libspeech's C++ code
+  logs arrives in `logging.getLogger("libspeech")` with no setup, and that logger's level decides which native
+  lines are even built: `setLevel` on it or on the root logger, `logging.basicConfig(level=...)`, `dictConfig`,
+  pytest's `caplog.set_level`, `libspeech.set_log_level()` and `LIBSPEECH_LOG` all end up at the same place. The
+  native level is the smallest one that lets through what the logger keeps, never left at `trace` for Python to
+  filter. New: `speech::utils::set_log_callback()` / `set_log_file()` (C++) and `libspeech.set_log_callback()` /
+  `set_log_file()` (Python); one output is active at a time, so setting one replaces the bridge. Records carry the
+  native tag or function as `record.where`. `libspeech.set_log_level()` adds a stderr handler when the
+  application configured no logging, so asking for `debug` still prints. Output now goes through AixLog's own
+  sinks; its severity names show as `Debug`/`Warn`/`Error` in the native stderr/file format, and in Python the
+  usual `DEBUG`/`WARNING`/`ERROR`.
 - **Log-mel filterbank features.** `mfcc::compute_log_mel_flat()` (C++) and `MFCC.log_mel(x)` (Python) return the
   `(num_frames, num_mel_filters)` log-mel energies the MFCC pipeline already computed internally, without the DCT
   (the usual "fbank" model input). MFCCs are exactly the orthonormal DCT-II of these rows; tests check that against

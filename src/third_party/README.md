@@ -28,7 +28,7 @@ git submodule update --init src/third_party/miniaudio
   `speech::dsp::FFT`, and `speech::dsp::STFT`. See `audioflux/README.md` and
   `audioflux/ISSUES.md` for what's vendored and why.
 - **`aixlog/`** — [badaix/aixlog](https://github.com/badaix/aixlog)'s single
-  header (`aixlog.hpp`), used project-wide for logging. See `aixlog/README.md`.
+  header (`aixlog.hpp`), used project-wide for logging (one small patch, documented there). See `aixlog/README.md`.
 
 These two are copied directly into the repo instead of being submodules
 because in each case only a small, specific slice of the upstream project is

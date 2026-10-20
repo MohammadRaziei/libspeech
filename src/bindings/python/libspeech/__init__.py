@@ -76,7 +76,9 @@ cdll.LoadLibrary(str(_here / ONNXRUNTIME_LIB_PATH))
 # itself needs an explicit load (httpp and ONNXRuntime, both dynamically
 # linked, were already preloaded above).
 cdll.LoadLibrary(str(_here / LIB_PATH))
+from . import _log
 from ._functional import istft, stft
+from ._log import get_log_level, set_log_level
 from .speech_dsp_py import (
     FFT,
     MFCC,
@@ -106,13 +108,19 @@ from .speech_models_py import (
     SpeechTimestamp,
     available_providers,
     fetch_model,
-    get_log_level,
     is_cuda_available,
     model_readme,
-    set_log_level,
+    set_log_callback,
+    set_log_file,
     sha256,
     sha256_file,
 )
+
+# The native (C++) log goes to Python's `logging` by itself: lines arrive in
+# logging.getLogger("libspeech"), and that logger's level decides what the native side even builds. The public
+# set_log_level / get_log_level are the logger-based ones; set_log_callback / set_log_file are the raw native
+# ones and replace the bridge (the native side has one output at a time).
+_log.install()
 
 __all__ = [
     "FFT",
@@ -134,6 +142,8 @@ __all__ = [
     "is_cuda_available",
     "istft",
     "model_readme",
+    "set_log_callback",
+    "set_log_file",
     "set_log_level",
     "set_simd_enabled",
     "sha256",

@@ -23,17 +23,71 @@
 
 namespace nb = nanobind;
 
+namespace {
+
+// A Python callable the native logger calls. Native threads call it, so it takes the GIL for the call,
+// and it is released under the GIL too: set_log_callback() may drop the previous one on any thread.
+struct py_log_callback {
+    nb::object fn;
+    explicit py_log_callback(nb::object f) : fn(std::move(f)) {}
+    py_log_callback(const py_log_callback&) = delete;
+    py_log_callback& operator=(const py_log_callback&) = delete;
+    ~py_log_callback() {
+        if (Py_IsInitialized()) {
+            nb::gil_scoped_acquire gil;
+            fn = nb::object();
+        } else {
+            fn.release();  // the interpreter is gone: there is nothing left to decref into
+        }
+    }
+};
+
+}  // namespace
+
 NB_MODULE(NB_MODULE_NAME, m) {
     // --- logging -----------------------------------------------------------------------------
     m.def("set_log_level",
           [](const std::string& level) { speech::utils::set_log_level(speech::utils::parse_log_level(level)); },
-          "Sets how much libspeech writes to stderr: 'trace', 'debug', 'info', 'warning' (the default), "
-          "'error' or 'off' (case-insensitive). Before the first call the level can also be set with the "
-          "LIBSPEECH_LOG environment variable. Raises ValueError for an unknown level.",
+          "Raw native level: 'trace', 'debug', 'info', 'warning' (the default), 'error' or 'off' "
+          "(case-insensitive). The package's own set_log_level() sets the 'libspeech' logger instead, "
+          "and this follows it. Raises ValueError for an unknown level.",
           nb::arg("level"));
     m.def("get_log_level",
           [] { return std::string(speech::utils::log_level_name(speech::utils::get_log_level())); },
           "The current log level, e.g. 'warning'.");
+    m.def("set_log_callback",
+          [](nb::object callback) {
+              if (callback.is_none()) {
+                  nb::gil_scoped_release unlocked;
+                  speech::utils::set_log_callback({});
+                  return;
+              }
+              if (!PyCallable_Check(callback.ptr())) throw nb::type_error("callback must be callable or None");
+              auto holder = std::make_shared<py_log_callback>(std::move(callback));
+              nb::gil_scoped_release unlocked;
+              speech::utils::set_log_callback([holder](speech::utils::log_level level, const std::string& where,
+                                                       const std::string& message) {
+                  nb::gil_scoped_acquire gil;
+                  try {
+                      holder->fn(speech::utils::log_level_name(level), where, message);
+                  } catch (...) {
+                      // A failing log callback must never take a library thread down.
+                  }
+              });
+          },
+          "Sends every native log line that passes the level to callback(level, where, message), three "
+          "strings, instead of stderr or a file. It is called on whatever thread logs (possibly several at "
+          "once) and must not call back into libspeech. None goes back to stderr. The package installs one "
+          "at import that forwards to logging.getLogger('libspeech'); setting your own replaces it.",
+          nb::arg("callback").none());
+    m.def("set_log_file",
+          [](const std::string& path) {
+              nb::gil_scoped_release unlocked;
+              return speech::utils::set_log_file(path);
+          },
+          "Writes the native log to this file (truncated) instead of stderr; '' goes back to stderr. Returns "
+          "False, keeping the previous output, if the file cannot be opened. Replaces the logging bridge.",
+          nb::arg("path"));
 
     // --- execution providers -----------------------------------------------------------------
     m.def("available_providers", &speech::models::available_providers,

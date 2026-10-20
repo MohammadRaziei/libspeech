@@ -1,5 +1,8 @@
 """Tests for libspeech's log-level control (set_log_level / get_log_level / LIBSPEECH_LOG).
 
+The native log reaches Python's `logging` (logger "libspeech"); test_log_bridge.py covers that bridge itself.
+Here: what a user sees on stderr with nothing configured, and the level controls.
+
 What reaches stderr is process-wide state, so the output tests run in a subprocess with a controlled
 environment. They only use the FFT (cheap, no model needed): FFT(9) logs one DEBUG line and the
 empty inverse() input logs one ERROR line before raising.
@@ -70,7 +73,7 @@ def test_default_is_quiet_for_debug_but_still_reports_errors():
     assert r.returncode == 0, r.stderr
     assert r.stdout.strip() == "warning"
     assert "Created FFT" not in r.stderr  # fine-grained DEBUG output is off by default
-    assert "[error]" in r.stderr          # errors still show
+    assert "inverse() requires non-empty" in r.stderr  # errors still show (Python's last-resort handler)
 
 
 def test_off_writes_nothing_to_stderr():
@@ -83,9 +86,9 @@ def test_debug_shows_debug_lines_in_a_readable_format():
     r = _run('libspeech.set_log_level("debug")')
     assert r.returncode == 0, r.stderr
     line = next(ln for ln in r.stderr.splitlines() if "Created FFT" in ln)
-    assert "[debug]" in line  # severity, tag and message are space separated
+    assert "[DEBUG]" in line  # severity, tag and message are space separated
     assert "(speech::dsp::FFT)" in line
-    assert "[error]" in r.stderr
+    assert "[ERROR]" in r.stderr
 
 
 def test_environment_variable_sets_the_initial_level():

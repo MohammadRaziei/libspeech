@@ -8,8 +8,18 @@
 //
 // Usage inside the library (same shape as the AixLog macro this replaces):
 //     SPEECH_LOG(DEBUG) << TAG(log_tag) << "message " << value << std::endl;
-// TAG(...) and COND(...) are still the AixLog helpers; only the output side is ours, so nothing
-// here takes over std::clog and the host application's own logging is left alone.
+//
+// Output goes through AixLog (vendored, src/third_party/aixlog): a line is written into AixLog's
+// streambuf through a private ostream and AixLog's SinkCerr / SinkFile format it. The vendored copy
+// carries one patch so that AixLog does not point std::clog at itself for the whole process (see
+// src/third_party/aixlog/README.md): the host application's own logging is left alone.
+//
+// Three outputs, one active at a time (the same model as httpp):
+//   - stderr (default)
+//   - a file          -> speech::utils::set_log_file()
+//   - a callback      -> speech::utils::set_log_callback(); this is how the Python package routes
+//                        the native log into Python's `logging`
+// The level check comes first and is one atomic load: a disabled level builds no message at all.
 //
 #ifndef LIBSPEECH_DETAIL_LOG_H
 #define LIBSPEECH_DETAIL_LOG_H
@@ -19,7 +29,9 @@
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
-#include <ctime>
+#include <functional>
+#include <memory>
+#include <mutex>
 #include <ostream>
 #include <sstream>
 #include <string>
@@ -29,6 +41,7 @@
 
 namespace speech::detail {
 
+using speech::utils::log_callback;
 using speech::utils::log_level;
 
 inline const char* level_name(log_level level) noexcept {
@@ -95,10 +108,117 @@ inline bool log_enabled(log_level level) noexcept {
     return static_cast<int>(level) >= static_cast<int>(current_level());
 }
 
+inline AixLog::Severity to_aix(log_level level) noexcept {
+    switch (level) {
+        case log_level::trace: return AixLog::Severity::trace;
+        case log_level::debug: return AixLog::Severity::debug;
+        case log_level::info: return AixLog::Severity::info;
+        case log_level::warning: return AixLog::Severity::warning;
+        case log_level::error: return AixLog::Severity::error;
+        case log_level::off: break;
+    }
+    return AixLog::Severity::fatal;
+}
+
+// stderr / file line layout: 2026-10-09 12:00:00.123 [Debug] (tag) message
+inline const char* log_format() noexcept { return "%Y-%m-%d %H:%M:%S.#ms [#severity] (#tag_func)"; }
+
+/** AixLog's file sink, plus a way to ask whether the file could be opened (its constructor just tries). */
+struct file_sink : AixLog::SinkFile {
+    file_sink(const std::string& path) : AixLog::SinkFile(AixLog::Filter(AixLog::Severity::trace), path, log_format()) {}
+    bool is_open() const { return ofs.is_open(); }
+};
+
+struct log_state {
+    // `mu` guards `callback` and is never held while a callback runs: the Python callback needs the GIL,
+    // and a thread that holds the GIL may be waiting for `write_mu` to log -- running it under a lock
+    // would be a deadlock. A callback can therefore be called from several threads at once.
+    std::mutex mu;
+    std::shared_ptr<const log_callback> callback;
+
+    // `write_mu` serialises the lines written through AixLog (its metadata is set by successive <<) and
+    // the swapping of its sinks.
+    std::mutex write_mu;
+    std::unique_ptr<std::ostream> out;
+    bool ready = false;
+
+    void use_stderr_locked() {
+        AixLog::Log::init({std::make_shared<AixLog::SinkCerr>(AixLog::Filter(AixLog::Severity::trace), log_format())});
+    }
+    void ensure_ready_locked() {
+        if (ready) return;
+        out = std::make_unique<std::ostream>(&AixLog::Log::instance());  // private stream: std::clog untouched
+        use_stderr_locked();
+        ready = true;
+    }
+};
+
+inline log_state& state() {
+    // Leaked on purpose: a library thread may still log while the process is shutting down.
+    static log_state* s = new log_state;
+    return *s;
+}
+
+/** Sends everything to `fn`; an empty function goes back to stderr. The previous callback dies outside every lock. */
+inline void install_callback(log_callback fn) {
+    auto& s = state();
+    std::shared_ptr<const log_callback> fresh = fn ? std::make_shared<const log_callback>(std::move(fn)) : nullptr;
+    std::shared_ptr<const log_callback> previous;
+    {
+        std::lock_guard<std::mutex> lock(s.mu);
+        previous = std::move(s.callback);
+        s.callback = fresh;
+    }
+    if (!fresh) {
+        std::lock_guard<std::mutex> lock(s.write_mu);
+        s.ensure_ready_locked();
+        s.use_stderr_locked();  // also closes a log file that was open
+    }
+}
+
+/** Writes to `path` (truncated); "" goes back to stderr. Returns false, changing nothing, if it cannot be opened. */
+inline bool install_file(const std::string& path) {
+    if (path.empty()) {
+        install_callback(nullptr);
+        return true;
+    }
+    auto sink = std::make_shared<file_sink>(path);
+    if (!sink->is_open()) return false;
+    install_callback(nullptr);  // a file replaces a callback
+    auto& s = state();
+    std::lock_guard<std::mutex> lock(s.write_mu);
+    s.ensure_ready_locked();
+    AixLog::Log::init({sink});
+    return true;
+}
+
+/** One finished line. `tag` may be empty; `where` (what a callback receives) is the tag, else the function. */
+inline void log_write(log_level level, const char* function, const std::string& tag, const std::string& message) noexcept {
+    try {
+        auto& s = state();
+        std::shared_ptr<const log_callback> callback;
+        {
+            std::lock_guard<std::mutex> lock(s.mu);
+            callback = s.callback;
+        }
+        const std::string where = tag.empty() ? std::string(function != nullptr ? function : "") : tag;
+        if (callback) {
+            (*callback)(level, where, message);
+            return;
+        }
+        std::lock_guard<std::mutex> lock(s.write_mu);
+        s.ensure_ready_locked();
+        *s.out << to_aix(level) << (tag.empty() ? AixLog::Tag() : AixLog::Tag(tag))
+               << AixLog::Timestamp(std::chrono::system_clock::now())
+               << AixLog::Function(function != nullptr ? function : "", "", 0) << message << std::endl;
+    } catch (...) {
+        // Logging must never throw out of a destructor.
+    }
+}
+
 /**
- * One log line: collects the message, writes it to stderr in a single call on destruction
- * (so lines from different threads never interleave), as
- *     2026-10-09 12:00:00.123 [debug] (tag) message
+ * One log line: collects the message and sends it on destruction (so a line is never split between
+ * threads).
  */
 class log_line {
    public:
@@ -111,35 +231,8 @@ class log_line {
         try {
             std::string message = body_.str();
             while (!message.empty() && (message.back() == '\n' || message.back() == '\r')) message.pop_back();
-
-            const auto now = std::chrono::system_clock::now();
-            const std::time_t seconds = std::chrono::system_clock::to_time_t(now);
-            const auto millis =
-                std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count() % 1000;
-            std::tm local{};
-#if defined(_WIN32)
-            localtime_s(&local, &seconds);
-#else
-            localtime_r(&seconds, &local);
-#endif
-            char stamp[32];
-            std::strftime(stamp, sizeof(stamp), "%Y-%m-%d %H:%M:%S", &local);
-
-            std::string line = stamp;
-            line += '.';
-            line += static_cast<char>('0' + millis / 100);
-            line += static_cast<char>('0' + millis / 10 % 10);
-            line += static_cast<char>('0' + millis % 10);
-            line += " [";
-            line += level_name(level_);
-            line += "] (";
-            line += tag_.empty() ? (function_ != nullptr ? function_ : "") : tag_.c_str();
-            line += ") ";
-            line += message;
-            line += '\n';
-            std::fwrite(line.data(), 1, line.size(), stderr);  // one call: atomic per line
+            log_write(level_, function_, tag_, message);
         } catch (...) {
-            // Logging must never throw out of a destructor.
         }
     }
 

@@ -9,7 +9,7 @@ bindings that mirror this API one to one. It installs with nothing but `pip` (Py
 | `speech::io` | `libspeech/audio.h` | load/save WAV, MP3, FLAC, playback, resample, mono mix |
 | `speech::dsp` | `libspeech/dsp/*.h` | `resample`, `window`, `fft`, `dct_ii_plan`, `stft`, `mfcc`, SIMD switch |
 | `speech::models` | `libspeech/models/*.h` | `denoiser` (Facebook, SpeechBrain, GTCRN, DPDFNet), `silero_vad` |
-| `speech::utils` | `libspeech/utils/*.h` | logging (`set_log_level`) |
+| `speech::utils` | `libspeech/utils/*.h` | logging (`set_log_level`, `set_log_callback`, `set_log_file`) |
 
 ## Installation
 

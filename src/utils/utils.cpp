@@ -157,3 +157,7 @@ speech::utils::log_level speech::utils::parse_log_level(const std::string& name)
 const char* speech::utils::log_level_name(log_level level) noexcept {
     return speech::detail::level_name(level);
 }
+
+void speech::utils::set_log_callback(log_callback fn) { speech::detail::install_callback(std::move(fn)); }
+
+bool speech::utils::set_log_file(const std::string& path) { return speech::detail::install_file(path); }

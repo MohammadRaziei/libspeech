@@ -179,12 +179,18 @@ what's already vendored under `src/third_party/`:
   not millions) where the cost doesn't matter and the abstraction helps.
 - Logging goes through libspeech's own logger (`libspeech/detail/log.h`):
   `SPEECH_LOG(DEBUG) << TAG(log_tag) << ... << std::endl;` (`TAG`/`COND` are the
-  `aixlog` helpers; the output side is ours and writes to stderr). Use `DEBUG` for
+  `aixlog` helpers; the line is written through AixLog's sinks, to stderr, a file or
+  a callback, and the level is checked first so a disabled message is never built).
+  Use `DEBUG` for
   normal lifecycle/results, `ERROR` for failures. Reach for `TRACE` only where it
   exposes an internal computation someone would actually want to inspect when
   debugging a wrong result -- not on every call; it's easy to make `TRACE` noise
   that nobody reads. Users control the level with `speech::utils::set_log_level()`,
-  `libspeech.set_log_level()` or `LIBSPEECH_LOG`; the default is `warning`.
+  `libspeech.set_log_level()`, the Python logger `logging.getLogger("libspeech")` or
+  `LIBSPEECH_LOG`; the default is `warning`. The Python package routes every native
+  line into that logger (`src/bindings/python/libspeech/_log.py`) and the logger's
+  level drives the native one; a log callback runs on the logging thread and must
+  never be called with a lock held (it may need the GIL).
 - Prefer a small, real regression test over a comment saying "this used to
   be broken." If you find a bug while adding a feature, add the test that
   would have caught it before fixing the code.

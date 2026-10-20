@@ -154,8 +154,27 @@ SIMD layout are described in [`CONTRIBUTING.md`](https://github.com/MohammadRazi
 | `speech::models` | `speech_models` | `speech_models_py` | ONNX Runtime, [httpp](https://github.com/MohammadRaziei/httpp) |
 
 Python users import everything from `libspeech`; the `speech_*_py` modules are an implementation detail.
-Logging is quiet by default (warnings and errors); `libspeech.set_log_level("debug")` or the
-`LIBSPEECH_LOG` environment variable turns it up.
+### Logging
+
+libspeech's own (C++) log is quiet by default (warnings and errors) and arrives in Python's `logging`, in the
+logger `"libspeech"`, with no setup. That logger is the single control: its level decides what the native side
+even writes, however you set it.
+
+```python
+import logging
+import libspeech
+
+logging.basicConfig(level=logging.INFO)                # root level: libspeech follows it
+logging.getLogger("libspeech").setLevel(logging.DEBUG) # or just this library
+libspeech.set_log_level("debug")                       # the same thing, plus a stderr handler if you set up none
+# LIBSPEECH_LOG=debug python app.py                    # the same, from the environment
+```
+
+`logging.config.dictConfig` works too (pass `disable_existing_loggers: False`, or the library's logger is
+disabled and stays silent). Levels run `trace` (5) to `error`, plus `off`. To take the native log over completely,
+`libspeech.set_log_callback(fn)` (`fn(level, where, message)`) or `libspeech.set_log_file(path)` replace the
+bridge; `set_log_callback(None)` goes back to native stderr output. In C++ use `speech::utils::set_log_level`,
+`set_log_callback` and `set_log_file` (`libspeech/utils/log.h`).
 
 ## Contributing
 

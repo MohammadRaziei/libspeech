@@ -606,8 +606,12 @@ public:
 protected:
     Log() noexcept : last_buffer_(nullptr), do_log_(true)
     {
-        std::clog.rdbuf(this);
-        std::clog << Severity() << Tag() << Function() << Conditional() << AixLog::Color::NONE << std::flush;
+        // [libspeech patch] Upstream does `std::clog.rdbuf(this)` here, which redirects std::clog for the whole
+        // process. A library must not do that: write through a private stream instead. Consequence: the LOG(...)
+        // macros (which write to std::clog) no longer reach the sinks; libspeech logs through its own ostream
+        // (include/libspeech/detail/log.h).
+        std::ostream os(this);
+        os << Severity() << Tag() << Function() << Conditional() << AixLog::Color::NONE << std::flush;
     }
 
     virtual ~Log()

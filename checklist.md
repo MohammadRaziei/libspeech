@@ -645,3 +645,18 @@ Previously: `speech_dsp`/`speech_io`/`speech_models` (C++ static libs) but
 - [ ] No microphone / socket example yet (only tests that feed arrays in chunks).
 - [ ] `SileroVad` streaming was tested with synthetic speech-like audio only; real speech and real-time
   microphone input were not tried.
+
+## Logging: AixLog back end + Python `logging` bridge
+
+- [x] Output goes through AixLog's own sinks (`SinkCerr`, `SinkFile`) with the vendored header patched so it no longer
+  redirects `std::clog` for the whole process (`[libspeech patch]`, documented in `src/third_party/aixlog/README.md`);
+  the level is checked first, so a disabled message is never built.
+- [x] `speech::utils::set_log_callback()` / `set_log_file()` (one output at a time; a callback is never run under a lock,
+  so a Python callback that needs the GIL cannot deadlock against a thread that holds it).
+- [x] Python: native lines arrive in `logging.getLogger("libspeech")`; the logger's effective level drives the native one
+  (`setLevel` on it or on the root logger, `basicConfig`, `dictConfig`, `caplog.set_level`, `set_log_level`,
+  `LIBSPEECH_LOG`). Tests: `tests/models/test_log.cpp`, `tests/python/test_log_bridge.py`, `tests/python/test_logging.py`.
+- [ ] Not verified here: Windows/MSVC (the `ERROR` macro regression test still runs on every platform) and macOS.
+- [ ] `logging.disable(...)` is not seen by the native side (lines are still built, then dropped in Python).
+- [ ] A stderr handler is added by `set_log_level()` / `LIBSPEECH_LOG` only when no logging is configured at that moment;
+  if the application calls `logging.basicConfig()` afterwards, lines are printed twice (both handlers).
