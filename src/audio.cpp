@@ -18,6 +18,7 @@
 #define MINIAUDIO_IMPLEMENTATION
 #include "miniaudio.h"
 
+#include "libspeech/dsp/normalize.h"
 #include "libspeech/dsp/resample.h"
 
 #include "aixlog.hpp"
@@ -425,6 +426,15 @@ speech::io::audio speech::io::audio::resample(int target_sample_rate) const {
     resampled_audio.load(resampled_data, target_sample_rate);
 
     return resampled_audio;
+}
+
+speech::io::audio speech::io::audio::normalize_rms(double target_dbfs, double peak_ceiling) const {
+    audio normalized(*this);  // a deep copy: this audio is left untouched
+    audio_impl& state = *normalized.impl_;
+    const std::size_t count = state.has_samples() ? static_cast<std::size_t>(state.channels) * state.frames : 0;
+    // One call over the whole planar block: every channel gets the same gain.
+    speech::dsp::rms_normalize(count ? state.samples->data() : nullptr, count, target_dbfs, peak_ceiling);
+    return normalized;
 }
 
 speech::io::audio speech::io::audio::to_mono() {

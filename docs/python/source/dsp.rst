@@ -8,6 +8,8 @@ Functions
 .. autofunction:: libspeech.istft
 .. autofunction:: libspeech.dct
 .. autofunction:: libspeech.window
+.. autofunction:: libspeech.rms_normalize
+.. autofunction:: libspeech.rms_dbfs
 
 Classes
 -------

@@ -275,6 +275,11 @@ platform suffixes there, not Python-version ones, and silently no-ops
 instead of erroring). Both only showed up by actually opening the built
 artifact.
 
+## Decisions and working rules
+
+Architectural decisions are recorded in [`docs/adr`](docs/adr/README.md); how to work on the project (build and test through CMake, what needs
+a consultation, definition of done) is in [`docs/agent.md`](docs/agent.md).
+
 ## Current project status
 
 See [`checklist.md`](checklist.md) for the up-to-date, detailed state of

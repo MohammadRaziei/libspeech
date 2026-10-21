@@ -37,3 +37,6 @@ tests-old
 __pycache__
 Testing
 .qodo
+
+# Files the C++ log tests write into the working directory (removed on success)
+libspeech_test_log_*.txt

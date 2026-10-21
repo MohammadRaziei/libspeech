@@ -6,6 +6,18 @@ This file starts at 0.3.1; older history is in `git log`.
 ## Unreleased
 
 ### Added
+- **Streaming `dpdfnet` denoiser.** `Denoiser("dpdfnet").stream()` works like the GTCRN one: any chunk size, output equal to
+  `process()` on the whole signal (tail included), exactly as many samples out as in. The stream compensates the
+  network's four-hop delay like `process()` does, so the latency is `n_fft - 1 + 4 hops`: 959 samples (60 ms) for the
+  16 kHz models, 2879 (60 ms) for `dpdfnet2_48khz_hr`. Tested with the real `dpdfnet2` and the 48 kHz model (chunks from 1
+  to 10^6 samples, short inputs, interleaved streams, `close()` while streaming). ADR-0019.
+- **RMS normalizer.** `speech::dsp::rms_normalize()` / `scale_to_rms()` / `rms()` / `rms_dbfs()` (C++),
+  `speech::io::audio::normalize_rms()`, and in Python `libspeech.rms_normalize(x, target_dbfs=-20.0, peak_ceiling=0.99)`,
+  `libspeech.rms_dbfs(x)` and `Audio.normalize_rms(...)`: scale a signal to a target RMS level in dBFS with one gain
+  (so shape and channel balance are kept), lowering the gain if the peak would pass the ceiling so nothing clips. Silent
+  or non-finite input is returned unchanged. ADR-0020.
+- **`docs/adr/` (18 architecture decision records) and `docs/agent.md`** (the guide for an agent or developer: when to consult, how to build
+  and test through CMake, working rules, delivery). The ADRs were reconstructed from the git history, the changelog and the code.
 - **The native log reaches Python's `logging`, and the Python logger controls it.** Every line libspeech's C++ code
   logs arrives in `logging.getLogger("libspeech")` with no setup, and that logger's level decides which native
   lines are even built: `setLevel` on it or on the root logger, `logging.basicConfig(level=...)`, `dictConfig`,
@@ -28,7 +40,7 @@ This file starts at 0.3.1; older history is in `git log`.
   most 511 samples (32 ms at 16 kHz). The result is bit-identical to `process()` on the whole signal, however the
   audio is chunked (tested with the real model, chunks from 1 sample to 10^6). Each stream has its own recurrent
   state; streams of one denoiser are independent and a running stream survives `close()` of the denoiser. Backends
-  that cannot stream (`facebook`, `speechbrain`, `dpdfnet`) report `supports_streaming == False` and `stream()` raises
+  that cannot stream (`facebook`, `speechbrain`) report `supports_streaming == False` and `stream()` raises
   a clear error. The incremental STFT/ISTFT behind it (`detail::stft_streamer`, same frames and arithmetic as
   `stft_apply_istft`, bounded memory, supports DPDFNet-style `shift`) is generic.
 

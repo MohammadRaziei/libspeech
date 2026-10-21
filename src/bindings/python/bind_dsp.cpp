@@ -9,12 +9,14 @@
 #include "libspeech/dsp/fft.h"
 #include "libspeech/dsp/delta.h"
 #include "libspeech/dsp/mfcc.h"
+#include "libspeech/dsp/normalize.h"
 #include "libspeech/dsp/resample.h"
 #include "libspeech/dsp/simd.h"
 #include "libspeech/dsp/stft.h"
 #include "libspeech/dsp/window.h"
 #include <algorithm>
 #include <cctype>
+#include <cstring>
 #include <complex>
 #include <stdexcept>
 #include <string>
@@ -423,4 +425,37 @@ NB_MODULE(NB_MODULE_NAME, m) {
         "librosa's order=2, which is a quadratic-fit second derivative). edge='replicate' (HTK/Kaldi/torchaudio) "
         "repeats the edge frame; edge='interp' matches librosa.feature.delta(width=2*half_window+1, "
         "mode='interp') and needs at least 2*half_window+1 frames.");
+
+    // --- RMS normalization -----------------------------------------------
+    using in_array_nd = nb::ndarray<const float, nb::c_contig, nb::device::cpu>;
+    m.def(
+        "rms_dbfs",
+        [](in_array_nd x) {
+            if (x.ndim() != 1 && x.ndim() != 2) throw std::invalid_argument("expected a 1-D or 2-D float32 array.");
+            return speech::dsp::rms_dbfs(x.data(), x.size());
+        },
+        nb::arg("signal"),
+        "RMS level of a float32 array (1-D, or 2-D (channels, samples) over all samples) in dBFS: 0 is a "
+        "full-scale constant, a full-scale sine is -3.01. -inf for silence.");
+    m.def(
+        "rms_normalize",
+        [](in_array_nd x, double target_dbfs, double peak_ceiling) -> nb::object {
+            if (x.ndim() != 1 && x.ndim() != 2) throw std::invalid_argument("expected a 1-D or 2-D float32 array.");
+            const std::size_t count = x.size();
+            speech::detail::uninit_vector<float> out;
+            {
+                nb::gil_scoped_release release;
+                out.resize(count);
+                if (count) std::memcpy(out.data(), x.data(), count * sizeof(float));
+                speech::dsp::rms_normalize(out.data(), count, target_dbfs, peak_ceiling);
+            }
+            if (x.ndim() == 1) return nb::cast(speech::py::wrap<speech::py::out_array_1d>(std::move(out), {count}));
+            return nb::cast(speech::py::wrap<speech::py::out_array_2d>(std::move(out), {x.shape(0), x.shape(1)}));
+        },
+        nb::arg("signal"), nb::arg("target_dbfs") = -20.0, nb::arg("peak_ceiling") = 0.99,
+        "Returns a float32 copy of `signal` (1-D, or 2-D (channels, samples)) scaled so that its RMS level is "
+        "target_dbfs (dBFS; default -20), with the gain lowered if that would push a sample above peak_ceiling "
+        "(linear amplitude, default 0.99) so the result never clips. One gain for the whole array, so the shape "
+        "of the signal and the balance between channels are kept. Silent or non-finite input is returned "
+        "unchanged.");
 }

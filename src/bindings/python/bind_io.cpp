@@ -99,6 +99,11 @@ NB_MODULE(NB_MODULE_NAME, m) {
         .def("resample", &speech::io::audio::resample,
              "Returns a copy of this audio resampled to target_sample_rate.",
              nb::arg("target_sample_rate"))
+        .def("normalize_rms", &speech::io::audio::normalize_rms, nb::arg("target_dbfs") = -20.0,
+             nb::arg("peak_ceiling") = 0.99,
+             "Returns a copy scaled so that its RMS level is target_dbfs (dBFS; 0 is full scale), with the gain "
+             "lowered if that would push a sample above peak_ceiling (linear amplitude) so the result never clips. "
+             "All channels get the same gain. Silent audio is returned unchanged.")
 
         // Data access
         .def("data", static_cast<std::vector<std::vector<float>> (speech::io::audio::*)() const>(&speech::io::audio::data),

@@ -634,11 +634,11 @@ Previously: `speech_dsp`/`speech_io`/`speech_models` (C++ static libs) but
 
 ## Open items: streaming
 
-- [ ] Streaming exists for `SileroVad` and the `gtcrn` denoiser only. `dpdfnet` is the natural next one: it is
-  frame-based like GTCRN and `detail::stft_streamer` already supports its `shift` (covered by a C++ test with the
-  DPDFNet geometry, n_fft 320 / hop 160, but not wired to the model). `facebook` (DNS64) and `speechbrain`
-  (SepFormer) work on whole waveforms in one graph call and would need chunked inference with overlap, which
-  changes their output compared with `process()`.
+- [x] `dpdfnet` streams (ADR-0019): equal to `process()` for any chunking, tail included; latency 959 samples (16 kHz
+  models) and 2879 (48 kHz). Run with `dpdfnet2` and `dpdfnet2_48khz_hr` only; the other three 16 kHz variants share the
+  code but were not run. Streaming speed of DPDFNet is not measured.
+- [ ] `facebook` (DNS64) and `speechbrain` (SepFormer) work on whole waveforms in one graph call and would need chunked
+  inference with overlap, which changes their output compared with `process()`.
 - [ ] GTCRN streaming speed was measured on the 1-core sandbox with random noise as input: about 0.06x real time
   (10 s of audio in ~0.6 s), worst single `feed()` of 10 ms chunks 2.4 ms. One run per chunk size, 5-15 % noise;
   not a benchmark, and not in `benchmarks/`.
@@ -666,12 +666,30 @@ Previously: `speech_dsp`/`speech_io`/`speech_models` (C++ static libs) but
 - [x] `Denoiser("speechbrain")` output is level-matched to its input (`src/models/level_match.h`; unit tests in
   `tests/models/test_level_match.cpp`, real-model test `test_speechbrain_output_is_at_the_level_of_its_input` in
   `tests/python/test_models.py`).
-- [ ] **RMS normalizer for audio**: a public `Audio` / functional API that scales a signal to a target RMS (in dBFS),
-  with a peak ceiling so it never clips, and the same for a batch/stream (running RMS). Reuse `match_level`'s logic
-  (RMS target, then a peak ceiling); decide the name and whether it is in `libspeech.functional`, a method on `Audio`, or both.
-  Related, not the same: peak normalization and perceptual loudness (LUFS, ITU-R BS.1770), listed under older features.
+- [x] **RMS normalizer for audio** (ADR-0020): `speech::dsp::rms_normalize()` (dBFS target, peak ceiling), `Audio.normalize_rms()`,
+  `libspeech.rms_normalize()` / `libspeech.rms_dbfs()`. One gain for the whole signal, all channels together.
+- [ ] RMS normalizer for a **stream** (running RMS): needs a decision first (cumulative or sliding window, gain smoothing, the
+  first seconds); it cannot equal the one-shot result. `models::detail::match_level` still has its own copy of the gain
+  logic because `speech_models` does not link `speech_dsp`.
 - [x] Measured on a real 6 s speech clip scaled by 0.02 (peak 0.01), 1.0 and 6.0 (peak 3.3): output RMS / input RMS is
   1.00 for `speechbrain` (level-matched), 0.94 to 1.01 for `gtcrn` and `dpdfnet`, and 1.00 to 1.01 for `facebook` at normal
   and loud input. Only `facebook` on very quiet input (peak 0.01) comes back at 0.61: it removes more of a very quiet
   signal (it treats it as noise). That is the model's behaviour, not clipping; not changed. One clip, one speaker: not a benchmark.
 
+
+## Performance and quantization (ADR-0021)
+
+- [x] Profiled all four denoisers on one core against raw ONNX Runtime: libspeech adds under about 5 percent. No code change.
+- [x] `onnxsim` and ONNX Runtime options (`ORT_ENABLE_EXTENDED`, spinning) tried: no speedup for gtcrn and dpdfnet.
+- [x] Dynamic int8 variants made and run through libspeech (4 s clip): facebook LSTM-only 1.87x at 47.3 dB; speechbrain
+  MatMul+Gemm 1.72x at 33.5 dB. Convolution quantization does not load (ONNX Runtime 1.21 has no int8 `ConvInteger`) or gains nothing.
+- [ ] **Decision needed:** ship the two int8 models (release files with `.sha256` and `.readme`, ADR-0005) and an API to pick them
+  (a `precision` argument is not decided). Needs a **listening test** first; only one 4 s clip was measured.
+- [ ] Measure `num_threads=0` on a multi-core machine (RTF for facebook and speechbrain with 1, 2, 4, 0); then decide whether the
+  default `num_threads=1` should change. `0` means `std::thread::hardware_concurrency()`, which can differ from `nproc`.
+- [ ] Try a newer ONNX Runtime than the bundled 1.21.0 (pip 1.24.4 runs the int8 convolution variant of speechbrain, 1.68x at 23.3 dB).
+- [ ] gtcrn and dpdfnet were not quantized (about 60 percent of gtcrn kernel time is data movement ops from the exported graph;
+  a re-export of the graph would be a model change).
+- [ ] A multi-threaded Python test for `process()` and streams (the GIL is released in the binding; not exercised).
+- [ ] The demo generator does not check DPDFNet streaming (only SileroVad and GTCRN); add it to `make_demo.py` and `build_html.py`.
+- [ ] DPDFNet streaming (ADR-0019) ran with `dpdfnet2` and `dpdfnet2_48khz_hr` only, not with `dpdfnet_baseline`, `dpdfnet4`, `dpdfnet8`.

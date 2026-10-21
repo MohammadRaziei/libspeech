@@ -50,13 +50,24 @@ class SPEECH_API dpdfnet_denoiser final : public denoiser {
 
     ~dpdfnet_denoiser() override;
 
+    /**
+     * DPDFNet streams (denoiser::create_stream()): the same frames and the same arithmetic as process(), so the
+     * streamed audio equals process() on the whole signal for any chunking. Latency: n_fft - 1 samples of STFT
+     * look-ahead plus the network's four-hop delay (e.g. 319 + 640 = 959 samples, 60 ms at 16 kHz for the 16 kHz
+     * models).
+     */
+    bool supports_streaming() const noexcept override { return true; }
+
    protected:
     std::vector<float> process_impl(const float* data, std::size_t size) override;
+    std::unique_ptr<denoiser_stream> create_stream_impl() override;
     void close_impl() noexcept override;
 
    private:
     struct impl;  // ONNX Runtime state, defined in the .cpp
-    std::unique_ptr<impl> impl_;
+    friend class dpdfnet_stream;
+    // shared with the streams created from this denoiser, so close() cannot pull the model out from under one
+    std::shared_ptr<impl> impl_;
 };
 
 }  // namespace speech::models

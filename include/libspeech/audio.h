@@ -32,6 +32,12 @@ class SPEECH_API audio {
 
     [[nodiscard]] audio resample(int target_sample_rate) const;
 
+    // Returns a copy scaled so that its RMS level is target_dbfs (dBFS, 0 = full scale), with the gain lowered if
+    // that would push a sample above peak_ceiling (linear amplitude), so the result never clips. All channels get
+    // the same gain, which keeps their balance. Silent audio is returned unchanged. See speech::dsp::rms_normalize.
+    // Throws std::invalid_argument for a non-finite target_dbfs or a peak_ceiling that is not a finite number > 0.
+    [[nodiscard]] audio normalize_rms(double target_dbfs = -20.0, double peak_ceiling = 0.99) const;
+
     [[nodiscard]] std::vector<std::vector<float>> data() const;
     [[nodiscard]] std::vector<float> data(int index) const;
 

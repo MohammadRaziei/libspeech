@@ -261,7 +261,7 @@ NB_MODULE(NB_MODULE_NAME, m) {
         .def("__call__", process_array, array_doc, nb::arg("input_audio"))
         .def("__call__", process_list, list_doc, nb::arg("input_audio"))
         .def_prop_ro("supports_streaming", &speech::models::denoiser::supports_streaming,
-                     "True if stream() works for this backend (currently 'gtcrn').")
+                     "True if stream() works for this backend ('gtcrn' and 'dpdfnet'; not 'facebook' or 'speechbrain').")
         .def("stream", &speech::models::denoiser::create_stream,
              "Starts a streaming session (a DenoiserStream): feed audio in chunks of any size and get the enhanced "
              "audio back with a small delay. Every call gives an independent session. Raises RuntimeError if the "

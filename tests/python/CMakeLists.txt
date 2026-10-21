@@ -55,6 +55,7 @@ if(TARGET speech_io_py)
         add_python_test(free_threading)   # only runs on free-threaded CPython (3.13t+); skips itself elsewhere
         add_python_test(audio_interop)
         add_python_test(readme_examples)  # runs the python blocks of README.md (the model block needs `-m models`)
+        add_python_test(normalize)        # RMS normalization: libspeech.rms_normalize and Audio.normalize_rms
         add_python_test(librosa_compat)   # needs the `test` extra (librosa, soundfile, scipy); skips itself without
 
         # Heavy end-to-end Denoiser test (real ONNX model: download + ~1 GB RAM). It is marked
@@ -64,7 +65,7 @@ if(TARGET speech_io_py)
         # speech_test_python or ctest.
         add_custom_target(speech_test_python_models_e2e
             COMMAND ${CMAKE_COMMAND} -E echo "-- Running Python model tests: pytest -m models"
-            COMMAND ${Python3_EXECUTABLE} -m pytest ${CMAKE_CURRENT_SOURCE_DIR}/test_models.py ${CMAKE_CURRENT_SOURCE_DIR}/test_vad_streaming.py ${CMAKE_CURRENT_SOURCE_DIR}/test_denoiser_streaming.py ${CMAKE_CURRENT_SOURCE_DIR}/test_model_files.py ${CMAKE_CURRENT_SOURCE_DIR}/test_readme_examples.py -m models
+            COMMAND ${Python3_EXECUTABLE} -m pytest ${CMAKE_CURRENT_SOURCE_DIR}/test_models.py ${CMAKE_CURRENT_SOURCE_DIR}/test_vad_streaming.py ${CMAKE_CURRENT_SOURCE_DIR}/test_denoiser_streaming.py ${CMAKE_CURRENT_SOURCE_DIR}/test_dpdfnet_streaming.py ${CMAKE_CURRENT_SOURCE_DIR}/test_model_files.py ${CMAKE_CURRENT_SOURCE_DIR}/test_readme_examples.py -m models
             WORKING_DIRECTORY ${PYTHON_PROJECT_NAME}
             USES_TERMINAL
         )
