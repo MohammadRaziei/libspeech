@@ -616,18 +616,18 @@ Previously: `speech_dsp`/`speech_io`/`speech_models` (C++ static libs) but
 
 ## Open items: speed of the new feature extractors (log-mel, delta)
 
-- [ ] **Speed not measured, not optimized**: `mfcc::compute_log_mel_flat()` / `MFCC.log_mel()` and `speech::dsp::delta()` /
-  `libspeech.delta()` were added with correctness tests only (C++ unit tests, plus cross-checks against librosa and
-  an independent NumPy reference in `tests/python/test_dsp.py`). No timing or memory numbers exist for them yet, and
-  they are not in `benchmarks/`.
-- [ ] `delta()` is a plain scalar loop: no OpenMP, no SIMD kernel (`simd.h`), no blocking. Frames are independent,
-  so it should parallelize the way `mfcc::run()` does (`#pragma omp parallel if (num_frames >= N)`); the right
-  threshold needs a measurement first.
+- [x] **Speed measured** (1-core sandbox, CMake pipeline `libspeech_bench_throughput`, 7 repeats, best of; 10 s / 60 s of
+  16 kHz audio): `log_mel` 2.0 / 11.7 ms (librosa 6.5 / 31.3, audioflux 20.1 / 115.9); `delta` of 13 MFCCs, half-window 4,
+  `interp` 0.13 / 0.33 ms (librosa 1.1 / 1.6). In the same run MFCC took 2.1 / 11.8 ms, so `delta` is about 3 % of the
+  MFCC pipeline. Peak memory for the two new rows was not run (`libspeech_bench_memory`).
+- [ ] `delta()` is a plain scalar loop: no OpenMP, no SIMD kernel (`simd.h`), no blocking. Measured above: 0.33 ms for
+  60 s with 13 features, already 5x ahead of librosa, so nothing is done for now. An OpenMP threshold can only be found
+  on a multi-core machine (and for more features, e.g. 80 log-mel bins, where the work per frame is larger).
 - [ ] `log_mel` shares `mfcc::run()` with MFCC, so it inherits that function's OpenMP path, but nobody has timed the
   OpenMP-vs-serial difference for it either.
-- [ ] Add `log_mel` and `delta` to the Python benchmark suite (`benchmarks/python/`, `benchmarks/report/`). Not
-  comparable 1:1 with librosa: librosa's mel scale is Slaney with area normalization, libspeech uses HTK triangular
-  filters, so such a row only says "speed of the same call with these parameters", like the MFCC row.
+- [x] `log_mel` and `delta` are in the Python benchmark suite (`benchmarks/python/ops.py`, throughput, memory driver and
+  report). Not comparable 1:1 with librosa: librosa's mel scale is Slaney with area normalization, libspeech uses HTK
+  triangular filters, so such a row only says "speed of the same call with these parameters", like the MFCC row.
 - [ ] **Multi-core is still untested.** The dev sandbox has 1 core (`nproc` = 1), so any OpenMP speedup claim
   (STFT, MFCC, log-mel, delta) needs a re-run on a real multi-core machine before it goes into a README or paper.
   Timing noise on this sandbox is 5-15 %, so improvements of a few percent can't be confirmed here either.
@@ -635,8 +635,8 @@ Previously: `speech_dsp`/`speech_io`/`speech_models` (C++ static libs) but
 ## Open items: streaming
 
 - [x] `dpdfnet` streams (ADR-0019): equal to `process()` for any chunking, tail included; latency 959 samples (16 kHz
-  models) and 2879 (48 kHz). Run with `dpdfnet2` and `dpdfnet2_48khz_hr` only; the other three 16 kHz variants share the
-  code but were not run. Streaming speed of DPDFNet is not measured.
+  models) and 2879 (48 kHz). Run with all five variants: `dpdfnet_baseline`, `dpdfnet2`, `dpdfnet4`, `dpdfnet8` (all 959)
+  and `dpdfnet2_48khz_hr`. Streaming speed of DPDFNet is not measured.
 - [ ] `facebook` (DNS64) and `speechbrain` (SepFormer) work on whole waveforms in one graph call and would need chunked
   inference with overlap, which changes their output compared with `process()`.
 - [ ] GTCRN streaming speed was measured on the 1-core sandbox with random noise as input: about 0.06x real time

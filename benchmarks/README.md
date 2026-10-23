@@ -70,8 +70,12 @@ Measured by the CMake pipeline itself (`libspeech_benchmarks_python`, 7 repeats,
 | stft 10 s / 60 s | 1.4 / 8.3 | 3.9 / 19.8 | 9.5 / 62.9 | | |
 | mfcc 10 s / 60 s | 1.6 / 9.4 | 5.1 / 26.5 | 14.2 / 91.3 | | |
 | resample 44.1 -> 16 kHz, 10 s / 60 s | 2.4 / 14.5 | **2.3 / 13.3** | 53.7 / 297 | 5.3 / 26.7 | |
+| log_mel 10 s / 60 s (see below) | 2.0 / 11.7 | 6.5 / 31.3 | 20.1 / 115.9 | | |
+| delta of 13 MFCCs, 10 s / 60 s (see below) | 0.13 / 0.33 | 1.1 / 1.6 | | | |
 
 Peak extra memory on 60 s inputs (MiB), libspeech / librosa / audioflux: stft 15 / 224 / 97, mfcc 0.7 / 232 / 63, resample 4.2 / 156 / 5.3, load 7.9 / 160 / -. Install size: libspeech 9.6 MiB with dependencies, librosa 123, audioflux 142.
+
+The `log_mel` and `delta` rows come from a later run of the same pipeline (same sandbox, 1 core); in that run MFCC measured 2.1 / 11.8 ms, so compare those rows with each other, not with the MFCC row above. `log_mel` is not comparable 1:1 across libraries (HTK triangular filters vs librosa's Slaney scale vs audioflux's own bank); `delta` uses half-window 4 and `interp` edges in both libraries, and its input (the MFCC matrix) is computed outside the timer. Peak memory was not run for these two.
 
 STFT, MFCC and load are 2.4x-3.5x ahead of librosa. **Resample is not ahead: in this run librosa's `soxr_hq` is 7-9% faster** (2.3 vs 2.4 ms, 13.3 vs 14.5 ms); in earlier in-process runs the order flipped by a similar margin, so read it as parity within this machine's 5-15% run-to-run noise -- but with equal or better accuracy (~4e-8 vs soxr's ~1e-7) and a cached construction path. soxr is a multi-stage design and is hard to beat per core. The `libspeech_list` rows (list API, e.g. stft 37 ms for 10 s) show what Python-object conversion costs; use the NumPy path. Multi-core speed-ups (OpenMP in STFT/MFCC/resample) are untested here -- this sandbox has one core.
 

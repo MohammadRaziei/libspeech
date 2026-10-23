@@ -160,3 +160,78 @@ def test_the_48khz_model_streams_too():
     out, stream = _stream_all(den48, x, [3000, 777])
     np.testing.assert_array_equal(out, den48.process(x))
     assert stream.latency_samples > LATENCY  # a longer window at 48 kHz
+
+
+# The other 16 kHz variants share dpdfnet2's STFT and stream the same way, but they are different networks (other
+# depth, other recurrent state), so each one has to prove it on its own.
+VARIANTS = ["dpdfnet_baseline", "dpdfnet4", "dpdfnet8"]
+
+
+@pytest.fixture(scope="module", params=VARIANTS)
+def variant_den(request):
+    return libspeech.Denoiser("dpdfnet", request.param)
+
+
+@pytest.fixture(scope="module")
+def variant_reference(variant_den, audio) -> np.ndarray:
+    return variant_den.process(audio)
+
+
+def test_every_16khz_variant_streams_with_the_same_latency(variant_den):
+    assert variant_den.supports_streaming
+    assert variant_den.stream().latency_samples == LATENCY
+
+
+@pytest.mark.parametrize("chunks", [[100], [159], [160], [161], [7, 600, 33, 160, 5], [10**6]])
+def test_variant_stream_equals_process_for_any_chunking(variant_den, audio, variant_reference, chunks):
+    out, stream = _stream_all(variant_den, audio, chunks)
+    assert out.dtype == np.float32
+    assert out.shape == variant_reference.shape
+    np.testing.assert_array_equal(out, variant_reference)
+    assert stream.samples_in == stream.samples_out == len(audio)
+
+
+@pytest.mark.parametrize("length", [1, 159, 160, 319, 320, 959, 960, 1500])
+def test_variant_short_streams_equal_process(variant_den, length):
+    x = _noisy_tone(1.0, seed=2)[:length]
+    out, _ = _stream_all(variant_den, x, [64])
+    np.testing.assert_array_equal(out, variant_den.process(x))
+
+
+def test_variant_latency_is_bounded_and_the_bound_is_reached(variant_den):
+    x = _noisy_tone(0.5, seed=9)
+    stream = variant_den.stream()
+    worst = 0
+    for i in range(len(x)):
+        stream.feed(x[i : i + 1])
+        worst = max(worst, stream.samples_in - stream.samples_out)
+        assert stream.samples_in - stream.samples_out <= LATENCY
+    assert worst == LATENCY
+    stream.finish()
+
+
+def test_variant_tail_of_the_input_is_real_output_not_silence(variant_den):
+    x = _noisy_tone(1.0, seed=7)
+    out, _ = _stream_all(variant_den, x, [500])
+
+    def rms(a):
+        return float(np.sqrt(np.mean(a.astype(np.float64) ** 2)))
+
+    assert rms(out[-640:]) > 0.25 * rms(out[-1280:-640]) > 0.0
+
+
+def test_variant_streams_are_independent_and_start_fresh(variant_den):
+    a, b = _noisy_tone(1.5, seed=3), _noisy_tone(1.5, seed=4)
+    sa, sb = variant_den.stream(), variant_den.stream()
+    out_a, out_b = [], []
+    for i in range(0, len(a), 700):
+        out_a.append(sa.feed(a[i : i + 700]))
+        out_b.append(sb.feed(b[i : i + 700]))
+    out_a.append(sa.finish())
+    out_b.append(sb.finish())
+    np.testing.assert_array_equal(np.concatenate(out_a), variant_den.process(a))
+    np.testing.assert_array_equal(np.concatenate(out_b), variant_den.process(b))
+    # a stream started after those left the model's recurrent state "used" begins from scratch again
+    out, _ = _stream_all(variant_den, a, [500])
+    np.testing.assert_array_equal(out, variant_den.process(a))
+

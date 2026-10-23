@@ -43,8 +43,10 @@ OP_LABELS = {
     "resample": "Resample 44.1 kHz to 16 kHz",
     "stft": "STFT (n_fft 512, hop 128)",
     "mfcc": "MFCC (13 coeffs, 26 mels)",
+    "log_mel": "Log-mel (26 mels)",
+    "delta": "Delta of the MFCCs (half-window 4)",
 }
-OP_ORDER = ["load", "resample", "stft", "mfcc"]
+OP_ORDER = ["load", "resample", "stft", "mfcc", "log_mel", "delta"]
 
 
 def load(path):

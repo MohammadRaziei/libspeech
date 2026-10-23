@@ -149,6 +149,40 @@ def test_a_disabled_logger_silences_the_library(caplog):
     assert not messages(caplog)
 
 
+@pytest.fixture
+def restore_disable():
+    yield
+    logging.disable(logging.NOTSET)
+
+
+def test_logging_disable_turns_the_native_level_off(caplog, restore_disable):
+    # logging.disable(...) drops every record below the given level, whatever the logger level is. The native
+    # side must not build lines that Python would only drop (each one also costs a GIL acquisition).
+    LOGGER.setLevel(logging.DEBUG)
+    logging.disable(logging.CRITICAL)
+    assert libspeech.get_log_level() == "off"
+    make_error_line()
+    assert not messages(caplog)
+    logging.disable(logging.NOTSET)
+    assert libspeech.get_log_level() == "debug"
+    make_debug_line()
+    assert any("Created FFT" in m for m in messages(caplog))
+
+
+def test_logging_disable_keeps_what_it_lets_through(restore_disable):
+    LOGGER.setLevel(logging.DEBUG)
+    logging.disable(logging.WARNING)  # drops everything up to and including WARNING
+    assert libspeech.get_log_level() == "error"
+    logging.disable(logging.DEBUG)
+    assert libspeech.get_log_level() == "info"
+
+
+def test_a_level_set_while_logging_is_disabled_respects_the_disable(restore_disable):
+    logging.disable(logging.WARNING)
+    LOGGER.setLevel(logging.DEBUG)
+    assert libspeech.get_log_level() == "error"
+
+
 @pytest.mark.parametrize(
     ("number", "native"),
     [(0, "trace"), (5, "trace"), (10, "debug"), (15, "info"), (20, "info"), (25, "warning"), (30, "warning"),
@@ -237,6 +271,40 @@ def test_application_logging_configuration_is_respected():
     lines = [ln for ln in r.stderr.splitlines() if "Created FFT" in ln]
     assert len(lines) == 1
     assert lines[0].startswith("APP libspeech ")
+
+
+def test_basicconfig_after_set_log_level_does_not_print_twice():
+    # set_log_level() found no logging configured and added its own stderr handler; the application configures
+    # logging afterwards. From then on only the application's handler may print.
+    r = _run(
+        'libspeech.set_log_level("debug")\n'
+        'logging.basicConfig(level=logging.DEBUG, format="APP %(name)s %(message)s")'
+    )
+    assert r.returncode == 0, r.stderr
+    lines = [ln for ln in r.stderr.splitlines() if "Created FFT" in ln]
+    assert len(lines) == 1
+    assert lines[0].startswith("APP libspeech ")
+
+
+def test_a_handler_added_to_the_library_logger_after_set_log_level_is_the_only_one_printing():
+    r = _run(
+        'libspeech.set_log_level("debug")\n'
+        "handler = logging.StreamHandler(sys.stderr)\n"
+        'handler.setFormatter(logging.Formatter("APP %(message)s"))\n'
+        'logging.getLogger("libspeech").addHandler(handler)'
+    )
+    assert r.returncode == 0, r.stderr
+    lines = [ln for ln in r.stderr.splitlines() if "Created FFT" in ln]
+    assert len(lines) == 1
+    assert lines[0].startswith("APP ")
+
+
+def test_set_log_level_alone_still_prints_once_in_the_library_format():
+    r = _run('libspeech.set_log_level("debug")')
+    assert r.returncode == 0, r.stderr
+    lines = [ln for ln in r.stderr.splitlines() if "Created FFT" in ln]
+    assert len(lines) == 1
+    assert "[DEBUG]" in lines[0]
 
 
 def test_basicconfig_after_import_turns_native_lines_on():

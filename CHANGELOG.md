@@ -9,7 +9,7 @@ This file starts at 0.3.1; older history is in `git log`.
 - **Streaming `dpdfnet` denoiser.** `Denoiser("dpdfnet").stream()` works like the GTCRN one: any chunk size, output equal to
   `process()` on the whole signal (tail included), exactly as many samples out as in. The stream compensates the
   network's four-hop delay like `process()` does, so the latency is `n_fft - 1 + 4 hops`: 959 samples (60 ms) for the
-  16 kHz models, 2879 (60 ms) for `dpdfnet2_48khz_hr`. Tested with the real `dpdfnet2` and the 48 kHz model (chunks from 1
+  16 kHz models, 2879 (60 ms) for `dpdfnet2_48khz_hr`. Tested with the real `dpdfnet2`, `dpdfnet_baseline`, `dpdfnet4`, `dpdfnet8` and the 48 kHz model (chunks from 1
   to 10^6 samples, short inputs, interleaved streams, `close()` while streaming). ADR-0019.
 - **RMS normalizer.** `speech::dsp::rms_normalize()` / `scale_to_rms()` / `rms()` / `rms_dbfs()` (C++),
   `speech::io::audio::normalize_rms()`, and in Python `libspeech.rms_normalize(x, target_dbfs=-20.0, peak_ceiling=0.99)`,
@@ -71,8 +71,15 @@ This file starts at 0.3.1; older history is in `git log`.
   can be built from an array: `Audio(array, sample_rate)`, `Audio.from_numpy(...)`, `Audio.from_dlpack(...)`
   (1-D mono or 2-D `(channels, samples)`, copied once; other dtypes are converted). New C++
   `audio::shared_samples()`. `to_numpy(channel)` is unchanged (a 1-D copy).
+- **Tests and benchmarks.** `tests/python/test_denoiser_threading.py` (marked `models`): one `Denoiser` shared by several
+  threads, with `process()` and with streams, gives each thread its serial result, and `process()` / `feed()` release the
+  GIL. `log_mel` and `delta` are in the Python benchmark suite (`benchmarks/python/`).
 
 ### Fixed
+- **`logging.disable()` and a second stderr handler.** `logging.disable(level)` now reaches the native side (the native
+  level follows what the logger lets through, so libspeech no longer builds lines Python would drop). The stderr handler
+  that `set_log_level()` adds when logging is unconfigured stays silent once the application configures logging
+  afterwards (`basicConfig`, a handler on the root or the library's logger), so a line is no longer printed twice.
 - **`Denoiser("speechbrain")` returned audio about 15x louder than its input.** The SepFormer was trained with a
   scale-invariant loss (SI-SNR), so the absolute level of its output is arbitrary: on real speech it came out at a
   peak of 6 to 27 with 14 to 43% of the samples beyond full scale, i.e. clipped as soon as it was saved as 16-bit

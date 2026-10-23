@@ -7,6 +7,14 @@ Fixed parameters (speech front-end defaults, 16 kHz input):
   stft      n_fft=512, hop=128, Hann window, no centering/padding
             (bins returned: libspeech numpy, librosa and audioflux 257; libspeech_list 512)
   mfcc      13 coefficients, 26 mel filters, n_fft=512, hop=128, no centering
+  log_mel   the 26 log mel energies the MFCC is made of: log(mel_energy + 1e-10), same n_fft/hop/centering.
+            Not comparable 1:1 across libraries (libspeech: HTK triangular filters; librosa: Slaney scale with
+            area normalization; audioflux: its own mel bank), so a row only says "speed of the same call with
+            these parameters", like the MFCC row. libspeech_list is absent: log_mel is NumPy-only.
+  delta     delta ("velocity") of the 13 MFCCs, half-window 4 (librosa width 9), order 1, edge handling "interp"
+            (the same in libspeech and librosa). The MFCC matrix is computed OUTSIDE the timer (it is the
+            operation's input), each library from its own MFCC, in its own layout (libspeech: frames x 13,
+            librosa: 13 x frames). audioflux has no delta.
   resample  44.1 kHz -> 16 kHz
   load      16-bit PCM WAV file -> float32 samples in Python
 
@@ -47,15 +55,18 @@ N_FFT = 1 << N_FFT_EXP
 HOP = 128
 N_MELS = 26
 N_MFCC = 13
+DELTA_HALF_WINDOW = 4
 RESAMPLE_TARGET = 16000
 
-OPS = ("load", "resample", "stft", "mfcc")
+OPS = ("load", "resample", "stft", "mfcc", "log_mel", "delta")
 
 LIBS_FOR_OP = {
     "load": ("libspeech", "libspeech_list", "librosa", "soundfile"),
     "resample": ("libspeech", "libspeech_list", "librosa", "audioflux", "scipy"),
     "stft": ("libspeech", "libspeech_list", "librosa", "audioflux"),
     "mfcc": ("libspeech", "libspeech_list", "librosa", "audioflux"),
+    "log_mel": ("libspeech", "librosa", "audioflux"),
+    "delta": ("libspeech", "librosa"),
 }
 
 _IMPORT_NAME = {
@@ -74,7 +85,7 @@ def op_applies(op, sample_rate):
         return True
     if op == "resample":
         return sample_rate != RESAMPLE_TARGET
-    return sample_rate == SAMPLE_RATE  # stft / mfcc
+    return sample_rate == SAMPLE_RATE  # stft / mfcc / log_mel / delta
 
 
 def library_available(lib):
@@ -115,6 +126,16 @@ def describe(res):
     return None
 
 
+def _libspeech_mfcc_params(ls, sr):
+    p = ls.MFCCParams()
+    p.sample_rate = sr
+    p.num_mel_filters = N_MELS
+    p.num_coefficients = N_MFCC
+    p.radix2_exp = N_FFT_EXP
+    p.slide_length = HOP
+    return p
+
+
 def make_runner(op, lib, x, sr, path):
     """Import the library and prepare inputs (untimed), return run()."""
     if lib == "libspeech":
@@ -136,13 +157,15 @@ def make_runner(op, lib, x, sr, path):
                 return ls.STFT(N_FFT_EXP, ls.WindowType.hann, HOP).stft(xf, onesided=True)
         elif op == "mfcc":
             def run():
-                p = ls.MFCCParams()
-                p.sample_rate = sr
-                p.num_mel_filters = N_MELS
-                p.num_coefficients = N_MFCC
-                p.radix2_exp = N_FFT_EXP
-                p.slide_length = HOP
-                return ls.MFCC(p).compute(xf)
+                return ls.MFCC(_libspeech_mfcc_params(ls, sr)).compute(xf)
+        elif op == "log_mel":
+            def run():
+                return ls.MFCC(_libspeech_mfcc_params(ls, sr)).log_mel(xf)
+        elif op == "delta":
+            feats = ls.MFCC(_libspeech_mfcc_params(ls, sr)).compute(xf)  # the input, computed untimed
+
+            def run():
+                return ls.delta(feats, half_window=DELTA_HALF_WINDOW, order=1, edge="interp")
         else:
             raise ValueError(op)
         return run
@@ -164,13 +187,7 @@ def make_runner(op, lib, x, sr, path):
                 return ls.STFT(N_FFT_EXP, ls.WindowType.hann, HOP).stft(xl)
         elif op == "mfcc":
             def run():
-                p = ls.MFCCParams()
-                p.sample_rate = sr
-                p.num_mel_filters = N_MELS
-                p.num_coefficients = N_MFCC
-                p.radix2_exp = N_FFT_EXP
-                p.slide_length = HOP
-                return ls.MFCC(p).compute(xl)
+                return ls.MFCC(_libspeech_mfcc_params(ls, sr)).compute(xl)
         else:
             raise ValueError(op)
         return run
@@ -188,6 +205,16 @@ def make_runner(op, lib, x, sr, path):
             return lambda: librosa.feature.mfcc(
                 y=x, sr=sr, n_mfcc=N_MFCC, n_mels=N_MELS, n_fft=N_FFT, hop_length=HOP, center=False
             )
+        if op == "log_mel":
+            return lambda: np.log(
+                librosa.feature.melspectrogram(y=x, sr=sr, n_mels=N_MELS, n_fft=N_FFT, hop_length=HOP, center=False)
+                + 1e-10
+            )
+        if op == "delta":
+            feats = librosa.feature.mfcc(
+                y=x, sr=sr, n_mfcc=N_MFCC, n_mels=N_MELS, n_fft=N_FFT, hop_length=HOP, center=False
+            )  # the input, computed untimed
+            return lambda: librosa.feature.delta(feats, width=2 * DELTA_HALF_WINDOW + 1, order=1, mode="interp")
 
     if lib == "audioflux":
         import audioflux as af
@@ -216,6 +243,15 @@ def make_runner(op, lib, x, sr, path):
                 xx = af.XXCC(bft.num)
                 xx.set_time_length(spec.shape[-1])
                 return xx.xxcc(spec, cc_num=N_MFCC)
+            return run
+        if op == "log_mel":
+            def run():
+                bft = af.BFT(
+                    num=N_MELS, radix2_exp=N_FFT_EXP, samplate=sr,
+                    scale_type=SpectralFilterBankScaleType.MEL,
+                    data_type=SpectralDataType.POWER, slide_length=HOP,
+                )
+                return np.log(bft.bft(x) + 1e-10)
             return run
 
     if lib == "scipy" and op == "resample":

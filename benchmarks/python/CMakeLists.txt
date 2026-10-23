@@ -117,7 +117,7 @@ add_custom_command(
   COMMAND "${VENV_PYTHON}" -W "ignore::RuntimeWarning:site" "${PY_DIR}/bench_throughput.py"
           "${CORPUS_MANIFEST}" "${THROUGHPUT_JSON}" --repeats "${LIBSPEECH_BENCH_REPEATS}"
   DEPENDS "${VENV_STAMP}" "${PY_DIR}/bench_throughput.py" "${PY_DIR}/ops.py" "${CORPUS_MANIFEST}"
-  COMMENT "libspeech benchmarks: load / resample / stft / mfcc throughput (${LIBSPEECH_BENCH_REPEATS} repeats/cell)"
+  COMMENT "libspeech benchmarks: load / resample / stft / mfcc / log_mel / delta throughput (${LIBSPEECH_BENCH_REPEATS} repeats/cell)"
   USES_TERMINAL
 )
 add_custom_target(libspeech_bench_throughput DEPENDS "${THROUGHPUT_JSON}")
@@ -135,7 +135,7 @@ add_custom_command(
           "${CORPUS_MANIFEST}" "${MEMORY_JSON}"
   DEPENDS "${VENV_STAMP}" "${PY_DIR}/bench_op_memory_driver.py" "${PY_DIR}/bench_op_memory_one.py"
           "${PY_DIR}/ops.py" "${CORPUS_MANIFEST}"
-  COMMENT "libspeech benchmarks: peak memory for load / resample / stft / mfcc"
+  COMMENT "libspeech benchmarks: peak memory for load / resample / stft / mfcc / log_mel / delta"
   USES_TERMINAL
 )
 add_custom_target(libspeech_bench_memory DEPENDS "${MEMORY_JSON}")

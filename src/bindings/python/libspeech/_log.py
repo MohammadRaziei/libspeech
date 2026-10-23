@@ -15,6 +15,7 @@ native level that lets through exactly what the logger would keep.
 from __future__ import annotations
 
 import atexit
+import functools
 import logging
 import os
 import types
@@ -46,9 +47,18 @@ def native_level_name(number: int) -> str:
     return "off"  # CRITICAL and above: the native side has nothing that severe
 
 
+def _threshold() -> int:
+    """The lowest level number that can still reach a handler.
+
+    That is the logger's effective level, raised by ``logging.disable(level)``, which drops every record up to and
+    including ``level`` whatever the logger's own level is.
+    """
+    return max(LOGGER.getEffectiveLevel(), LOGGER.manager.disable + 1)
+
+
 def sync() -> None:
-    """Make the native level follow the logger's effective level."""
-    _native.set_log_level(native_level_name(LOGGER.getEffectiveLevel()))
+    """Make the native level follow what the logger lets through."""
+    _native.set_log_level(native_level_name(_threshold()))
 
 
 def _emit(level: str, where: str, message: str) -> None:
@@ -88,6 +98,22 @@ class _Formatter(logging.Formatter):
         return super().format(record)
 
 
+class _StderrHandler(logging.StreamHandler):
+    """The library's own stderr output, used only while no other handler prints the library's lines.
+
+    :func:`ensure_handler` adds it when the application had configured no logging. If the application configures
+    logging afterwards (``basicConfig``, a handler on the root logger or on the library's logger), those handlers
+    take over and this one stays silent, so a line is never printed twice.
+    """
+
+    def emit(self, record: logging.LogRecord) -> None:
+        taken_over = any(h is not self for h in LOGGER.handlers) or (
+            LOGGER.propagate and bool(logging.getLogger().handlers)
+        )
+        if not taken_over:
+            super().emit(record)
+
+
 def ensure_handler() -> None:
     """If the application configured no logging at all, print the library's log to stderr.
 
@@ -96,7 +122,7 @@ def ensure_handler() -> None:
     """
     if LOGGER.handlers or logging.getLogger().handlers:
         return
-    handler = logging.StreamHandler()  # stderr
+    handler = _StderrHandler()  # stderr
     handler.setFormatter(_Formatter())
     LOGGER.addHandler(handler)
 
@@ -122,8 +148,25 @@ def get_log_level() -> str:
     return _native.get_log_level()
 
 
+def _hook_disable() -> None:
+    # logging.disable() changes what the logger lets through without going through setLevel, so it is announced
+    # the same way: wrap it once. (Code that bound `disable` before libspeech was imported is not seen.)
+    previous = logging.disable
+    if getattr(previous, "_libspeech_hook", False):
+        return
+
+    @functools.wraps(previous)
+    def disable(level: int = logging.CRITICAL) -> None:
+        previous(level)
+        sync()
+
+    disable._libspeech_hook = True
+    logging.disable = disable
+
+
 def install() -> None:
     """Route the native log into ``logging`` and keep the levels in step. Safe to call again."""
+    _hook_disable()
     # Wrap setLevel once, on the library's logger and on the root logger it inherits from: a level that is only
     # inherited is never announced by `logging`, and basicConfig(level=...), dictConfig and caplog all end up
     # in one of these two setLevel calls.

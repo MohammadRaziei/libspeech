@@ -1,5 +1,5 @@
 """
-bench_throughput.py: wall-clock time of load / resample / stft / mfcc for
+bench_throughput.py: wall-clock time of load / resample / stft / mfcc / log_mel / delta for
 every library that is installed, on every applicable corpus entry.
 
 Each (operation, library, corpus entry) cell is repeated REPEATS times after
@@ -92,7 +92,8 @@ def main():
             "repeats": args.repeats,
             "parameters": {
                 "n_fft": ops.N_FFT, "hop": ops.HOP, "n_mels": ops.N_MELS,
-                "n_mfcc": ops.N_MFCC, "resample_target_hz": ops.RESAMPLE_TARGET,
+                "n_mfcc": ops.N_MFCC, "delta_half_window": ops.DELTA_HALF_WINDOW,
+                "resample_target_hz": ops.RESAMPLE_TARGET,
             },
             "versions": versions,
             "libspeech_simd_backend": simd_backend,

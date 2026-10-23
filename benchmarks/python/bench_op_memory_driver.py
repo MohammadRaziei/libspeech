@@ -1,5 +1,5 @@
 """
-bench_op_memory_driver.py: peak extra memory for load / resample / stft / mfcc,
+bench_op_memory_driver.py: peak extra memory for load / resample / stft / mfcc / log_mel / delta,
 every library, every applicable corpus entry.
 
 This driver never decodes audio or imports any benchmarked library itself: it
@@ -22,12 +22,14 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 
 # Duplicated from ops.py on purpose: importing ops would pull in numpy only,
 # but keeping the driver free of any benchmark code is the point.
-OPS = ("load", "resample", "stft", "mfcc")
+OPS = ("load", "resample", "stft", "mfcc", "log_mel", "delta")
 LIBS_FOR_OP = {
     "load": ("libspeech", "libspeech_list", "librosa", "soundfile"),
     "resample": ("libspeech", "libspeech_list", "librosa", "audioflux", "scipy"),
     "stft": ("libspeech", "libspeech_list", "librosa", "audioflux"),
     "mfcc": ("libspeech", "libspeech_list", "librosa", "audioflux"),
+    "log_mel": ("libspeech", "librosa", "audioflux"),
+    "delta": ("libspeech", "librosa"),
 }
 TARGET_RATE = 16000
 
