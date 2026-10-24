@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
+import importlib.util
+
 import pytest
+
+# labs/quantize_denoiser needs PyTorch, the `denoiser` package and `onnx`; without them its tests are not collected.
+collect_ignore = []
+if not all(importlib.util.find_spec(m) for m in ("torch", "denoiser", "onnx")):
+    collect_ignore.append("test_lab_quantize_denoiser_torch.py")
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:

@@ -181,6 +181,7 @@ result = "{major}.{minor}.{patch}"
 
 [tool.pytest.ini_options]
 minversion = "6.0"
+pythonpath = ["labs/quantize_denoiser"]
 addopts = ["-ra", "--showlocals", "--strict-markers", "--strict-config"]
 xfail_strict = true
 markers = [
@@ -239,6 +240,10 @@ exclude = ["third_party"]
 # Stand-alone benchmark scripts: printing progress is their output, they import competitor
 # libraries lazily (a missing one must only skip its own cells), and plain os.path is fine.
 "benchmarks/**" = ["T20", "PLC0415", "PTH"]
+# Labs: notebooks and their helpers. Printing and a bare last expression are how a notebook shows results, optional
+# heavy dependencies (torch, libspeech, IPython) are imported where they are used, and notebook cells carry no
+# `from __future__` line.
+"labs/**" = ["T20", "PLC0415", "PTH", "B018", "I002"]
 # Documentation build scripts (docs/convert_page.py, docs/generate_index.py, Sphinx conf.py): they
 # print their progress, import the optional Markdown/RST libraries lazily, put non-ASCII
 # punctuation into generated HTML, and Sphinx calls hooks with a fixed signature.

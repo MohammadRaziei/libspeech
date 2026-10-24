@@ -74,6 +74,7 @@ This file starts at 0.3.1; older history is in `git log`.
 - **Tests and benchmarks.** `tests/python/test_denoiser_threading.py` (marked `models`): one `Denoiser` shared by several
   threads, with `process()` and with streams, gives each thread its serial result, and `process()` / `feed()` release the
   GIL. `log_mel` and `delta` are in the Python benchmark suite (`benchmarks/python/`).
+- **`labs/`**: experiments with their notebooks and scripts, one folder per story. `labs/quantize_denoiser/` has int8 quantization tools for the Facebook denoisers (`onnx_ptq.py`: static int8 for the convolutions, dynamic int8 for the LSTM, per-node sensitivity, evaluation; `distill_qat.py`: teacher-student weight-quantization-aware fine-tuning in PyTorch) and a Colab notebook. Tests in `tests/python/test_lab_quantize_denoiser*.py`.
 
 ### Fixed
 - **`logging.disable()` and a second stderr handler.** `logging.disable(level)` now reaches the native side (the native

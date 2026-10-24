@@ -693,3 +693,11 @@ Previously: `speech_dsp`/`speech_io`/`speech_models` (C++ static libs) but
 - [ ] A multi-threaded Python test for `process()` and streams (the GIL is released in the binding; not exercised).
 - [ ] The demo generator does not check DPDFNet streaming (only SileroVad and GTCRN); add it to `make_demo.py` and `build_html.py`.
 - [ ] DPDFNet streaming (ADR-0019) ran with `dpdfnet2` and `dpdfnet2_48khz_hr` only, not with `dpdfnet_baseline`, `dpdfnet4`, `dpdfnet8`.
+
+## Quantization lab (`labs/quantize_denoiser/`)
+
+- [x] Tools, tests (mutation-checked) and a Colab notebook with a `SMOKE` mode. Run end to end (SMOKE) through libspeech.
+- [ ] `distill_qat.py` has never run on a real checkpoint (the PyTorch weights cannot be downloaded in the sandbox where it was written) or on a GPU; its default hyper-parameters (3000 steps, lr 2e-5, batch 8) are guesses.
+- [ ] Static int8 `dns48` (measured, see the lab's README) runs slower than fp32 with libspeech's bundled ONNX Runtime (RTF 0.262 vs 0.171, one 6 s clip) but faster with pip `onnxruntime` 1.24.4 (0.137 vs 0.171): another reason for the newer-ONNX-Runtime item above.
+- [ ] The per-node sensitivity run on `dns48` did not finish in the sandbox (no result); run it with `onnx_ptq.py sensitivity`.
+- [ ] **Bug or docstring:** `Denoiser(backend, model)` documents `model` as "a local .onnx file or a URL", but a local path is treated as a file name of the models release (404). Either support local paths (`fetch_model`) or fix the docstring.

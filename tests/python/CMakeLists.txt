@@ -56,6 +56,8 @@ if(TARGET speech_io_py)
         add_python_test(audio_interop)
         add_python_test(readme_examples)  # runs the python blocks of README.md (the model block needs `-m models`)
         add_python_test(normalize)        # RMS normalization: libspeech.rms_normalize and Audio.normalize_rms
+        add_python_test(lab_quantize_denoiser)         # labs/quantize_denoiser: mixtures + metrics (NumPy)
+        add_python_test(lab_quantize_denoiser_torch)   # ... and the PyTorch parts; not collected without torch + denoiser
         add_python_test(librosa_compat)   # needs the `test` extra (librosa, soundfile, scipy); skips itself without
 
         # Heavy end-to-end Denoiser test (real ONNX model: download + ~1 GB RAM). It is marked

@@ -40,3 +40,9 @@ Testing
 
 # Files the C++ log tests write into the working directory (removed on success)
 libspeech_test_log_*.txt
+
+# labs: downloaded audio and results of notebook runs
+labs/**/recordings/
+labs/**/work/
+labs/**/runs/
+labs/**/quantized_models.zip
