@@ -1,51 +1,48 @@
-"""Helpers for the notebook: getting the teacher model and sample audio, running models through libspeech, listening."""
+"""Helpers for the notebook: checking downloads, running models through libspeech (optional), listening."""
 
 from __future__ import annotations
 
 import hashlib
 import shutil
 import time
-import urllib.request
 from pathlib import Path
 
 import numpy as np
 from audio_metrics import snr_db
 
-RESOURCES = "https://github.com/MohammadRaziei/libspeech/releases/download/resources"
-SAMPLES = ("alex-noisy.mp3", "audio-fa-noisy.mp3")
 LIBSPEECH_CACHE = Path.home() / ".libspeech"
 
 
-def sample_recordings(directory="recordings") -> str:
-    """Download two real noisy recordings from libspeech's `resources` release (once) and return the folder."""
-    folder = Path(directory)
-    folder.mkdir(parents=True, exist_ok=True)
-    for name in SAMPLES:
-        if not (folder / name).exists():
-            urllib.request.urlretrieve(f"{RESOURCES}/{name}", folder / name)
-    return str(folder)
+def verify_sha256(model_path) -> str:
+    """Check a downloaded model against the one-line `<model>.sha256` file next to it; returns the digest.
+
+    Raises RuntimeError on a mismatch (a truncated or corrupt download), FileNotFoundError if a file is missing.
+    """
+    model = Path(model_path)
+    expected = Path(f"{model}.sha256").read_text().split()[0].lower()
+    actual = hashlib.sha256(model.read_bytes()).hexdigest()
+    if actual != expected:
+        message = f"{model.name}: sha256 is {actual}, expected {expected}"
+        raise RuntimeError(message)
+    return actual
 
 
-def teacher_onnx(model: str, workdir="work") -> str:
-    """The fp32 ONNX of `model` (dns48, dns64, master64): fetched through libspeech, or, for `random:<hidden>`,
-    exported from a randomly initialized Demucs (dry runs)."""
+def random_teacher_onnx(workdir="work", model="random:8") -> str:
+    """For dry runs: export a randomly initialized small Demucs as the 'teacher' (same weights as `--model random:8`)."""
+    from denoiser_model import export_onnx, load_model
+
     Path(workdir).mkdir(parents=True, exist_ok=True)
-    if model.startswith("random:"):
-        from denoiser_model import export_onnx, load_model
-
-        path = Path(workdir) / "teacher_random.onnx"
-        export_onnx(load_model(model), path)
-        return str(path)
-    import libspeech
-
-    return str(libspeech.fetch_model(f"facebook-denoiser-{model}.onnx"))
+    path = Path(workdir) / "teacher_random.onnx"
+    export_onnx(load_model(model), path)
+    return str(path)
 
 
 def register_in_libspeech(onnx_path, name: str, cache_dir=None) -> str:
     """Put a local .onnx into libspeech's model cache under `name`, with the .sha256 and .readme libspeech requires.
 
-    `Denoiser("facebook", name)` then loads it without any download. (A local path cannot be passed as `model`: libspeech
-    takes anything that is not an http(s) URL for a file name of its models release.) Returns `name`.
+    `Denoiser("facebook", name)` then loads it without any download. (Passing a local path as `model` would be simpler, but
+    in the libspeech source this was written against it is taken as a file name of the models release and gives a 404.)
+    Returns `name`.
     """
     cache = Path(cache_dir) if cache_dir else LIBSPEECH_CACHE
     cache.mkdir(parents=True, exist_ok=True)

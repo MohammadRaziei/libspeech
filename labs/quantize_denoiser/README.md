@@ -1,8 +1,8 @@
 # Quantizing the Facebook denoisers (dns48, dns64, master64)
 
 **Start with the notebook:** [`quantize_denoiser.ipynb`](quantize_denoiser.ipynb)
-([open in Colab](https://colab.research.google.com/github/MohammadRaziei/libspeech/blob/main/labs/quantize_denoiser/quantize_denoiser.ipynb)).
-It runs the two routes below, then runs the results through libspeech itself and lets you listen. `lab_helpers.py` holds
+([open in Colab](https://colab.research.google.com/github/MohammadRaziei/libspeech/blob/master/labs/quantize_denoiser/quantize_denoiser.ipynb)).
+It runs the two routes below and, optionally (`RUN_LIBSPEECH = True`), runs the results through libspeech itself and lets you listen. `lab_helpers.py` holds
 its helper functions. Setting `SMOKE = True` in the notebook runs everything on a tiny random model in about a minute.
 
 Tools to make int8 versions of the three `facebook-denoiser-*` ONNX models and to measure what the quantization costs.
@@ -91,6 +91,7 @@ ran slower than fp32 in this one measurement (a single 6 s clip, one run after a
 listened to, and the fine-tuning route (`distill_qat.py`) has only been run on a tiny random model so far, not on a real
 checkpoint.
 
-`libspeech.Denoiser(backend, model)` cannot take a local path although its docstring says so: anything that is not an
-http(s) URL is taken as a file name of the models release. `lab_helpers.register_in_libspeech` works around it by copying
-a model into libspeech's cache with the `.sha256` and `.readme` files libspeech requires.
+`libspeech.Denoiser(backend, model)` should take a local path (ADR-0021 item 7 says so), but in the libspeech source this lab
+was written against anything that is not an http(s) URL is taken as a file name of the models release, so a local path
+fails with a 404 (see the checklist). `lab_helpers.register_in_libspeech` works around it by copying a model into
+libspeech's cache with the `.sha256` and `.readme` files libspeech requires.

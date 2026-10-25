@@ -8,8 +8,9 @@ Experiments that are not part of the library: one folder per story, each with a 
 
 Conventions:
 
-* The notebook runs in Google Colab (the badge at its top opens it) and installs libspeech with
-  `pip install git+https://github.com/MohammadRaziei/libspeech.git`. It also runs locally from the lab folder.
+* The notebook runs in Google Colab (the badge at its top opens it) and also locally from the lab folder. It downloads
+  its audio and models with `wget` from the GitHub releases; libspeech itself is installed (from git) only by a part
+  that is switched off by default and needs it.
 * It has a `SMOKE = True` switch: a tiny random model, synthetic data and a few steps, so that the whole notebook can be
   checked in a minute without downloads or a GPU.
 * Notebooks are committed without outputs and without execution counts (a test checks it); every function a notebook calls

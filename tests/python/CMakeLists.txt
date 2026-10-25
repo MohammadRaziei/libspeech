@@ -20,15 +20,25 @@ if(TARGET speech_io_py)
     if(NOT PYTEST_CHECK_RESULT EQUAL 0)
         message(WARNING "pytest is not installed. Python tests will be skipped. Install it with: pip install pytest")
     else()
+        # add_python_test(<module> [OPTIONAL]): OPTIONAL marks a module that skips itself when its optional
+        # dependencies are missing (pytest then exits with 5, "no tests ran"). CTest reports such a test as Skipped,
+        # and the speech_test_python_<module> target does not fail on it.
         function(add_python_test module)
+            cmake_parse_arguments(ARG "OPTIONAL" "" "" ${ARGN})
             add_test(NAME python_${module}
                      COMMAND ${Python3_EXECUTABLE} -m pytest ${CMAKE_CURRENT_SOURCE_DIR}/test_${module}.py
                      WORKING_DIRECTORY ${PYTHON_PROJECT_NAME}
             )
+            if(ARG_OPTIONAL)
+                set_tests_properties(python_${module} PROPERTIES SKIP_RETURN_CODE 5)
+                set(speech_pytest_command ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/run_optional_test.py)
+            else()
+                set(speech_pytest_command ${Python3_EXECUTABLE} -m pytest)
+            endif()
 
             add_custom_target(speech_test_python_${module}
                 COMMAND ${CMAKE_COMMAND} -E echo "-- Running Python ${module} tests..."
-                COMMAND ${Python3_EXECUTABLE} -m pytest ${CMAKE_CURRENT_SOURCE_DIR}/test_${module}.py
+                COMMAND ${speech_pytest_command} ${CMAKE_CURRENT_SOURCE_DIR}/test_${module}.py
                 WORKING_DIRECTORY ${PYTHON_PROJECT_NAME}
                 USES_TERMINAL
             )
@@ -56,8 +66,9 @@ if(TARGET speech_io_py)
         add_python_test(audio_interop)
         add_python_test(readme_examples)  # runs the python blocks of README.md (the model block needs `-m models`)
         add_python_test(normalize)        # RMS normalization: libspeech.rms_normalize and Audio.normalize_rms
-        add_python_test(lab_quantize_denoiser)         # labs/quantize_denoiser: mixtures + metrics (NumPy)
-        add_python_test(lab_quantize_denoiser_torch)   # ... and the PyTorch parts; not collected without torch + denoiser
+        add_python_test(lab_helpers)                    # labs/quantize_denoiser: helpers + notebooks (NumPy only)
+        add_python_test(lab_quantize_denoiser OPTIONAL)         # ... mixtures + metrics (needs soundfile + scipy)
+        add_python_test(lab_quantize_denoiser_torch OPTIONAL)   # ... and the PyTorch parts (needs torch + denoiser + onnx)
         add_python_test(librosa_compat)   # needs the `test` extra (librosa, soundfile, scipy); skips itself without
 
         # Heavy end-to-end Denoiser test (real ONNX model: download + ~1 GB RAM). It is marked

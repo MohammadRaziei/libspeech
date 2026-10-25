@@ -1,4 +1,5 @@
-"""labs/quantize_denoiser, PyTorch parts. Skipped (see conftest.py) without `torch`, `denoiser` and `onnx`.
+"""labs/quantize_denoiser, PyTorch parts. The module is skipped without `torch`, `denoiser`, `onnx`, `onnxruntime`,
+`soundfile` and `scipy`.
 
 They use a tiny randomly initialized Demucs, so they check mechanics (grid, export, training signal, the exported model
 going through onnxruntime's quantizer unchanged), never the quality of a real model.
@@ -6,23 +7,53 @@ going through onnxruntime's quantizer unchanged), never the quality of a real mo
 
 from __future__ import annotations
 
+import importlib
 import json
 import re
+import warnings
 from pathlib import Path
 
-import distill_qat
-import lab_helpers
 import numpy as np
-import onnx
-import onnx_ptq
 import pytest
-import torch
-from denoiser_model import DynamicLengthDemucs, export_onnx, load_model, verify_export
-from distill_qat import distill
-from mixtures import MixtureSource
-from onnx import numpy_helper
-from onnx_ptq import evaluate, quantize, sensitivity
-from weight_qat import quantize_tensor, quantize_weights, snap_weights
+
+
+def _optional(name: str):
+    """Import an optional test dependency, or skip this whole module (also when the file is run on its own)."""
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            return importlib.import_module(name)
+    except Exception as exc:
+        pytest.skip(f"optional test dependency {name!r} is unavailable: {exc!r}", allow_module_level=True)
+
+
+torch = _optional("torch")
+_optional("denoiser")
+onnx = _optional("onnx")
+_optional("onnxruntime")
+_optional("soundfile")
+_optional("scipy.signal")
+numpy_helper = _optional("onnx.numpy_helper")
+distill_qat = _optional("distill_qat")
+lab_helpers = _optional("lab_helpers")
+onnx_ptq = _optional("onnx_ptq")
+denoiser_model = _optional("denoiser_model")
+weight_qat = _optional("weight_qat")
+mixtures = _optional("mixtures")
+DynamicLengthDemucs, export_onnx, load_model, verify_export = (
+    denoiser_model.DynamicLengthDemucs,
+    denoiser_model.export_onnx,
+    denoiser_model.load_model,
+    denoiser_model.verify_export,
+)
+distill = distill_qat.distill
+MixtureSource = mixtures.MixtureSource
+evaluate, quantize, sensitivity = onnx_ptq.evaluate, onnx_ptq.quantize, onnx_ptq.sensitivity
+quantize_tensor, quantize_weights, snap_weights = (
+    weight_qat.quantize_tensor,
+    weight_qat.quantize_weights,
+    weight_qat.snap_weights,
+)
 
 pytestmark = pytest.mark.filterwarnings("ignore")
 

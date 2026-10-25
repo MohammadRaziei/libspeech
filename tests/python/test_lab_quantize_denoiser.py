@@ -1,19 +1,39 @@
-"""labs/quantize_denoiser: the NumPy parts (mixtures, metrics). The PyTorch parts are in test_lab_quantize_denoiser_torch.py.
+"""labs/quantize_denoiser: mixtures and metrics. Needs `soundfile` and `scipy`; the module is skipped without them.
 
-The lab folder is on `pythonpath` (pyproject.toml), so its modules import by name."""
+The lab's helpers and notebooks are in test_lab_helpers.py, the PyTorch parts in test_lab_quantize_denoiser_torch.py.
+The lab folder is on `pythonpath` (pyproject.toml), so its modules import by name.
+"""
 
 from __future__ import annotations
 
-import hashlib
-import json
-from pathlib import Path
+import importlib
+import warnings
 
 import numpy as np
 import pytest
-import soundfile as sf
-from audio_metrics import si_sdr, snr_db
-from lab_helpers import agreement, register_in_libspeech, table
-from mixtures import SR, MixtureSource, NoisyRecordings, mix_at_snr
+
+
+def _optional(name: str):
+    """Import an optional test dependency, or skip this whole module (also when the file is run on its own)."""
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            return importlib.import_module(name)
+    except Exception as exc:
+        pytest.skip(f"optional test dependency {name!r} is unavailable: {exc!r}", allow_module_level=True)
+
+
+sf = _optional("soundfile")
+_optional("scipy.signal")
+audio_metrics = _optional("audio_metrics")
+mixtures = _optional("mixtures")
+si_sdr, snr_db = audio_metrics.si_sdr, audio_metrics.snr_db
+SR, MixtureSource, NoisyRecordings, mix_at_snr = (
+    mixtures.SR,
+    mixtures.MixtureSource,
+    mixtures.NoisyRecordings,
+    mixtures.mix_at_snr,
+)
 
 
 def test_mix_at_snr_hits_the_requested_snr():
@@ -63,47 +83,3 @@ def test_noisy_recordings_are_contiguous_crops_of_the_files(tmp_path):
     np.testing.assert_allclose(np.diff(a, axis=1), 1 / (3 * SR), atol=1e-6)  # every crop is a consecutive stretch
     assert not np.array_equal(a, b)  # other seed, other crops
     np.testing.assert_array_equal(a, NoisyRecordings(tmp_path, seconds=0.5, seed=1).batch(5)[0])
-
-
-def test_register_in_libspeech_writes_the_files_libspeech_requires(tmp_path):
-    model = tmp_path / "m.onnx"
-    model.write_bytes(b"not really onnx" * 100)
-    cache = tmp_path / "cache"
-    assert register_in_libspeech(model, "lab-m.onnx", cache_dir=cache) == "lab-m.onnx"
-    assert (cache / "lab-m.onnx").read_bytes() == model.read_bytes()
-    assert (cache / "lab-m.onnx.sha256").read_text() == hashlib.sha256(model.read_bytes()).hexdigest() + "\n"
-    assert "quantize_denoiser" in (cache / "lab-m.onnx.readme").read_text()
-
-
-def test_agreement_compares_only_the_common_length():
-    ref = np.sin(np.linspace(0, 100, 1000))
-    longer = np.concatenate([ref * 1.1, np.ones(7)])
-    assert agreement(longer, ref) == pytest.approx(snr_db(ref * 1.1, ref))
-
-
-def test_table_has_one_row_per_label_and_one_column_per_key():
-    lines = table({"a": {"x": 1.0, "y": 2}, "bb": {"x": 3.5, "y": 4}}).splitlines()
-    assert len(lines) == 3
-    assert "x" in lines[0]
-    assert lines[1].startswith("a ")
-    assert lines[2].startswith("bb")
-
-
-NOTEBOOKS = sorted((Path(__file__).resolve().parents[2] / "labs").rglob("*.ipynb"))
-
-
-@pytest.mark.parametrize("notebook", NOTEBOOKS, ids=lambda p: p.stem)
-def test_notebooks_are_clean_and_their_code_compiles(notebook):
-    nb = json.loads(notebook.read_text())
-    assert nb["nbformat"] == 4
-    for number, cell in enumerate(nb["cells"]):
-        if cell["cell_type"] != "code":
-            continue
-        assert cell["outputs"] == [], f"cell {number} carries output; clear it before committing"
-        assert cell["execution_count"] is None
-        source = "\n".join(line for line in "".join(cell["source"]).splitlines() if not line.lstrip().startswith(("!", "%")))
-        compile(source, f"{notebook.name} cell {number}", "exec")
-
-
-def test_there_is_at_least_one_notebook():
-    assert NOTEBOOKS
