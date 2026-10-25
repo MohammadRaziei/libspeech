@@ -55,7 +55,7 @@ def test_table_has_one_row_per_label_and_one_column_per_key():
     assert lines[2].startswith("bb")
 
 
-NOTEBOOKS = sorted((Path(__file__).resolve().parents[2] / "labs").rglob("*.ipynb"))
+NOTEBOOKS = sorted((Path(__file__).resolve().parents[2]).rglob("*.ipynb"))
 
 
 @pytest.mark.parametrize("notebook", NOTEBOOKS, ids=lambda p: p.stem)

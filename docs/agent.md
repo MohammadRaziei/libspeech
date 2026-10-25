@@ -132,11 +132,9 @@ cd build-py && setsid nohup cmake --build . -j2 > ../build.log 2>&1 < /dev/null 
 - `Denoiser(backend, "file.onnx")`: a bare or relative name means "a file in the models release"; pass an absolute path, a
   `file://` path or a URL for your own model (ADR-0021).
 - Dynamic int8 quantization of convolutions does not load in the bundled ONNX Runtime 1.21; `uint8` damages the output (ADR-0021).
-- A Python test module that needs optional packages (soundfile, scipy, torch, ...) must skip itself at module level
-  (`pytest.skip(..., allow_module_level=True)`, see `_optional` in `test_librosa_compat.py`): `collect_ignore` in conftest.py
-  does not apply to a file given on the command line, which is how ctest runs each one. In `tests/python/CMakeLists.txt`
-  register such a module with `add_python_test(<name> OPTIONAL)` (pytest exits with 5 when everything is skipped; CTest then
-  reports Skipped). The wheel CI test environment has only numpy, pytest, pytest-xdist, and soundfile/scipy/librosa on Python < 3.13.
+- Labs (`labs/<name>/`) keep their tests in `labs/<name>/tests/`, outside `tests/python/`, and are run by hand
+  (`pytest labs/<name>/tests`). They are not registered in CMake or run by CI: they need packages (soundfile, scipy, torch, ...)
+  that the CI test environments do not all have, and a test file in `tests/python/` that fails to import breaks every CI job.
 - Page sizes shown on the GitHub `resources` release are wrong; the files are small (the real sizes come from the HTTP headers).
 
 ---

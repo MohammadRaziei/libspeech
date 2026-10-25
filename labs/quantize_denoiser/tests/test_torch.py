@@ -162,7 +162,7 @@ def test_sensitivity_ranks_nodes_and_includes_the_lstm(tiny, tmp_path):
 
 def test_every_function_the_notebooks_call_exists():
     modules = {"lab": lab_helpers, "onnx_ptq": onnx_ptq, "distill_qat": distill_qat}
-    notebooks = sorted((Path(__file__).resolve().parents[2] / "labs").rglob("*.ipynb"))
+    notebooks = sorted((Path(__file__).resolve().parents[2]).rglob("*.ipynb"))
     assert notebooks
     for notebook in notebooks:
         code = "\n".join("".join(c["source"]) for c in json.loads(notebook.read_text())["cells"] if c["cell_type"] == "code")

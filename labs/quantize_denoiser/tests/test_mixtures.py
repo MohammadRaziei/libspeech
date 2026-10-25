@@ -1,6 +1,6 @@
 """labs/quantize_denoiser: mixtures and metrics. Needs `soundfile` and `scipy`; the module is skipped without them.
 
-The lab's helpers and notebooks are in test_lab_helpers.py, the PyTorch parts in test_lab_quantize_denoiser_torch.py.
+The lab's helpers and notebooks are in test_helpers.py, the PyTorch parts in test_torch.py.
 The lab folder is on `pythonpath` (pyproject.toml), so its modules import by name.
 """
 

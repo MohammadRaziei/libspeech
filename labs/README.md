@@ -15,5 +15,6 @@ Conventions:
   checked in a minute without downloads or a GPU.
 * Notebooks are committed without outputs and without execution counts (a test checks it); every function a notebook calls
   from the lab's modules has to exist (a test checks that too).
-* The lab's scripts are plain modules next to the notebook. The folder of the lab is on pytest's `pythonpath`
-  (`pyproject.toml`), and its tests are `tests/python/test_lab_<name>*.py`.
+* The lab's scripts are plain modules next to the notebook, and its tests are in `<lab>/tests/`. Run them by hand with
+  `pytest labs/<lab>/tests` (from the repository root); they are not part of CMake or CI, and a test module skips itself
+  when an optional package (torch, soundfile, ...) is missing.

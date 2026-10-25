@@ -95,3 +95,11 @@ checkpoint.
 was written against anything that is not an http(s) URL is taken as a file name of the models release, so a local path
 fails with a 404 (see the checklist). `lab_helpers.register_in_libspeech` works around it by copying a model into
 libspeech's cache with the `.sha256` and `.readme` files libspeech requires.
+
+## Tests
+
+```
+pytest labs/quantize_denoiser/tests        # from the repository root
+```
+
+Not part of CMake or CI. Modules skip themselves when `torch`, `soundfile` and the like are not installed.
