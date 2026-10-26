@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <random>
 #include <stdexcept>
 #include <vector>
 
@@ -334,4 +335,265 @@ UTEST(normalize, weighted_bad_arguments_throw) {
     ASSERT_EQ(threw, 6);
     const std::vector<float> same = sine(1024, 0.1, 5);
     for (std::size_t i = 0; i < x.size(); ++i) ASSERT_EQ(x[i], same[i]);  // a rejected call must not touch the data
+}
+
+// --- robust level (clip_percentile), soft limiter, weighted CMVN ---------------------------------------------------
+
+namespace {
+using speech::dsp::limit_peaks;
+using speech::dsp::weighted_cmvn;
+
+// Reference of the clipped weighted RMS, written from the definition with long double and a plain sort.
+double ref_clipped_rms(const std::vector<float>& x, const std::vector<float>& w, std::size_t window, double p) {
+    struct item {
+        long double ms, mass;
+    };
+    std::vector<item> items;
+    long double total = 0.0L;
+    for (std::size_t k = 0; k < w.size(); ++k) {
+        const std::size_t b = k * window, e = std::min(x.size(), (k + 1) * window);
+        if (b >= x.size() || w[k] == 0.0f) continue;
+        long double s = 0.0L;
+        for (std::size_t i = b; i < e; ++i) s += static_cast<long double>(x[i]) * static_cast<long double>(x[i]);
+        const long double len = static_cast<long double>(e - b);
+        items.push_back({s / len, static_cast<long double>(w[k]) * len});
+        total += static_cast<long double>(w[k]) * len;
+    }
+    if (items.empty()) return 0.0;
+    std::sort(items.begin(), items.end(), [](const item& a, const item& b) { return a.ms < b.ms; });
+    long double acc = 0.0L, limit = items.back().ms;
+    for (const item& it : items) {
+        acc += it.mass;
+        if (acc >= total * static_cast<long double>(p) / 100.0L) {
+            limit = it.ms;
+            break;
+        }
+    }
+    long double energy = 0.0L;
+    for (const item& it : items) energy += it.mass * std::min(it.ms, limit);
+    return static_cast<double>(std::sqrt(energy / total));
+}
+}  // namespace
+
+UTEST(normalize, clip_percentile_clips_the_loud_windows_to_the_percentile) {
+    // 9 windows at amplitude 0.1 and one at 1.0, weight 1: the mean square of the loud one is clipped from 1 to 0.01.
+    std::vector<float> x(1000, 0.1f);
+    for (std::size_t i = 900; i < 1000; ++i) x[i] = 1.0f;
+    const std::vector<float> w(10, 1.0f);
+    ASSERT_NEAR(weighted_rms(x.data(), x.size(), w.data(), w.size(), 100), std::sqrt(0.109), 1e-6);        // off (100)
+    ASSERT_NEAR(weighted_rms(x.data(), x.size(), w.data(), w.size(), 100, 90.0), 0.1, 1e-6);              // 90th: clipped
+    ASSERT_NEAR(weighted_rms(x.data(), x.size(), w.data(), w.size(), 100, 95.0), std::sqrt(0.109), 1e-6);  // 95th: the loud one is the 95th
+}
+
+UTEST(normalize, clip_percentile_matches_the_reference_on_random_windows_with_weights) {
+    std::mt19937 rng(7);
+    std::normal_distribution<float> noise(0.0f, 1.0f);
+    std::uniform_real_distribution<float> uni(0.0f, 1.0f);
+    const std::size_t window = 64, windows = 80;
+    std::vector<float> x(window * windows - 17), w(windows);  // the last window is partial
+    for (std::size_t i = 0; i < x.size(); ++i) x[i] = 0.05f * noise(rng) * (1.0f + 5.0f * uni(rng) * uni(rng));
+    for (float& v : w) v = uni(rng) < 0.25f ? 0.0f : uni(rng);
+    for (double p : {30.0, 50.0, 80.0, 95.0, 100.0}) {
+        ASSERT_NEAR(weighted_rms(x.data(), x.size(), w.data(), w.size(), window, p), ref_clipped_rms(x, w, window, p), 1e-9);
+    }
+    ASSERT_LT(weighted_rms(x.data(), x.size(), w.data(), w.size(), window, 70.0),
+              weighted_rms(x.data(), x.size(), w.data(), w.size(), window, 100.0));  // clipping never raises the level
+}
+
+UTEST(normalize, clip_percentile_bad_values_throw) {
+    std::vector<float> x(256, 0.1f);
+    const std::vector<float> w = {1.0f, 1.0f};
+    int threw = 0;
+    for (double p : {0.0, -5.0, 100.5, std::nan("")}) {
+        try {
+            weighted_rms(x.data(), x.size(), w.data(), 2, 128, p);
+        } catch (const std::invalid_argument&) {
+            ++threw;
+        }
+    }
+    ASSERT_EQ(threw, 4);
+}
+
+UTEST(normalize, limit_peaks_keeps_everything_under_the_ceiling) {
+    std::mt19937 rng(3);
+    std::normal_distribution<float> noise(0.0f, 0.2f);
+    std::vector<float> x(20000);
+    for (float& v : x) v = noise(rng);
+    x[100] = 1.5f;
+    x[5000] = -3.0f;
+    x[5001] = 2.0f;
+    x[19999] = 1.2f;  // last sample
+    x[0] = -1.1f;     // first sample
+    ASSERT_TRUE(limit_peaks(x.data(), x.size(), 0.99, 64));
+    float peak = 0.0f;
+    for (float v : x) peak = std::max(peak, std::fabs(v));
+    ASSERT_LE(static_cast<double>(peak), 0.99);
+    ASSERT_NEAR(static_cast<double>(std::fabs(x[5000])), 0.99, 1e-5);  // the loudest peak lands on the ceiling
+}
+
+UTEST(normalize, limit_peaks_leaves_a_quiet_signal_alone_and_only_changes_the_neighbourhood_of_a_peak) {
+    std::vector<float> quiet = sine(4096, 0.5, 20);
+    const std::vector<float> before = quiet;
+    ASSERT_FALSE(limit_peaks(quiet.data(), quiet.size(), 0.99, 64));
+    for (std::size_t i = 0; i < quiet.size(); ++i) ASSERT_EQ(quiet[i], before[i]);
+
+    const std::size_t L = 40, at = 5000;
+    std::vector<float> x = sine(10000, 0.2, 400);
+    const std::vector<float> orig = x;
+    x[at] = 2.0f;
+    ASSERT_TRUE(limit_peaks(x.data(), x.size(), 0.99, L));
+    for (std::size_t i = 0; i < x.size(); ++i) {
+        if (i + L <= at || i >= at + L) {  // the gain is exactly 1 beyond L - 1 samples from the peak
+            ASSERT_EQ(x[i], orig[i]);
+        }
+    }
+    // look-ahead: the gain already falls before the peak, never rises above 1, and the shape does not flip sign
+    ASSERT_LT(std::fabs(x[at - 5]), std::fabs(orig[at - 5]));
+    for (std::size_t i = at - L; i < at + L; ++i) ASSERT_LE(std::fabs(static_cast<double>(x[i])), std::fabs(static_cast<double>(orig[i])) + 2.0 * 1e-7 + (i == at ? 2.0 : 0.0));
+}
+
+UTEST(normalize, limit_peaks_lookahead_zero_is_one_instant_gain_and_edge_cases) {
+    std::vector<float> x(100, 0.1f);
+    x[50] = 3.0f;
+    ASSERT_TRUE(limit_peaks(x.data(), x.size(), 0.99, 0));
+    ASSERT_NEAR(static_cast<double>(x[50]), 0.99, 1e-6);
+    ASSERT_EQ(x[49], 0.1f);
+    ASSERT_EQ(x[51], 0.1f);
+
+    std::vector<float> tiny = {5.0f};  // lookahead longer than the signal
+    ASSERT_TRUE(limit_peaks(tiny.data(), 1, 0.99, 1000));
+    ASSERT_LE(static_cast<double>(tiny[0]), 0.99);
+    ASSERT_FALSE(limit_peaks(nullptr, 0, 0.99, 8));
+
+    int threw = 0;
+    auto expect_throw = [&](auto&& call) {
+        try {
+            call();
+        } catch (const std::invalid_argument&) {
+            ++threw;
+        }
+    };
+    std::vector<float> y = {0.1f, std::nanf(""), 0.2f};
+    expect_throw([&] { limit_peaks(y.data(), 3, 0.99, 8); });
+    expect_throw([&] { limit_peaks(y.data(), 1, 0.0, 8); });
+    expect_throw([&] { limit_peaks(y.data(), 1, std::nan(""), 8); });
+    expect_throw([&] { limit_peaks(nullptr, 4, 0.99, 8); });
+    ASSERT_EQ(threw, 4);
+}
+
+UTEST(normalize, limiter_keeps_the_target_level_where_the_hard_ceiling_would_lower_it) {
+    // quiet "speech" (sine 0.05) with one 0.9 spike: reaching -20 dBFS needs a gain that pushes the spike far over 0.99.
+    const std::size_t window = 512, windows = 60, spike = 20000;
+    std::vector<float> base = sine(window * windows, 0.05, 150);
+    base[spike] = 0.9f;
+    const std::vector<float> w(windows, 1.0f);
+
+    std::vector<float> hard(base);
+    const rms_normalize_result rh = rms_normalize_weighted(hard.data(), hard.size(), w.data(), w.size(), window, -20.0, 0.99);
+    ASSERT_TRUE(rh.peak_limited);
+    const std::vector<float> hard_part(hard.begin() + 2000, hard.begin() + 8000);
+    ASSERT_LT(ref_dbfs(hard_part), -20.0 - 6.0);  // the one spike made the whole signal much quieter than the target
+
+    std::vector<float> soft(base);
+    const rms_normalize_result rs = rms_normalize_weighted(soft.data(), soft.size(), w.data(), w.size(), window, -20.0, 0.99, 100.0, 80);
+    ASSERT_TRUE(rs.peak_limited);
+    const std::vector<float> soft_part(soft.begin() + 2000, soft.begin() + 8000);
+    ASSERT_NEAR(ref_dbfs(soft_part), -20.0, 0.2);  // away from the spike the speech reaches the target (the spike itself adds ~0.1 dB)
+    float peak = 0.0f;
+    for (float v : soft) peak = std::max(peak, std::fabs(v));
+    ASSERT_LE(static_cast<double>(peak), 0.99);
+}
+
+UTEST(normalize, clip_percentile_in_the_normalizer_raises_the_gain_when_a_few_windows_are_loud) {
+    std::vector<float> x = sine(512 * 40, 0.05, 100);
+    for (std::size_t i = 512 * 3; i < 512 * 4; ++i) x[i] *= 8.0f;  // one loud window
+    const std::vector<float> w(40, 1.0f);
+    std::vector<float> a(x), b(x);
+    const rms_normalize_result plain = rms_normalize_weighted(a.data(), a.size(), w.data(), w.size(), 512, -20.0, 10.0);
+    const rms_normalize_result clipped = rms_normalize_weighted(b.data(), b.size(), w.data(), w.size(), 512, -20.0, 10.0, 90.0);
+    ASSERT_GT(clipped.gain, plain.gain * 1.1);
+    ASSERT_NEAR(plain.output_rms_dbfs, -20.0, 1e-6);  // plain: the whole-signal level is the target
+}
+
+UTEST(normalize, weighted_cmvn_statistics_come_from_the_speech_frames_only) {
+    const std::size_t frames = 300, dim = 6;
+    std::mt19937 rng(11);
+    std::normal_distribution<float> noise(0.0f, 1.0f);
+    std::uniform_real_distribution<float> uni(0.0f, 1.0f);
+    std::vector<float> f(frames * dim), w(frames);
+    for (std::size_t t = 0; t < frames; ++t) {
+        w[t] = (t < 100) ? 0.0f : (uni(rng) < 0.3f ? 1.0f : uni(rng));
+        for (std::size_t d = 0; d < dim; ++d) f[t * dim + d] = static_cast<float>(d + 1) * noise(rng) + 5.0f * static_cast<float>(d) + (t < 100 ? 40.0f : 0.0f);
+    }
+    std::vector<float> out(f);
+    weighted_cmvn(out.data(), frames, dim, w.data());
+    for (std::size_t d = 0; d < dim; ++d) {
+        long double tw = 0.0L, m = 0.0L, v = 0.0L;
+        for (std::size_t t = 0; t < frames; ++t) {
+            tw += w[t];
+            m += static_cast<long double>(w[t]) * out[t * dim + d];
+        }
+        m /= tw;
+        for (std::size_t t = 0; t < frames; ++t) {
+            const long double c = static_cast<long double>(out[t * dim + d]) - m;
+            v += static_cast<long double>(w[t]) * c * c;
+        }
+        ASSERT_NEAR(static_cast<double>(m), 0.0, 1e-4);
+        ASSERT_NEAR(static_cast<double>(v / tw), 1.0, 1e-4);
+    }
+    // the weight-0 frames were shifted too (they were offset by 40, so they are far from 0 afterwards)
+    ASSERT_GT(std::fabs(out[0]), 5.0f);
+
+    std::vector<float> mean_only(f);
+    weighted_cmvn(mean_only.data(), frames, dim, w.data(), false);
+    for (std::size_t i = 0; i < f.size(); ++i) {
+        const std::size_t d = i % dim;
+        // mean-only keeps the spread: out - (f - mean) is the same constant for every frame of a dimension
+        ASSERT_NEAR(static_cast<double>(mean_only[i] - mean_only[d] - (f[i] - f[d])), 0.0, 1e-4);
+    }
+}
+
+UTEST(normalize, weighted_cmvn_no_weight_empty_and_bad_arguments) {
+    std::vector<float> f = {1, 2, 3, 4, 5, 6};
+    const std::vector<float> before = f, none(3, 0.0f), all(3, 1.0f);
+    weighted_cmvn(f.data(), 3, 2, none.data());
+    for (std::size_t i = 0; i < f.size(); ++i) ASSERT_EQ(f[i], before[i]);
+    weighted_cmvn(nullptr, 0, 4, nullptr);  // nothing to do
+
+    int threw = 0;
+    auto expect_throw = [&](auto&& call) {
+        try {
+            call();
+        } catch (const std::invalid_argument&) {
+            ++threw;
+        }
+    };
+    expect_throw([&] { weighted_cmvn(f.data(), 3, 0, all.data()); });
+    expect_throw([&] { weighted_cmvn(f.data(), 3, 2, all.data(), true, -1.0); });
+    expect_throw([&] { weighted_cmvn(f.data(), 3, 2, nullptr); });
+    const std::vector<float> bad = {1.0f, 2.0f, 0.0f};
+    expect_throw([&] { weighted_cmvn(f.data(), 3, 2, bad.data()); });
+    ASSERT_EQ(threw, 4);
+    for (std::size_t i = 0; i < f.size(); ++i) ASSERT_EQ(f[i], before[i]);  // a rejected call must not touch the data
+}
+
+UTEST(normalize, limit_peaks_gain_changes_smoothly_and_recovers_after_the_peak) {
+    // A constant 0.2 signal makes the output sample / 0.2 the gain itself. One spike of 2.0 needs a gain of 0.495.
+    const std::size_t L = 50, at = 3000;
+    std::vector<float> x(6000, 0.2f);
+    x[at] = 2.0f;
+    ASSERT_TRUE(limit_peaks(x.data(), x.size(), 0.99, L));
+    std::vector<double> gain(x.size());
+    for (std::size_t i = 0; i < x.size(); ++i) gain[i] = static_cast<double>(x[i]) / (i == at ? 2.0 : static_cast<double>(0.2f));
+    double min_gain = 1.0, max_step = 0.0;
+    for (std::size_t i = 0; i < gain.size(); ++i) {
+        min_gain = std::min(min_gain, gain[i]);
+        if (i > 0) max_step = std::max(max_step, std::fabs(gain[i] - gain[i - 1]));
+    }
+    ASSERT_NEAR(min_gain, 0.99 / 2.0, 1e-6);
+    ASSERT_LE(max_step, (1.0 - min_gain) / static_cast<double>(L) + 1e-6);  // a ramp of L samples, never a jump
+    ASSERT_LT(gain[at - L + 1], 1.0 - 1e-6);                               // it starts L - 1 samples before the peak
+    ASSERT_LT(gain[at + L - 1], 1.0 - 1e-6);                               // and is still releasing L - 1 samples after it
+    ASSERT_NEAR(gain[at + L], 1.0, 1e-9);
+    ASSERT_NEAR(gain[at - L], 1.0, 1e-9);
 }

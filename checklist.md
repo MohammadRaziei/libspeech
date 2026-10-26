@@ -670,6 +670,10 @@ Previously: `speech_dsp`/`speech_io`/`speech_models` (C++ static libs) but
   `libspeech.rms_normalize()` / `libspeech.rms_dbfs()`. One gain for the whole signal, all channels together.
 - [x] **Speech-weighted RMS normalizer** (ADR-0022): hard and soft threshold on the `SileroVad` probabilities, `speech::dsp::speech_weights()` /
   `rms_normalize_weighted()`, `libspeech.speech_rms_normalize()`. Tested on synthetic speech-like audio only.
+- [x] **Robust level, soft limiter, weighted CMVN** (ADR-0023): `clip_percentile`, `limit_peaks()` / `limiter_lookahead`, `weighted_cmvn()` /
+  `frame_weights()`. Synthetic signals only.
+- [ ] Not done from the normalization ideas: LUFS (ITU-R BS.1770), time-varying speech AGC (the streaming normalizer), noise-floor
+  aware gain / SNR report, band-limited level measurement (300-3400 Hz).
 - [ ] Speech-weighted normalization: multi-channel input, a `Audio` method, a faster path than passing the signal to the VAD as a list,
   and a check on real recordings (8 kHz included).
 - [ ] RMS normalizer for a **stream** (running RMS): needs a decision first (cumulative or sliding window, gain smoothing, the

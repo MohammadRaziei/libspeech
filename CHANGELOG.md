@@ -113,6 +113,12 @@ This file starts at 0.3.1; older history is in `git log`.
   on self-assignment.
 
 ### Changed
+- **Robust speech level, soft limiter and weighted CMVN (all opt-in).** `clip_percentile` (default 100 = off) in `weighted_rms` /
+  `rms_normalize_weighted` / `speech_rms_normalize` clips the loudest windows to the weighted p-th percentile so a few plosives do
+  not lower the gain. `limit_peaks()` and `limiter_lookahead` / `limiter_ms` replace "the peak ceiling lowers the gain of the whole
+  signal" with a soft look-ahead limiter (the speech keeps the target level, only the peaks are lowered, `|y| <= ceiling`).
+  `weighted_cmvn()` (C++ and Python) normalizes mean and variance of a `(frames, dim)` feature matrix from the speech frames only;
+  `frame_weights()` maps the VAD window weights to feature frames. ADR-0023.
 - **Breaking: class getters lost the `get_` prefix.** `SileroVad.get_speech_timestamps()` is now `speech_timestamps()` and
   `get_threshold()` is `threshold()` (C++ `silero_vad_model` and Python; `set_threshold()` is unchanged, the C++ data member is now
   `threshold_`). No aliases are kept. Free functions keep their names (`get_log_level`, `get_temp_directory`,

@@ -79,7 +79,7 @@ cdll.LoadLibrary(str(_here / LIB_PATH))
 from . import _log
 from ._functional import istft, stft
 from ._log import get_log_level, set_log_level
-from ._normalize import speech_rms_normalize
+from ._normalize import frame_weights, speech_rms_normalize
 from .speech_dsp_py import (
     FFT,
     MFCC,
@@ -89,6 +89,7 @@ from .speech_dsp_py import (
     WindowType,
     dct,
     delta,
+    limit_peaks,
     rms_dbfs,
     rms_normalize,
     rms_normalize_weighted,
@@ -96,6 +97,8 @@ from .speech_dsp_py import (
     simd_backend,
     simd_enabled,
     speech_weights,
+    weighted_cmvn,
+    weighted_rms,
     window,
 )
 
@@ -143,9 +146,11 @@ __all__ = [
     "dct",
     "delta",
     "fetch_model",
+    "frame_weights",
     "get_log_level",
     "is_cuda_available",
     "istft",
+    "limit_peaks",
     "model_readme",
     "rms_dbfs",
     "rms_normalize",
@@ -161,5 +166,7 @@ __all__ = [
     "speech_rms_normalize",
     "speech_weights",
     "stft",
+    "weighted_cmvn",
+    "weighted_rms",
     "window",
 ]

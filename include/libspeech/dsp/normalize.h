@@ -74,18 +74,49 @@ SPEECH_API void speech_weights(const float* prob, std::size_t n, speech_gate mod
 //     sqrt( sum_k w_k * energy_k / sum_k w_k * len_k )
 //
 // Samples after the last window (the VAD drops a trailing partial window) have weight 0. 0 when the total weight is 0.
-// Throws std::invalid_argument if window == 0, a weight is outside [0, 1] or NaN, or a pointer is null while its size
-// is > 0.
+//
+// `clip_percentile` (0 < p <= 100, default 100 = off) makes the level robust against a few very loud windows (plosives,
+// clicks): the mean square of every window above the weighted p-th percentile of the window mean squares is replaced by
+// that percentile, then the sum above is taken. The result is still an RMS (close to the plain one when the speech is
+// even), not a percentile of levels. Throws std::invalid_argument if window == 0, clip_percentile is not in (0, 100],
+// a weight is outside [0, 1] or NaN, or a pointer is null while its size is > 0.
 SPEECH_API double weighted_rms(const float* x, std::size_t n, const float* weights, std::size_t n_weights,
-                               std::size_t window);
+                               std::size_t window, double clip_percentile = 100.0);
+
+// Soft peak limiter, in place: afterwards no |x[i]| is above `ceiling` (> 0). Instead of one gain for the whole signal
+// it lowers the gain only around a peak: the needed gain per sample is min(1, ceiling / |x[i]|), its minimum over the
+// next `lookahead` samples is taken, and that is averaged over `lookahead` samples, so the gain falls before the peak,
+// never jumps, and is exactly 1 more than 2 * lookahead - 1 samples away from any peak. lookahead 0 is treated as 1
+// (an instant, hard gain). Returns true if any sample was lowered. Throws std::invalid_argument if ceiling is not a finite
+// number > 0, a sample is NaN/inf, or x is null while n > 0.
+SPEECH_API bool limit_peaks(float* x, std::size_t n, double ceiling, std::size_t lookahead);
 
 // Like rms_normalize(), but the level that is brought to `target_dbfs` is the weighted RMS above (the gain applies to
-// every sample, the peak ceiling is checked on the whole signal). When the total weight is 0 (no speech found) or the
-// signal has a NaN/inf sample, x is left unchanged, gain 1, and input_rms_dbfs / output_rms_dbfs are -infinity for
-// no weight. Same exceptions as rms_normalize() and weighted_rms().
+// every sample). `clip_percentile` is the one of weighted_rms(). Peaks: with limiter_lookahead == 0 (default) the peak
+// ceiling is checked on the whole signal and wins over the target (the gain is lowered for every sample, peak_limited
+// is set); with limiter_lookahead > 0 the gain is the one for the target and limit_peaks(x, n, peak_ceiling,
+// limiter_lookahead) is applied afterwards, so the speech keeps the target level and only the peaks are lowered
+// (peak_limited is set if it lowered any; output_rms_dbfs is the level before the limiter). When the total weight is 0
+// (no speech found) or the signal has a NaN/inf sample, x is left unchanged, gain 1, and the levels are -infinity for no
+// weight. Same exceptions as rms_normalize() and weighted_rms().
 SPEECH_API rms_normalize_result rms_normalize_weighted(float* x, std::size_t n, const float* weights,
                                                        std::size_t n_weights, std::size_t window,
-                                                       double target_dbfs = -20.0, double peak_ceiling = 0.99);
+                                                       double target_dbfs = -20.0, double peak_ceiling = 0.99,
+                                                       double clip_percentile = 100.0,
+                                                       std::size_t limiter_lookahead = 0);
+
+// Weighted cepstral mean (and variance) normalization of a feature matrix, in place. `features` is row-major
+// (frames, dim) (the layout of MFCC / log-mel output); frame t counts with weights[t] in [0, 1] (for example the VAD
+// weights mapped to frames). Per dimension d, with the weighted mean m_d and variance v_d over the frames:
+//
+//     features[t][d] = (features[t][d] - m_d) / sqrt(v_d + eps)        (normalize_variance)
+//     features[t][d] =  features[t][d] - m_d                            (otherwise)
+//
+// All frames are transformed (also the ones with weight 0), but the statistics come from the speech frames only. When
+// the total weight is 0 the matrix is left unchanged. Throws std::invalid_argument if dim == 0, eps is not a finite
+// number >= 0, a weight is outside [0, 1] or NaN, or a pointer is null while its size is > 0.
+SPEECH_API void weighted_cmvn(float* features, std::size_t frames, std::size_t dim, const float* weights,
+                              bool normalize_variance = true, double eps = 1e-8);
 
 }  // namespace speech::dsp
 

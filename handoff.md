@@ -66,6 +66,10 @@ mutation-checked (break the code on purpose, see the test fail, restore, see it 
   `rms_normalize_weighted`, `speech_rms_normalize(x, mode, threshold=None, vad=None)` (`_normalize.py`). One gain, peak ceiling wins,
   no speech means unchanged, 1-D only. Tests: `tests/dsp/test_normalize.cpp`, `tests/python/test_normalize.py` (no model),
   `tests/python/test_speech_normalize.py` (real Silero, in `speech_test_python_models_e2e`). All mutation-checked.
+- Added later (ADR-0023, all opt-in): `clip_percentile` (winsorized speech level), `limit_peaks` / `limiter_lookahead` (soft look-ahead
+  limiter instead of lowering the whole gain), `weighted_cmvn` + `frame_weights` (feature normalization from speech frames). Not
+  done: LUFS, streaming speech AGC, noise-floor aware gain, band-limited level (listed in `checklist.md`).
+- Class getters lost `get_` (`SileroVad.speech_timestamps()`, `threshold()`); free functions such as `get_log_level` kept their names.
 - Python files are copied to the build tree at **configure** time: edit one, re-run `cmake -S . -B build-py` before testing.
 - A zip drops symlinks: after unpacking, recreate `src/third_party/onnxruntime/lib/libonnxruntime.so` and `.so.1` (both pointing to
   `libonnxruntime.so.1.21.0`) or the link and `cpp_models` fail.

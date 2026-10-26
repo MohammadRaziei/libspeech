@@ -106,3 +106,30 @@ def test_bad_arguments_raise(vad):
         libspeech.speech_rms_normalize(np.zeros((2, SR), dtype=np.float32), vad=vad)
     with pytest.raises(ValueError):
         libspeech.speech_rms_normalize(np.zeros(SR, dtype=np.float32), mode="medium", vad=vad)
+
+
+def test_clip_percentile_and_limiter_options_with_the_real_vad(vad):
+    x, mask = _speech_like(0.8)
+    x = x.copy()
+    x[int(1.0 * SR)] = 0.95  # a click inside the first vowel
+    base = libspeech.speech_rms_normalize(x, vad=vad)
+    clipped = libspeech.speech_rms_normalize(x, clip_percentile=90.0, vad=vad)
+    limited = libspeech.speech_rms_normalize(x, limiter_ms=5.0, vad=vad)
+    for y in (base, clipped, limited):
+        assert float(np.max(np.abs(y))) <= np.float32(0.99)  # the ceiling as float32 (the hard ceiling lands on it)
+    assert _dbfs(limited[mask]) >= _dbfs(base[mask]) - 1e-6  # the limiter never makes the speech quieter than the hard ceiling
+    assert _dbfs(clipped[mask]) >= _dbfs(base[mask]) - 1e-6  # clipping never raises the level estimate, so never lowers the gain
+    manual = libspeech.rms_normalize_weighted(
+        x,
+        libspeech.speech_weights(np.asarray(_probabilities(vad, x), dtype=np.float32), "hard", 0.5),
+        vad.window_samples,
+        clip_percentile=90.0,
+        limiter_lookahead=round(5e-3 * SR),
+    )
+    np.testing.assert_array_equal(libspeech.speech_rms_normalize(x, clip_percentile=90.0, limiter_ms=5.0, vad=vad), manual)
+
+
+def _probabilities(vad, x):
+    vad.reset()
+    vad.process(x.tolist())
+    return vad.speech_probabilities()

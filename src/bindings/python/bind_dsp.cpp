@@ -483,8 +483,8 @@ NB_MODULE(NB_MODULE_NAME, m) {
         "clamped to [0, 1], a ramp that is 0 up to the threshold and 1 at p = 1 (0 < threshold < 1).");
     m.def(
         "rms_normalize_weighted",
-        [](in_array_nd x, in_array_nd weights, std::size_t window, double target_dbfs,
-           double peak_ceiling) -> nb::object {
+        [](in_array_nd x, in_array_nd weights, std::size_t window, double target_dbfs, double peak_ceiling,
+           double clip_percentile, std::size_t limiter_lookahead) -> nb::object {
             if (x.ndim() != 1) throw std::invalid_argument("expected a 1-D float32 signal.");
             if (weights.ndim() != 1) throw std::invalid_argument("expected 1-D float32 weights.");
             const std::size_t count = x.size();
@@ -494,14 +494,67 @@ NB_MODULE(NB_MODULE_NAME, m) {
                 out.resize(count);
                 if (count) std::memcpy(out.data(), x.data(), count * sizeof(float));
                 speech::dsp::rms_normalize_weighted(out.data(), count, weights.data(), weights.size(), window,
-                                                    target_dbfs, peak_ceiling);
+                                                    target_dbfs, peak_ceiling, clip_percentile, limiter_lookahead);
             }
             return nb::cast(speech::py::wrap<speech::py::out_array_1d>(std::move(out), {count}));
         },
         nb::arg("signal"), nb::arg("weights"), nb::arg("window"), nb::arg("target_dbfs") = -20.0,
-        nb::arg("peak_ceiling") = 0.99,
+        nb::arg("peak_ceiling") = 0.99, nb::arg("clip_percentile") = 100.0, nb::arg("limiter_lookahead") = 0,
         "Like rms_normalize, but the level that is brought to target_dbfs is the RMS weighted per window: weights[k] "
         "(each in [0, 1]) is the weight of samples [k * window, (k + 1) * window); samples after the last window "
-        "have weight 0. One gain for the whole signal; the peak ceiling still wins. Returned unchanged when the "
-        "total weight is 0 (no speech) or the signal is silent or non-finite. 1-D only.");
+        "have weight 0. clip_percentile (0 < p <= 100, default 100 = off) clips the mean square of the loudest "
+        "windows to the weighted p-th percentile, so a few plosives do not lower the gain. limiter_lookahead = 0 "
+        "(default): one gain for the whole signal and the peak ceiling wins over the target. limiter_lookahead > 0 "
+        "(samples): the gain is the one for the target and a soft look-ahead limiter lowers only the peaks above "
+        "peak_ceiling. Returned unchanged when the total weight is 0 (no speech) or the signal is silent or "
+        "non-finite. 1-D only.");
+    m.def(
+        "weighted_rms",
+        [](in_array_nd x, in_array_nd weights, std::size_t window, double clip_percentile) {
+            if (x.ndim() != 1) throw std::invalid_argument("expected a 1-D float32 signal.");
+            if (weights.ndim() != 1) throw std::invalid_argument("expected 1-D float32 weights.");
+            return speech::dsp::weighted_rms(x.data(), x.size(), weights.data(), weights.size(), window, clip_percentile);
+        },
+        nb::arg("signal"), nb::arg("weights"), nb::arg("window"), nb::arg("clip_percentile") = 100.0,
+        "The weighted RMS (linear) that rms_normalize_weighted measures; see there for the arguments.");
+    m.def(
+        "limit_peaks",
+        [](in_array_nd x, double ceiling, std::size_t lookahead) -> nb::object {
+            if (x.ndim() != 1) throw std::invalid_argument("expected a 1-D float32 signal.");
+            const std::size_t count = x.size();
+            speech::detail::uninit_vector<float> out;
+            {
+                nb::gil_scoped_release release;
+                out.resize(count);
+                if (count) std::memcpy(out.data(), x.data(), count * sizeof(float));
+                speech::dsp::limit_peaks(out.data(), count, ceiling, lookahead);
+            }
+            return nb::cast(speech::py::wrap<speech::py::out_array_1d>(std::move(out), {count}));
+        },
+        nb::arg("signal"), nb::arg("ceiling") = 0.99, nb::arg("lookahead") = 80,
+        "Returns a float32 copy of `signal` in which no sample is above `ceiling` (linear, > 0). A soft look-ahead "
+        "limiter: the gain is lowered only around a peak (it falls over `lookahead` samples before it and recovers "
+        "over `lookahead` after it) and is exactly 1 elsewhere. Raises ValueError for NaN/inf samples.");
+    m.def(
+        "weighted_cmvn",
+        [](nb::ndarray<const float, nb::c_contig, nb::device::cpu> features, in_array_nd weights,
+           bool normalize_variance, double eps) -> nb::object {
+            if (features.ndim() != 2) throw std::invalid_argument("expected a 2-D float32 array (frames, dim).");
+            if (weights.ndim() != 1) throw std::invalid_argument("expected 1-D float32 weights.");
+            const std::size_t frames = features.shape(0), dim = features.shape(1), count = features.size();
+            if (weights.size() != frames) throw std::invalid_argument("weights must have one value per frame.");
+            speech::detail::uninit_vector<float> out;
+            {
+                nb::gil_scoped_release release;
+                out.resize(count);
+                if (count) std::memcpy(out.data(), features.data(), count * sizeof(float));
+                speech::dsp::weighted_cmvn(out.data(), frames, dim, weights.data(), normalize_variance, eps);
+            }
+            return nb::cast(speech::py::wrap<speech::py::out_array_2d>(std::move(out), {frames, dim}));
+        },
+        nb::arg("features"), nb::arg("weights"), nb::arg("normalize_variance") = true, nb::arg("eps") = 1e-8,
+        "Weighted mean (and variance) normalization of a (frames, dim) float32 feature matrix, per dimension: the "
+        "statistics come from the frames weighted by `weights` (one value in [0, 1] per frame, e.g. the VAD weights "
+        "mapped to frames), every frame is transformed. normalize_variance=False only subtracts the mean. Returned "
+        "unchanged when the total weight is 0. Returns a new array.");
 }
