@@ -29,6 +29,7 @@ not mean none was considered.
 | [0019](0019-dpdfnet-streaming.md) | DPDFNet streams; the stream compensates the network's four-hop delay like `process()` does | accepted |
 | [0020](0020-rms-normalizer.md) | RMS normalizer: dsp functions, `Audio.normalize_rms`, Python `rms_normalize` / `rms_dbfs` | accepted |
 | [0021](0021-denoiser-speed-and-quantization.md) | Denoiser speed: libspeech adds no measurable overhead; quantized models are opt-in and user-made (nothing shipped) | accepted |
+| [0022](0022-speech-weighted-rms-normalizer.md) | Speech-weighted RMS normalization: hard and soft thresholds on the VAD probabilities | accepted |
 
 ## Not decided yet
 

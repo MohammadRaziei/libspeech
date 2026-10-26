@@ -37,7 +37,7 @@ int main() {
     double best = 1e18; unsigned long allocs = 0;
     for (int r = 0; r < 5; ++r) { g_allocs = 0; auto a = clk::now(); vad.process_on_vector(wav); double m = ms_since(a); if (m < best) { best = m; allocs = g_allocs; } }
     const int chunks = (secs * sr) / 512;
-    std::printf("SileroVad: process_on_vector %d s (%d chunks)       %8.1f ms  = %.1f us/chunk, %.2f allocs/chunk, speech segments: %zu\n", secs, chunks, best, best * 1000 / chunks, (double)allocs / chunks, vad.get_speech_timestamps().size());
+    std::printf("SileroVad: process_on_vector %d s (%d chunks)       %8.1f ms  = %.1f us/chunk, %.2f allocs/chunk, speech segments: %zu\n", secs, chunks, best, best * 1000 / chunks, (double)allocs / chunks, vad.speech_timestamps().size());
 
     Ort::Env env(ORT_LOGGING_LEVEL_ERROR, "p"); Ort::SessionOptions so; so.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
     std::string path = std::string(std::getenv("HOME")) + "/.libspeech/silero-vad.onnx";

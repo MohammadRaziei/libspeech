@@ -65,7 +65,7 @@ if(TARGET speech_io_py)
         # speech_test_python or ctest.
         add_custom_target(speech_test_python_models_e2e
             COMMAND ${CMAKE_COMMAND} -E echo "-- Running Python model tests: pytest -m models"
-            COMMAND ${Python3_EXECUTABLE} -m pytest ${CMAKE_CURRENT_SOURCE_DIR}/test_models.py ${CMAKE_CURRENT_SOURCE_DIR}/test_vad_streaming.py ${CMAKE_CURRENT_SOURCE_DIR}/test_denoiser_streaming.py ${CMAKE_CURRENT_SOURCE_DIR}/test_dpdfnet_streaming.py ${CMAKE_CURRENT_SOURCE_DIR}/test_denoiser_threading.py ${CMAKE_CURRENT_SOURCE_DIR}/test_model_files.py ${CMAKE_CURRENT_SOURCE_DIR}/test_readme_examples.py -m models
+            COMMAND ${Python3_EXECUTABLE} -m pytest ${CMAKE_CURRENT_SOURCE_DIR}/test_models.py ${CMAKE_CURRENT_SOURCE_DIR}/test_vad_streaming.py ${CMAKE_CURRENT_SOURCE_DIR}/test_speech_normalize.py ${CMAKE_CURRENT_SOURCE_DIR}/test_denoiser_streaming.py ${CMAKE_CURRENT_SOURCE_DIR}/test_dpdfnet_streaming.py ${CMAKE_CURRENT_SOURCE_DIR}/test_denoiser_threading.py ${CMAKE_CURRENT_SOURCE_DIR}/test_model_files.py ${CMAKE_CURRENT_SOURCE_DIR}/test_readme_examples.py -m models
             WORKING_DIRECTORY ${PYTHON_PROJECT_NAME}
             USES_TERMINAL
         )

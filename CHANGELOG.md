@@ -16,6 +16,12 @@ This file starts at 0.3.1; older history is in `git log`.
   `libspeech.rms_dbfs(x)` and `Audio.normalize_rms(...)`: scale a signal to a target RMS level in dBFS with one gain
   (so shape and channel balance are kept), lowering the gain if the peak would pass the ceiling so nothing clips. Silent
   or non-finite input is returned unchanged. ADR-0020.
+- **Speech-weighted RMS normalization (VAD probabilities with a hard or a soft threshold).** `libspeech.speech_rms_normalize(x, mode="hard"|"soft", threshold=None, ...)`
+  runs `SileroVad` and measures the RMS only where the speech probabilities say there is speech, so a recording with long
+  pauses is no longer raised too much. `hard`: weight 1 when `p >= threshold`, else 0. `soft`: `(p - threshold) / (1 - threshold)`
+  clamped to [0, 1]. Building blocks: C++ `speech::dsp::speech_weights()`, `weighted_rms()`, `rms_normalize_weighted()` and Python
+  `libspeech.speech_weights()`, `libspeech.rms_normalize_weighted()`. One gain for the whole signal, the peak ceiling still wins,
+  and a signal with no speech is returned unchanged. 1-D only. ADR-0022.
 - **`docs/adr/` (18 architecture decision records) and `docs/agent.md`** (the guide for an agent or developer: when to consult, how to build
   and test through CMake, working rules, delivery). The ADRs were reconstructed from the git history, the changelog and the code.
 - **The native log reaches Python's `logging`, and the Python logger controls it.** Every line libspeech's C++ code
@@ -71,12 +77,20 @@ This file starts at 0.3.1; older history is in `git log`.
   can be built from an array: `Audio(array, sample_rate)`, `Audio.from_numpy(...)`, `Audio.from_dlpack(...)`
   (1-D mono or 2-D `(channels, samples)`, copied once; other dtypes are converted). New C++
   `audio::shared_samples()`. `to_numpy(channel)` is unchanged (a 1-D copy).
+- **`SileroVad` speech probability and threshold.** `speech_probabilities()` returns the model's speech probability
+  (0..1) for every complete window since `reset()` (`window_samples` samples each; a segment starts at the first window
+  that reaches the threshold), `pop_speech_probabilities()` returns the new ones while streaming, and
+  `threshold()` / `set_threshold(value)` read and change the threshold (`0 < value <= 1`, else `ValueError` /
+  `std::invalid_argument`). A new threshold applies from the next window on and survives `reset()`.
 - **Tests and benchmarks.** `tests/python/test_denoiser_threading.py` (marked `models`): one `Denoiser` shared by several
   threads, with `process()` and with streams, gives each thread its serial result, and `process()` / `feed()` release the
   GIL. `log_mel` and `delta` are in the Python benchmark suite (`benchmarks/python/`).
 - **`labs/`**: experiments with their notebooks and scripts, one folder per story. `labs/quantize_denoiser/` has int8 quantization tools for the Facebook denoisers (`onnx_ptq.py`: static int8 for the convolutions, dynamic int8 for the LSTM, per-node sensitivity, evaluation; `distill_qat.py`: teacher-student weight-quantization-aware fine-tuning in PyTorch) and a Colab notebook. Its tests are in `labs/quantize_denoiser/tests/` (run by hand; not part of CMake or CI).
 
 ### Fixed
+- **`SileroVad` with a threshold below 0.16 never ended a segment.** The silence level was `threshold - 0.15`, which is
+  negative there, so no window counted as silence and the segment ran to the end of the audio. It is now
+  `max(threshold - 0.15, 0.01)`, as in the reference Silero code; thresholds of 0.16 and above behave exactly as before.
 - **`logging.disable()` and a second stderr handler.** `logging.disable(level)` now reaches the native side (the native
   level follows what the logger lets through, so libspeech no longer builds lines Python would drop). The stderr handler
   that `set_log_level()` adds when logging is unconfigured stays silent once the application configures logging
@@ -99,6 +113,11 @@ This file starts at 0.3.1; older history is in `git log`.
   on self-assignment.
 
 ### Changed
+- **Breaking: class getters lost the `get_` prefix.** `SileroVad.get_speech_timestamps()` is now `speech_timestamps()` and
+  `get_threshold()` is `threshold()` (C++ `silero_vad_model` and Python; `set_threshold()` is unchanged, the C++ data member is now
+  `threshold_`). No aliases are kept. Free functions keep their names (`get_log_level`, `get_temp_directory`,
+  `get_default_model_cache_dir`), and so do other projects' names (httpp's `get_lib_dir`, CMake commands, `src/third_party`).
+  See `docs/api-renames.md`.
 - README rewritten: shorter, aimed at someone installing the package for the first time. The Python examples in it
   are run by `tests/python/test_readme_examples.py` (the model block under `-m models`). Coverage targets, the SIMD
   layout and the test-target tree moved to `CONTRIBUTING.md`.

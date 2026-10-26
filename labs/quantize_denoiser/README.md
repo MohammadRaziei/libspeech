@@ -74,6 +74,8 @@ want the evaluation to be independent of the calibration.
 
 ## Measured so far
 
+In this one machine and setup, quantizing **only the LSTM** (`onnx_ptq.py quantize --lstm-only`, no calibration) was faster and much closer to fp32 than quantizing the convolutions as well, at the cost of a bigger file. Real-time factors differ between runs of the same model on this machine (fp32 measured 0.171 and 0.128), so compare only numbers from the same row group / the same run.
+
 `dns48`, two real noisy recordings (`alex-noisy.mp3`, `audio-fa-noisy.mp3` from libspeech's `resources` release), static
 int8 from `onnx_ptq.py quantize` (percentile calibration on 8 clips of 4 s), 1 thread, one Linux sandbox CPU. Quality is
 agreement with the fp32 model's output; the clips used to calibrate and to evaluate come from the same two recordings.
@@ -83,6 +85,9 @@ agreement with the fp32 model's output; the clips used to calibrate and to evalu
 | `onnxruntime` 1.24.4, 8 clips of 4 s: agreement | | 25.8 dB mean, 24.5 dB min |
 | same: real-time factor | 0.171 | 0.137 |
 | same: size | 75.5 MB | 19.2 MB |
+| **LSTM only** (convolutions stay fp32), `onnxruntime` 1.24.4, 8 clips of 4 s: agreement | | 43.4 dB mean, 39.6 dB min |
+| same: real-time factor (fp32 / int8, same run) | 0.128 | 0.083 (1.54x) |
+| same: size | 75.5 MB | 47.2 MB |
 | libspeech's bundled ONNX Runtime, one 6 s clip: agreement | | 25.1 dB |
 | same: real-time factor | 0.171 | 0.262 |
 
@@ -103,3 +108,11 @@ pytest labs/quantize_denoiser/tests        # from the repository root
 ```
 
 Not part of CMake or CI. Modules skip themselves when `torch`, `soundfile` and the like are not installed.
+
+### Speed-ups that did not help
+
+An ONNX Runtime profile of `dns48` in fp32 (1 thread, 6 s clip) put about 29 % of the time in `Conv`, 25 % in `LSTM`,
+17 % in `ConvTranspose` and 11 % in the `Split` nodes of the GLU layers. Rewriting the ten kernel-1 convolutions as
+`MatMul`, with and without removing the `Split` (the weights cut in two halves), left the output bit-identical but made it
+only 1.01x to 1.02x faster, so it is not worth keeping. (Profile shares and the LSTM-only speed-up do not agree with each
+other: the LSTM share alone would cap that speed-up below 1.33x; not resolved.)

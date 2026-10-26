@@ -64,7 +64,7 @@ class SpeechController : public oatpp::web::server::api::ApiController {
             vad.process_on_vector(audio16k.data(0));
 
             // Retrieve speech timestamps
-            std::vector<speech::models::speech_timestamp> stamps = vad.get_speech_timestamps();
+            std::vector<speech::models::speech_timestamp> stamps = vad.speech_timestamps();
 
             // Prepare the response
             auto response = SpeechResponseDto::createShared();

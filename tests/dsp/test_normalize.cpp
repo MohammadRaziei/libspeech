@@ -1,5 +1,6 @@
 #include "utest.h"
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <stdexcept>
@@ -181,4 +182,156 @@ UTEST(normalize, scale_to_rms_takes_a_linear_target) {
     std::vector<float> x = sine(16000, 0.5, 40);
     scale_to_rms(x.data(), x.size(), 0.1);
     ASSERT_NEAR(static_cast<double>(ref_rms(x)), 0.1, 1e-6);
+}
+
+// --- speech-weighted level --------------------------------------------------------------------------------------
+
+namespace {
+using speech::dsp::rms_normalize_weighted;
+using speech::dsp::speech_gate;
+using speech::dsp::speech_weights;
+using speech::dsp::weighted_rms;
+
+// Long double reference of sqrt(sum w_k e_k / sum w_k len_k), written from the definition.
+double ref_weighted_rms(const std::vector<float>& x, const std::vector<float>& w, std::size_t window) {
+    long double e = 0.0L, c = 0.0L;
+    for (std::size_t k = 0; k < w.size(); ++k) {
+        for (std::size_t i = k * window; i < std::min(x.size(), (k + 1) * window); ++i) {
+            e += static_cast<long double>(w[k]) * static_cast<long double>(x[i]) * static_cast<long double>(x[i]);
+            c += static_cast<long double>(w[k]);
+        }
+    }
+    return c > 0.0L ? static_cast<double>(std::sqrt(e / c)) : 0.0;
+}
+}  // namespace
+
+UTEST(normalize, speech_weights_hard_is_a_step_at_the_threshold) {
+    const std::vector<float> p = {0.0f, 0.2f, 0.4999f, 0.5f, 0.51f, 1.0f};
+    std::vector<float> w(p.size());
+    speech_weights(p.data(), p.size(), speech_gate::hard, 0.5, w.data());
+    const std::vector<float> expect = {0, 0, 0, 1, 1, 1};
+    for (std::size_t i = 0; i < p.size(); ++i) ASSERT_EQ(w[i], expect[i]);
+}
+
+UTEST(normalize, speech_weights_soft_is_a_ramp_from_the_threshold_to_one) {
+    const std::vector<float> p = {0.0f, 0.4f, 0.5f, 0.6f, 0.75f, 1.0f};
+    std::vector<float> w(p.size());
+    speech_weights(p.data(), p.size(), speech_gate::soft, 0.5, w.data());
+    const double expect[] = {0.0, 0.0, 0.0, 0.2, 0.5, 1.0};  // (p - 0.5) / 0.5, clamped
+    for (std::size_t i = 0; i < p.size(); ++i) ASSERT_NEAR(static_cast<double>(w[i]), expect[i], 1e-6);
+    speech_weights(p.data(), p.size(), speech_gate::soft, 0.2, w.data());  // (p - 0.2) / 0.8
+    ASSERT_NEAR(static_cast<double>(w[3]), 0.5, 1e-6);
+}
+
+UTEST(normalize, speech_weights_bad_arguments_throw) {
+    std::vector<float> p = {0.3f, 0.7f}, w(2);
+    int threw = 0;
+    auto expect_throw = [&](auto&& call) {
+        try {
+            call();
+        } catch (const std::invalid_argument&) {
+            ++threw;
+        }
+    };
+    expect_throw([&] { speech_weights(p.data(), 2, speech_gate::hard, 0.0, w.data()); });
+    expect_throw([&] { speech_weights(p.data(), 2, speech_gate::hard, 1.5, w.data()); });
+    expect_throw([&] { speech_weights(p.data(), 2, speech_gate::soft, 1.0, w.data()); });  // ramp needs threshold < 1
+    expect_throw([&] { speech_weights(p.data(), 2, speech_gate::hard, std::nan(""), w.data()); });
+    const std::vector<float> bad = {0.3f, 1.2f};
+    expect_throw([&] { speech_weights(bad.data(), 2, speech_gate::hard, 0.5, w.data()); });
+    const std::vector<float> nan = {0.3f, std::nanf("")};
+    expect_throw([&] { speech_weights(nan.data(), 2, speech_gate::soft, 0.5, w.data()); });
+    expect_throw([&] { speech_weights(nullptr, 2, speech_gate::hard, 0.5, w.data()); });
+    ASSERT_EQ(threw, 7);
+    speech_weights(p.data(), 2, speech_gate::hard, 1.0, w.data());  // hard may use threshold 1 (only p == 1 counts)
+    ASSERT_EQ(w[0] + w[1], 0.0f);
+}
+
+UTEST(normalize, weighted_rms_matches_the_definition_with_a_partial_last_window) {
+    // 5 windows of 100 samples, the last one cut at 450 samples; different levels and weights per window.
+    std::vector<float> x;
+    const double amp[] = {0.01, 0.4, 0.02, 0.3, 0.05};
+    for (std::size_t k = 0; k < 5; ++k) {
+        const std::size_t len = (k == 4) ? 50 : 100;
+        for (std::size_t i = 0; i < len; ++i) x.push_back(static_cast<float>(amp[k] * (i % 2 ? 1.0 : -1.0)));
+    }
+    const std::vector<float> w = {0.0f, 1.0f, 0.25f, 0.5f, 1.0f};
+    ASSERT_NEAR(weighted_rms(x.data(), x.size(), w.data(), w.size(), 100), ref_weighted_rms(x, w, 100), 1e-9);
+    // fewer weights than windows: samples after the last window do not count
+    const std::vector<float> two = {0.0f, 1.0f};
+    ASSERT_NEAR(weighted_rms(x.data(), x.size(), two.data(), two.size(), 100), 0.4, 1e-6);
+    ASSERT_EQ(weighted_rms(x.data(), x.size(), nullptr, 0, 100), 0.0);
+}
+
+UTEST(normalize, weighted_normalize_hits_the_target_on_the_speech_part_only) {
+    // 1 s of "speech" (a sine at 0.1) and 3 s of near-silence (0.001): the plain RMS is dominated by the silence.
+    const std::size_t window = 512, windows = 125;
+    std::vector<float> x(window * windows, 0.0f), w(windows, 0.0f);
+    for (std::size_t i = 0; i < x.size(); ++i) {
+        const bool speech = i < window * 31;
+        x[i] = static_cast<float>((speech ? 0.1 : 0.001) * std::sin(2.0 * pi * 200.0 * static_cast<double>(i) / 16000.0));
+    }
+    for (std::size_t k = 0; k < 31; ++k) w[k] = 1.0f;
+
+    std::vector<float> plain(x);
+    rms_normalize(plain.data(), plain.size(), -20.0);
+    std::vector<float> gated(x);
+    const rms_normalize_result r = rms_normalize_weighted(gated.data(), gated.size(), w.data(), w.size(), window, -20.0);
+
+    const std::vector<float> speech_part(gated.begin(), gated.begin() + static_cast<long>(window * 31));
+    ASSERT_NEAR(ref_dbfs(speech_part), -20.0, 1e-3);          // the speech reads the target
+    ASSERT_NEAR(r.output_rms_dbfs, -20.0, 1e-3);
+    const std::vector<float> plain_speech(plain.begin(), plain.begin() + static_cast<long>(window * 31));
+    ASSERT_GT(ref_dbfs(plain_speech), -20.0 + 6.0);           // the plain gain made the speech much too loud
+    ASSERT_FALSE(r.peak_limited);
+    const double ratio = static_cast<double>(gated[100]) / static_cast<double>(x[100]);
+    ASSERT_NEAR(static_cast<double>(gated[x.size() - 7]) / static_cast<double>(x[x.size() - 7]), ratio, 1e-4 * ratio);  // one gain
+}
+
+UTEST(normalize, weighted_normalize_with_no_weight_or_silence_leaves_the_signal_alone) {
+    std::vector<float> x = sine(2048, 0.1, 10);
+    const std::vector<float> before = x;
+    const std::vector<float> none(4, 0.0f);
+    const rms_normalize_result r = rms_normalize_weighted(x.data(), x.size(), none.data(), none.size(), 512);
+    ASSERT_EQ(r.gain, 1.0);
+    ASSERT_TRUE(std::isinf(r.input_rms_dbfs) && r.input_rms_dbfs < 0.0);
+    for (std::size_t i = 0; i < x.size(); ++i) ASSERT_EQ(x[i], before[i]);
+
+    std::vector<float> nan_x = before;
+    nan_x[3] = std::nanf("");
+    const std::vector<float> all(4, 1.0f);
+    ASSERT_EQ(rms_normalize_weighted(nan_x.data(), nan_x.size(), all.data(), all.size(), 512).gain, 1.0);
+}
+
+UTEST(normalize, weighted_normalize_peak_ceiling_still_wins) {
+    std::vector<float> x(4096, 0.001f);
+    x[2000] = 0.9f;  // a peak in a window with weight 0: it must still limit the gain
+    std::vector<float> w(8, 0.0f);
+    w[0] = 1.0f;
+    const rms_normalize_result r = rms_normalize_weighted(x.data(), x.size(), w.data(), w.size(), 512, -20.0, 0.99);
+    ASSERT_TRUE(r.peak_limited);
+    ASSERT_NEAR(static_cast<double>(x[2000]), 0.99, 1e-6);
+}
+
+UTEST(normalize, weighted_bad_arguments_throw) {
+    std::vector<float> x = sine(1024, 0.1, 5);
+    const std::vector<float> w = {1.0f, 1.0f};
+    int threw = 0;
+    auto expect_throw = [&](auto&& call) {
+        try {
+            call();
+        } catch (const std::invalid_argument&) {
+            ++threw;
+        }
+    };
+    expect_throw([&] { rms_normalize_weighted(x.data(), x.size(), w.data(), 2, 0); });                       // window 0
+    const std::vector<float> bad = {1.0f, 2.0f};
+    expect_throw([&] { rms_normalize_weighted(x.data(), x.size(), bad.data(), 2, 512); });                   // weight > 1
+    expect_throw([&] { rms_normalize_weighted(x.data(), x.size(), nullptr, 2, 512); });                      // null weights
+    expect_throw([&] { rms_normalize_weighted(nullptr, 5, w.data(), 2, 512); });                             // null data
+    expect_throw([&] { rms_normalize_weighted(x.data(), x.size(), w.data(), 2, 512, std::nan("")); });       // bad target
+    expect_throw([&] { rms_normalize_weighted(x.data(), x.size(), w.data(), 2, 512, -20.0, 0.0); });         // bad ceiling
+    ASSERT_EQ(threw, 6);
+    const std::vector<float> same = sine(1024, 0.1, 5);
+    for (std::size_t i = 0; i < x.size(); ++i) ASSERT_EQ(x[i], same[i]);  // a rejected call must not touch the data
 }

@@ -294,8 +294,8 @@ def test_silero_vad_runs_on_every_released_model(model):
     noise = (0.1 * np.random.default_rng(0).standard_normal(16000 * 3)).astype(np.float32).tolist()
     vad = libspeech.SileroVad(model_path=model)
     vad.process(noise)
-    first = [(s.start_s, s.end_s) for s in vad.get_speech_timestamps()]
+    first = [(s.start_s, s.end_s) for s in vad.speech_timestamps()]
     vad.process(noise)  # process() resets the state, so the same input gives the same answer
-    assert [(s.start_s, s.end_s) for s in vad.get_speech_timestamps()] == first
+    assert [(s.start_s, s.end_s) for s in vad.speech_timestamps()] == first
     for start, end in first:
         assert 0.0 <= start <= end <= 3.0

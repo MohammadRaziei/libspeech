@@ -110,3 +110,13 @@ This table lists every name that changed in the public headers since v0.3.x.
 | `winType` | `win_type` | `dsp/resample.h` |
 | `windowType` | `window_type_` | `dsp/stft.h` |
 | `zeroNum` | `zero_num` | `dsp/resample.h` |
+
+## Class getters without the `get_` prefix (Unreleased)
+
+C++ and Python. Only member functions of classes; free functions such as `get_log_level` keep their names. The setter keeps
+`set_`. No old names are kept as aliases.
+
+| old | new | where |
+|---|---|---|
+| `silero_vad_model::get_speech_timestamps()` / `SileroVad.get_speech_timestamps()` | `speech_timestamps()` | `models/silero_vad.h` |
+| `silero_vad_model::get_threshold()` / `SileroVad.get_threshold()` | `threshold()` (the data member is now `threshold_`) | `models/silero_vad.h` |

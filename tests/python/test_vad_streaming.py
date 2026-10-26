@@ -70,7 +70,7 @@ def _pairs(timestamps):
 def _batch(vad, audio):
     vad.reset()
     vad.process(audio)
-    return _pairs(vad.get_speech_timestamps())
+    return _pairs(vad.speech_timestamps())
 
 
 def _stream(vad, audio, chunk_sizes):
@@ -114,7 +114,7 @@ def test_pop_returns_each_segment_once_and_in_order(vad, audio):
     vad.finish()
     seen += _pairs(vad.pop_speech_timestamps())
     assert seen == expected
-    assert _pairs(vad.get_speech_timestamps()) == expected  # the full list is not consumed by pop
+    assert _pairs(vad.speech_timestamps()) == expected  # the full list is not consumed by pop
 
 
 def test_segments_are_reported_while_streaming_not_only_at_the_end(vad, audio):
@@ -165,3 +165,114 @@ def test_empty_and_tiny_chunks(vad, audio):
     assert not vad.in_speech
     vad.finish()
     assert _pairs(vad.pop_speech_timestamps()) == []
+
+
+# --- speech probability and threshold --------------------------------------------------------------------------
+
+
+def _first_window_at_or_above(probabilities, threshold):
+    return int(np.argmax(probabilities >= threshold))
+
+
+@pytest.fixture
+def fresh_vad():
+    """A VAD with the default threshold; set_threshold() in a test must not leak into the shared `vad` fixture."""
+    return libspeech.SileroVad(model_path="silero-vad.onnx")
+
+
+def test_probabilities_are_one_per_complete_window_and_in_range(fresh_vad, audio):
+    fresh_vad.process(audio)
+    probabilities = fresh_vad.speech_probabilities()
+    assert probabilities.dtype == np.float32
+    assert fresh_vad.window_samples == 512
+    assert len(probabilities) == len(audio) // fresh_vad.window_samples  # a trailing partial window has no value
+    assert np.isfinite(probabilities).all()
+    assert probabilities.min() >= 0.0
+    assert probabilities.max() <= 1.0
+    assert probabilities.max() > 0.5  # the fixture contains speech ...
+    assert probabilities.min() < 0.1  # ... and silence
+
+
+@pytest.mark.parametrize("chunks", [[1], [511], [513], [1600], [7, 1000, 33, 512, 5]])
+def test_probabilities_do_not_depend_on_how_the_audio_is_chunked(fresh_vad, audio, chunks):
+    fresh_vad.process(audio)
+    expected = fresh_vad.speech_probabilities().copy()
+    fresh_vad.reset()
+    i = k = 0
+    while i < len(audio):
+        n = chunks[k % len(chunks)]
+        fresh_vad.feed(audio[i:i + n])
+        i += n
+        k += 1
+    fresh_vad.finish()
+    np.testing.assert_array_equal(fresh_vad.speech_probabilities(), expected)
+
+
+def test_pop_speech_probabilities_returns_each_window_once(fresh_vad, audio):
+    fresh_vad.process(audio)
+    expected = fresh_vad.speech_probabilities().copy()
+    fresh_vad.reset()
+    assert len(fresh_vad.speech_probabilities()) == 0  # reset() clears them
+    popped = []
+    for i in range(0, len(audio), 800):
+        fresh_vad.feed(audio[i:i + 800])
+        new = fresh_vad.pop_speech_probabilities()
+        assert len(new) == fresh_vad.samples_fed // 512 - sum(len(p) for p in popped)  # exactly the windows just completed
+        popped.append(new)
+        assert len(fresh_vad.pop_speech_probabilities()) == 0  # nothing new until more audio arrives
+    fresh_vad.finish()
+    np.testing.assert_array_equal(np.concatenate(popped), expected)
+    np.testing.assert_array_equal(fresh_vad.speech_probabilities(), expected)  # the full list is not consumed by pop
+
+
+@pytest.mark.parametrize("threshold", [0.2, 0.35, 0.5, 0.8, 0.95])
+def test_set_threshold_moves_where_segments_start(fresh_vad, audio, threshold):
+    fresh_vad.process(audio)
+    probabilities = fresh_vad.speech_probabilities().copy()
+    fresh_vad.set_threshold(threshold)
+    assert fresh_vad.threshold() == pytest.approx(threshold)
+    fresh_vad.process(audio)
+    np.testing.assert_array_equal(fresh_vad.speech_probabilities(), probabilities)  # the model does not depend on it
+    segments = fresh_vad.speech_timestamps()
+    assert segments
+    assert segments[0].start == _first_window_at_or_above(probabilities, threshold) * fresh_vad.window_samples
+
+
+def test_reset_keeps_the_threshold(fresh_vad, audio):
+    fresh_vad.set_threshold(0.8)
+    fresh_vad.reset()
+    assert fresh_vad.threshold() == pytest.approx(0.8)
+    fresh_vad.process(audio)
+    probabilities = fresh_vad.speech_probabilities()
+    assert fresh_vad.speech_timestamps()[0].start == _first_window_at_or_above(probabilities, 0.8) * 512
+
+
+@pytest.mark.parametrize("bad", [0.0, -0.1, 1.5, float("nan"), float("inf")])
+def test_set_threshold_rejects_values_outside_0_1(fresh_vad, bad):
+    with pytest.raises(ValueError, match="threshold"):
+        fresh_vad.set_threshold(bad)
+    assert fresh_vad.threshold() == pytest.approx(0.5)  # unchanged
+
+
+def test_set_threshold_applies_from_the_next_window_on(fresh_vad, audio):
+    fresh_vad.process(audio)
+    first_end = fresh_vad.speech_timestamps()[0].end
+    fresh_vad.reset()
+    cut = (first_end // 512) * 512 - 4 * 512  # a little before the first segment ends, on a window boundary
+    fresh_vad.feed(audio[:cut])
+    assert fresh_vad.in_speech
+    fresh_vad.set_threshold(1.0)  # from now on only a probability of exactly 1 counts as speech
+    fresh_vad.feed(audio[cut:])
+    fresh_vad.finish()
+    first = fresh_vad.speech_timestamps()[0]
+    assert first.start < cut  # the segment that was already open keeps its start ...
+    assert first.end <= first_end  # ... and the silence-based end is not later than with threshold 0.5
+
+
+def test_a_low_threshold_still_lets_segments_end(fresh_vad, audio):
+    # Below 0.16 the "silence" level used to be negative, so a segment could never end before the end of the audio.
+    fresh_vad.set_threshold(0.1)
+    fresh_vad.process(audio)
+    segments = fresh_vad.speech_timestamps()
+    assert segments
+    assert segments[0].end < len(audio) - SR  # the first segment ends in the silence after the first words

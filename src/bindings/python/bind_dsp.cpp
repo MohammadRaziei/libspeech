@@ -458,4 +458,50 @@ NB_MODULE(NB_MODULE_NAME, m) {
         "(linear amplitude, default 0.99) so the result never clips. One gain for the whole array, so the shape "
         "of the signal and the balance between channels are kept. Silent or non-finite input is returned "
         "unchanged.");
+
+    // --- speech-weighted RMS normalization -----------------------------------
+    m.def(
+        "speech_weights",
+        [](in_array_nd prob, const std::string& mode, double threshold) -> nb::object {
+            if (prob.ndim() != 1) throw std::invalid_argument("expected a 1-D float32 array of probabilities.");
+            speech::dsp::speech_gate gate;
+            if (mode == "hard") gate = speech::dsp::speech_gate::hard;
+            else if (mode == "soft") gate = speech::dsp::speech_gate::soft;
+            else throw std::invalid_argument("mode must be 'hard' or 'soft'.");
+            const std::size_t count = prob.size();
+            speech::detail::uninit_vector<float> out;
+            {
+                nb::gil_scoped_release release;
+                out.resize(count);
+                speech::dsp::speech_weights(prob.data(), count, gate, threshold, out.data());
+            }
+            return nb::cast(speech::py::wrap<speech::py::out_array_1d>(std::move(out), {count}));
+        },
+        nb::arg("probabilities"), nb::arg("mode") = "hard", nb::arg("threshold") = 0.5,
+        "Turns speech probabilities (1-D float32, each in [0, 1]) into weights in [0, 1]. mode='hard': 1 where the "
+        "probability is >= threshold, else 0 (0 < threshold <= 1). mode='soft': (p - threshold) / (1 - threshold) "
+        "clamped to [0, 1], a ramp that is 0 up to the threshold and 1 at p = 1 (0 < threshold < 1).");
+    m.def(
+        "rms_normalize_weighted",
+        [](in_array_nd x, in_array_nd weights, std::size_t window, double target_dbfs,
+           double peak_ceiling) -> nb::object {
+            if (x.ndim() != 1) throw std::invalid_argument("expected a 1-D float32 signal.");
+            if (weights.ndim() != 1) throw std::invalid_argument("expected 1-D float32 weights.");
+            const std::size_t count = x.size();
+            speech::detail::uninit_vector<float> out;
+            {
+                nb::gil_scoped_release release;
+                out.resize(count);
+                if (count) std::memcpy(out.data(), x.data(), count * sizeof(float));
+                speech::dsp::rms_normalize_weighted(out.data(), count, weights.data(), weights.size(), window,
+                                                    target_dbfs, peak_ceiling);
+            }
+            return nb::cast(speech::py::wrap<speech::py::out_array_1d>(std::move(out), {count}));
+        },
+        nb::arg("signal"), nb::arg("weights"), nb::arg("window"), nb::arg("target_dbfs") = -20.0,
+        nb::arg("peak_ceiling") = 0.99,
+        "Like rms_normalize, but the level that is brought to target_dbfs is the RMS weighted per window: weights[k] "
+        "(each in [0, 1]) is the weight of samples [k * window, (k + 1) * window); samples after the last window "
+        "have weight 0. One gain for the whole signal; the peak ceiling still wins. Returned unchanged when the "
+        "total weight is 0 (no speech) or the signal is silent or non-finite. 1-D only.");
 }

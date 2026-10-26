@@ -17,6 +17,12 @@
 // Multi-channel audio: pass the whole planar block (channel after channel) in one call to scale all channels by
 // the same gain, which keeps the balance between them.
 //
+// Speech-weighted level: the RMS above counts every sample, so a recording with long pauses reads quieter than its
+// speech is and the gain comes out too high. rms_normalize_weighted() measures the level only where a per-window
+// weight says there is speech (weights come from a voice-activity detector's speech probabilities, turned into
+// weights by speech_weights(): a hard threshold or a soft one). The gain is still one number for the whole signal
+// and the peak ceiling still wins; only what is measured changes.
+//
 
 #ifndef LIBSPEECH_DSP_NORMALIZE_H
 #define LIBSPEECH_DSP_NORMALIZE_H
@@ -50,6 +56,36 @@ SPEECH_API rms_normalize_result scale_to_rms(float* x, std::size_t n, double tar
 // finite, peak_ceiling is not a finite number > 0, or x is null while n > 0.
 SPEECH_API rms_normalize_result rms_normalize(float* x, std::size_t n, double target_dbfs = -20.0,
                                               double peak_ceiling = 0.99);
+
+// How a speech probability becomes a weight in [0, 1].
+enum class speech_gate {
+    hard,  // weight 1 when probability >= threshold, else 0 (the rule the VAD itself uses to open a segment)
+    soft,  // weight (probability - threshold) / (1 - threshold) clamped to [0, 1]: 0 up to the threshold, then a
+           // linear ramp to 1 at probability 1 (soft thresholding: a window just above the threshold counts little)
+};
+
+// Writes n weights to `out` from n speech probabilities `prob` (each must be in [0, 1]). `threshold` must satisfy
+// 0 < threshold <= 1 for hard and 0 < threshold < 1 for soft. Throws std::invalid_argument on a bad threshold, a
+// probability outside [0, 1] or NaN, or a null pointer while n > 0.
+SPEECH_API void speech_weights(const float* prob, std::size_t n, speech_gate mode, double threshold, float* out);
+
+// RMS of x[0..n) where window k (samples [k * window, (k + 1) * window), cut at n) counts with weight weights[k]:
+//
+//     sqrt( sum_k w_k * energy_k / sum_k w_k * len_k )
+//
+// Samples after the last window (the VAD drops a trailing partial window) have weight 0. 0 when the total weight is 0.
+// Throws std::invalid_argument if window == 0, a weight is outside [0, 1] or NaN, or a pointer is null while its size
+// is > 0.
+SPEECH_API double weighted_rms(const float* x, std::size_t n, const float* weights, std::size_t n_weights,
+                               std::size_t window);
+
+// Like rms_normalize(), but the level that is brought to `target_dbfs` is the weighted RMS above (the gain applies to
+// every sample, the peak ceiling is checked on the whole signal). When the total weight is 0 (no speech found) or the
+// signal has a NaN/inf sample, x is left unchanged, gain 1, and input_rms_dbfs / output_rms_dbfs are -infinity for
+// no weight. Same exceptions as rms_normalize() and weighted_rms().
+SPEECH_API rms_normalize_result rms_normalize_weighted(float* x, std::size_t n, const float* weights,
+                                                       std::size_t n_weights, std::size_t window,
+                                                       double target_dbfs = -20.0, double peak_ceiling = 0.99);
 
 }  // namespace speech::dsp
 

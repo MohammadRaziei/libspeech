@@ -59,14 +59,14 @@ class scoped_env {
 
 }  // namespace
 
-UTEST(default_model_cache_dir, uses_home_when_set) {
+UTEST(get_default_model_cache_dir, uses_home_when_set) {
     scoped_env home("HOME", "/home/testuser");
     auto path = speech::utils::get_default_model_cache_dir();
     ASSERT_TRUE(path.string().find("/home/testuser") == 0);
     ASSERT_TRUE(path.string().find(".libspeech") != std::string::npos);
 }
 
-UTEST(default_model_cache_dir, falls_back_to_user_profile_when_home_unset) {
+UTEST(get_default_model_cache_dir, falls_back_to_user_profile_when_home_unset) {
     // The exact scenario that used to crash: HOME unset (as on essentially
     // all real Windows systems), USERPROFILE set instead.
     scoped_env home("HOME", nullptr);
@@ -76,7 +76,7 @@ UTEST(default_model_cache_dir, falls_back_to_user_profile_when_home_unset) {
     ASSERT_TRUE(path.string().find(".libspeech") != std::string::npos);
 }
 
-UTEST(default_model_cache_dir, falls_back_to_home_drive_and_home_path_when_others_unset) {
+UTEST(get_default_model_cache_dir, falls_back_to_home_drive_and_home_path_when_others_unset) {
     scoped_env home("HOME", nullptr);
     scoped_env user_profile("USERPROFILE", nullptr);
     scoped_env home_drive("HOMEDRIVE", "C:");
@@ -86,7 +86,7 @@ UTEST(default_model_cache_dir, falls_back_to_home_drive_and_home_path_when_other
     ASSERT_TRUE(path.string().find(".libspeech") != std::string::npos);
 }
 
-UTEST(default_model_cache_dir, falls_back_to_temp_dir_without_crashing_when_nothing_set) {
+UTEST(get_default_model_cache_dir, falls_back_to_temp_dir_without_crashing_when_nothing_set) {
     // The critical regression test: none of HOME/USERPROFILE/HOMEDRIVE/
     // HOMEPATH set at all. Must not crash (the original bug: constructing
     // std::filesystem::path(nullptr) is UB) -- must return *some* usable

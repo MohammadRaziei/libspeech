@@ -4,6 +4,7 @@
 
 #include "libspeech/models/silero_vad.h"
 
+#include <algorithm>
 #include <stdexcept>
 #include <string>
 
@@ -22,6 +23,8 @@ void silero_vad_model::reset_states() {
     pending.clear();
     total_fed = 0;
     popped = 0;
+    probabilities.clear();
+    popped_probabilities = 0;
 }
 
 // Inference: runs inference on one chunk of input data.
@@ -52,12 +55,15 @@ void silero_vad_model::predict(const std::vector<float>& data_chunk) {
         output_node_names.data(), output_node_names.size());
 
     float speech_prob = ort_outputs[0].GetTensorMutableData<float>()[0];
+    probabilities.push_back(speech_prob);
     float* state_n = ort_outputs[1].GetTensorMutableData<float>();
     std::memcpy(_state.data(), state_n, size_state * sizeof(float));
     current_sample += static_cast<unsigned int>(window_size_samples); // Advance by the original window size.
 
-    // Logic for detecting speech segments
-    if (speech_prob >= threshold) {
+    // Logic for detecting speech segments. Below `neg_threshold` the window counts as silence; between it and
+    // `threshold` it changes nothing. (For threshold >= 0.16 this is exactly threshold - 0.15.)
+    const double neg_threshold = std::max(static_cast<double>(threshold_) - 0.15, 0.01);
+    if (speech_prob >= threshold_) {
         if (temp_end != 0) {
             temp_end = 0;
             if (next_start < prev_end)
@@ -96,12 +102,12 @@ void silero_vad_model::predict(const std::vector<float>& data_chunk) {
         return;
     }
 
-    if ((speech_prob >= (threshold - 0.15)) && (speech_prob < threshold)) {
+    if ((speech_prob >= neg_threshold) && (speech_prob < threshold_)) {
         std::copy(new_data.end() - context_samples, new_data.end(), _context.begin());
         return;
     }
 
-    if (speech_prob < (threshold - 0.15)) {
+    if (speech_prob < neg_threshold) {
         if (triggered) {
             if (temp_end == 0)
                 temp_end = current_sample;
@@ -130,7 +136,7 @@ silero_vad_model::silero_vad_model(const std::string& model_path,
                                float threshold, int min_silence_duration_ms,
                                int speech_pad_ms, int min_speech_duration_ms,
                                float max_speech_duration_s, bool ignore_cache)
-    : onnx_model(model_path, sample_rate, speech::utils::get_default_model_cache_dir(), ignore_cache),  threshold(threshold), speech_pad_samples(speech_pad_ms), prev_end(0) {
+    : onnx_model(model_path, sample_rate, speech::utils::get_default_model_cache_dir(), ignore_cache),  threshold_(threshold), speech_pad_samples(speech_pad_ms), prev_end(0) {
     sr_per_ms = sample_rate / 1000;  // e.g., 16000 / 1000 = 16
     window_size_samples = window_frame_size * sr_per_ms; // e.g., 32ms * 16 = 512 samples
     effective_window_size = window_size_samples + context_samples; // e.g., 512 + 64 = 576 samples
@@ -211,8 +217,21 @@ std::vector<speech_timestamp> silero_vad_model::pop_speech_timestamps() {
     return out;
 }
 
+std::vector<float> silero_vad_model::pop_speech_probabilities() {
+    std::vector<float> out(probabilities.begin() + static_cast<std::ptrdiff_t>(popped_probabilities), probabilities.end());
+    popped_probabilities = probabilities.size();
+    return out;
+}
+
+void silero_vad_model::set_threshold(float value) {
+    if (!(value > 0.0f && value <= 1.0f)) {  // also false for NaN
+        throw std::invalid_argument("silero_vad_model::set_threshold: threshold must be in (0, 1], got " + std::to_string(value));
+    }
+    threshold_ = value;
+}
+
 // Returns the detected speech timestamps.
-const std::vector<speech_timestamp> silero_vad_model::get_speech_timestamps() const {
+const std::vector<speech_timestamp> silero_vad_model::speech_timestamps() const {
     return speeches;
 }
 

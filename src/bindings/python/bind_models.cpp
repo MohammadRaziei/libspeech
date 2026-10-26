@@ -19,6 +19,8 @@
 #include "libspeech/models/silero_vad.h"
 #include "libspeech/utils/log.h"
 #include "libspeech/utils/utils.h"
+#include <algorithm>
+
 #include "ndarray_util.h"
 
 namespace nb = nanobind;
@@ -332,8 +334,33 @@ NB_MODULE(NB_MODULE_NAME, m) {
                      "True while a speech segment has started and its end is not decided yet.")
         .def_prop_ro("samples_fed", &speech::models::silero_vad_model::samples_fed,
                      "Samples fed since the last reset().")
-        .def("get_speech_timestamps", &speech::models::silero_vad_model::get_speech_timestamps,
+        .def("speech_timestamps", &speech::models::silero_vad_model::speech_timestamps,
              "Returns the detected speech segments (call after process()).")
+        .def("speech_probabilities",
+             [](const speech::models::silero_vad_model& self) {
+                 const auto& p = self.speech_probabilities();
+                 speech::py::float_vec v(p.size());
+                 std::copy(p.begin(), p.end(), v.begin());
+                 return speech::py::wrap<speech::py::out_array_1d>(std::move(v), {p.size()});
+             },
+             "The model's speech probability (float32, 0..1) for every complete window processed since the last "
+             "reset(): value i is for samples [i * window_samples, (i + 1) * window_samples). A speech segment starts "
+             "at the first window whose probability reaches the threshold.")
+        .def("pop_speech_probabilities",
+             [](speech::models::silero_vad_model& self) {
+                 const std::vector<float> p = self.pop_speech_probabilities();
+                 speech::py::float_vec v(p.size());
+                 std::copy(p.begin(), p.end(), v.begin());
+                 return speech::py::wrap<speech::py::out_array_1d>(std::move(v), {p.size()});
+             },
+             "Streaming: the probabilities of the windows processed since the previous call (each is returned once).")
+        .def_prop_ro("window_samples", &speech::models::silero_vad_model::window_samples,
+                     "Samples covered by one probability value (the window size: 512 for 32 ms at 16 kHz).")
+        .def("threshold", &speech::models::silero_vad_model::threshold,
+             "The probability above which a window counts as speech (0 < threshold <= 1).")
+        .def("set_threshold", &speech::models::silero_vad_model::set_threshold, nb::arg("threshold"),
+             "Changes the threshold; it applies from the next window on (windows already processed and segments "
+             "already decided are not re-evaluated). reset() keeps it. Raises ValueError unless 0 < threshold <= 1.")
         .def("reset", &speech::models::silero_vad_model::reset,
              "Resets internal state, so the same model instance can be "
              "reused on a new, unrelated piece of audio.");

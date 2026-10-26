@@ -315,7 +315,7 @@ ctoon's `tests/python/CMakeLists.txt` pattern:
   interface) -- only `Denoiser.create(backend, model_path, sample_rate)`
   and `.process(input_audio)`.
 - [x] `SileroVad`: full constructor (all tunable parameters), `.process()`,
-  `.get_speech_timestamps()`, `.reset()`.
+  `.speech_timestamps()`, `.reset()`.
 - [x] `SpeechTimestamp`: `start`/`end` (samples), `start_s`/`end_s`
   (seconds), plus the `repr`/`eq` dunder methods.
 - [x] Found + fixed a real, pre-existing bug while testing this binding:
@@ -668,6 +668,10 @@ Previously: `speech_dsp`/`speech_io`/`speech_models` (C++ static libs) but
   `tests/python/test_models.py`).
 - [x] **RMS normalizer for audio** (ADR-0020): `speech::dsp::rms_normalize()` (dBFS target, peak ceiling), `Audio.normalize_rms()`,
   `libspeech.rms_normalize()` / `libspeech.rms_dbfs()`. One gain for the whole signal, all channels together.
+- [x] **Speech-weighted RMS normalizer** (ADR-0022): hard and soft threshold on the `SileroVad` probabilities, `speech::dsp::speech_weights()` /
+  `rms_normalize_weighted()`, `libspeech.speech_rms_normalize()`. Tested on synthetic speech-like audio only.
+- [ ] Speech-weighted normalization: multi-channel input, a `Audio` method, a faster path than passing the signal to the VAD as a list,
+  and a check on real recordings (8 kHz included).
 - [ ] RMS normalizer for a **stream** (running RMS): needs a decision first (cumulative or sliding window, gain smoothing, the
   first seconds); it cannot equal the one-shot result. `models::detail::match_level` still has its own copy of the gain
   logic because `speech_models` does not link `speech_dsp`.
@@ -701,3 +705,10 @@ Previously: `speech_dsp`/`speech_io`/`speech_models` (C++ static libs) but
 - [ ] Static int8 `dns48` (measured, see the lab's README) runs slower than fp32 with libspeech's bundled ONNX Runtime (RTF 0.262 vs 0.171, one 6 s clip) but faster with pip `onnxruntime` 1.24.4 (0.137 vs 0.171): another reason for the newer-ONNX-Runtime item above.
 - [ ] The per-node sensitivity run on `dns48` did not finish in the sandbox (no result); run it with `onnx_ptq.py sensitivity`.
 - [ ] **Regression?** ADR-0021 item 7 and the `Denoiser` docstring say `Denoiser(backend, model)` accepts an absolute path, a `file://` path or a URL, but in the code this lab was written against `fetch_model` (`model_files.cpp`) treats everything that is not an http(s) URL as a file name of the models release, so a local path gives a 404 from the release URL. Not bisected; probably from the model-files rework (three files per model). The lab works around it by copying the model into the cache.
+- [x] Measured (pip `onnxruntime` 1.24.4, 1 thread, `dns48`, 8 real noisy clips): LSTM-only dynamic int8 is the best trade-off so far, 1.54x faster at 43.4 dB agreement (full static int8: 1.25x at 25.8 dB). Not measured in libspeech's bundled ONNX Runtime (an earlier note above has 1.87x at 47.3 dB there).
+- [x] Tried and dropped: kernel-1 `Conv` -> `MatMul` and removing the GLU `Split` (bit-identical output, 1.01-1.02x).
+- [ ] Faster still needs a smaller model: distill a student with fewer channels or `resample=2` from the teacher (not implemented in the lab; its quality would have to be judged by listening).
+
+## SileroVad
+- [ ] **Short segments are merged, not dropped.** When the silence that ends a segment arrives and the segment is shorter than `min_speech_duration_ms`, `silero_vad_model::predict` neither stores nor discards it: `triggered`, `current_speech.start` and `temp_end` stay as they were, so it is merged into the next speech. The reference Silero code drops it and resets. Measured on `alex-noisy.mp3` (16.9 s): total speech is 9.6 s at threshold 0.5 and 14.1 s at 0.7 with `min_speech_duration_ms=250`, but 8.6 s then 6.8 s with `min_speech_duration_ms=0`. Existing behaviour, not changed; decision needed.
+

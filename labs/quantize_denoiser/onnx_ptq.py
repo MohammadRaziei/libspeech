@@ -5,7 +5,7 @@ Sub-commands (all run on CPU, no PyTorch needed):
   sensitivity  quantize one Conv / ConvTranspose node at a time and measure how far the output moves from fp32,
                to see which layers should stay in fp32
   quantize     static QDQ int8 for Conv / ConvTranspose (per-channel weights, calibrated activations) and dynamic int8 for the
-               LSTM, optionally leaving the most sensitive nodes in fp32
+               LSTM, optionally leaving the most sensitive nodes in fp32; `--lstm-only` quantizes just the LSTM
   evaluate     compare a candidate model with the fp32 original: agreement in dB, speed (real-time factor), size
 
 Quality is always measured against the fp32 model's own output (the teacher), on speech + noise mixtures; with real clean
@@ -123,6 +123,11 @@ def quantize(
             quantize_dynamic(str(static_out), str(dst), op_types_to_quantize=["LSTM"], weight_type=QuantType.QInt8)
 
 
+def quantize_lstm_only(src, dst) -> None:
+    """Dynamic int8 for the LSTM only; the convolutions stay fp32. Needs no calibration data."""
+    quantize_dynamic(str(src), str(dst), op_types_to_quantize=["LSTM"], weight_type=QuantType.QInt8)
+
+
 def reference_outputs(ref_session, mixtures) -> list[np.ndarray]:
     return [run_clip(ref_session, m) for m in mixtures]
 
@@ -224,6 +229,7 @@ def main(argv=None) -> None:
     q.add_argument("--sensitivity", help="sensitivity.json; the --keep-fp32 most sensitive nodes stay fp32")
     q.add_argument("--keep-fp32", type=int, default=0)
     q.add_argument("--lstm", choices=["dynamic", "fp32"], default="dynamic")
+    q.add_argument("--lstm-only", action="store_true", help="int8 for the LSTM only, convolutions stay fp32 (no calibration)")
     q.add_argument("--reduce-range", action="store_true", help="7-bit activations (safer on x86 CPUs without VNNI)")
     _add_data_args(q)
 
@@ -244,6 +250,10 @@ def main(argv=None) -> None:
         Path(args.out).write_text(json.dumps(rows, indent=2))
         say(f"wrote {args.out}; most sensitive first: {[r['node'] for r in rows[:5]]}")
     elif args.command == "quantize":
+        if args.lstm_only:
+            quantize_lstm_only(args.model, args.output)
+            say(f"wrote {args.output}; LSTM only, convolutions in fp32")
+            return
         exclude = list(args.exclude)
         if args.sensitivity and args.keep_fp32:
             rows = json.loads(Path(args.sensitivity).read_text())

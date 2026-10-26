@@ -75,7 +75,7 @@ int main2() {
         vad.process_on_vector(audio16k.data(0));
 
         // Retrieve and print speech timestamps
-        std::vector<speech::models::speech_timestamp> stamps = vad.get_speech_timestamps();
+        std::vector<speech::models::speech_timestamp> stamps = vad.speech_timestamps();
         for (const auto& stamp : stamps) {
             LOG(INFO) << "Speech detected from " << AixLog::Color::cyan << stamp.start_s() << " to " << stamp.end_s() << AixLog::Color::none << " seconds." << std::endl;
         }
@@ -209,7 +209,7 @@ int main4() {
         vad.process_on_vector(audio16k.data(0));
 
         // Retrieve and print speech timestamps
-        std::vector<speech::models::speech_timestamp> stamps = vad.get_speech_timestamps();
+        std::vector<speech::models::speech_timestamp> stamps = vad.speech_timestamps();
         for (const auto& stamp : stamps) {
             LOG(INFO) << "Speech detected from " << AixLog::Color::cyan << stamp.start_s() << " to " << stamp.end_s() << AixLog::Color::none << " seconds." << std::endl;
         }

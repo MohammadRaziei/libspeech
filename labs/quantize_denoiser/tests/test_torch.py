@@ -48,7 +48,12 @@ DynamicLengthDemucs, export_onnx, load_model, verify_export = (
 )
 distill = distill_qat.distill
 MixtureSource = mixtures.MixtureSource
-evaluate, quantize, sensitivity = onnx_ptq.evaluate, onnx_ptq.quantize, onnx_ptq.sensitivity
+evaluate, quantize, quantize_lstm_only, sensitivity = (
+    onnx_ptq.evaluate,
+    onnx_ptq.quantize,
+    onnx_ptq.quantize_lstm_only,
+    onnx_ptq.sensitivity,
+)
 quantize_tensor, quantize_weights, snap_weights = (
     weight_qat.quantize_tensor,
     weight_qat.quantize_weights,
@@ -168,3 +173,18 @@ def test_every_function_the_notebooks_call_exists():
         code = "\n".join("".join(c["source"]) for c in json.loads(notebook.read_text())["cells"] if c["cell_type"] == "code")
         for module, name in re.findall(r"\b(lab|onnx_ptq|distill_qat)\.(\w+)\(", code):
             assert hasattr(modules[module], name), f"{notebook.name} calls {module}.{name}(), which does not exist"
+
+
+def test_lstm_only_quantization_touches_nothing_but_the_lstm(tiny, tmp_path):
+    export_onnx(tiny, tmp_path / "fp32.onnx")
+    quantize_lstm_only(tmp_path / "fp32.onnx", tmp_path / "lstm.onnx")
+    before = [n.op_type for n in onnx.load(str(tmp_path / "fp32.onnx")).graph.node]
+    ops = [n.op_type for n in onnx.load(str(tmp_path / "lstm.onnx")).graph.node]
+    assert "DynamicQuantizeLSTM" in ops
+    assert "LSTM" not in ops
+    assert not {"QuantizeLinear", "DequantizeLinear", "QLinearConv", "ConvInteger"} & set(ops)
+    assert ops.count("Conv") == before.count("Conv") > 0  # the convolutions are still there, still fp32
+    assert ops.count("ConvTranspose") == before.count("ConvTranspose") > 0
+    mixtures, _ = MixtureSource(seconds=1.0, seed=12).batch(2)
+    report = evaluate(tmp_path / "fp32.onnx", tmp_path / "lstm.onnx", mixtures)
+    assert report["mean_snr_vs_fp32_db"] > 15.0

@@ -82,8 +82,11 @@ with libspeech.Denoiser("gtcrn") as denoiser:
 
 vad = libspeech.SileroVad()
 vad.process(mono.data(0))
-for segment in vad.get_speech_timestamps():
+for segment in vad.speech_timestamps():
     print(f"speech from {segment.start_s:.2f}s to {segment.end_s:.2f}s")
+
+probabilities = vad.speech_probabilities()   # float32, one value per 32 ms window (vad.window_samples samples)
+vad.set_threshold(0.6)                            # the probability above which a window counts as speech (default 0.5)
 ```
 
 `Denoiser` takes a backend name (`"gtcrn"`, `"dpdfnet"`, `"facebook"`, `"speechbrain"`) and uses

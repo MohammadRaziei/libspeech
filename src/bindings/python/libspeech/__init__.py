@@ -79,6 +79,7 @@ cdll.LoadLibrary(str(_here / LIB_PATH))
 from . import _log
 from ._functional import istft, stft
 from ._log import get_log_level, set_log_level
+from ._normalize import speech_rms_normalize
 from .speech_dsp_py import (
     FFT,
     MFCC,
@@ -90,9 +91,11 @@ from .speech_dsp_py import (
     delta,
     rms_dbfs,
     rms_normalize,
+    rms_normalize_weighted,
     set_simd_enabled,
     simd_backend,
     simd_enabled,
+    speech_weights,
     window,
 )
 
@@ -146,6 +149,7 @@ __all__ = [
     "model_readme",
     "rms_dbfs",
     "rms_normalize",
+    "rms_normalize_weighted",
     "set_log_callback",
     "set_log_file",
     "set_log_level",
@@ -154,6 +158,8 @@ __all__ = [
     "sha256_file",
     "simd_backend",
     "simd_enabled",
+    "speech_rms_normalize",
+    "speech_weights",
     "stft",
     "window",
 ]

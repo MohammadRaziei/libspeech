@@ -70,7 +70,7 @@ class SPEECH_API silero_vad_model : public onnx_model {
     void process_on_vector(const std::vector<float>& input_wav);
 
     // Returns the detected speech timestamps.
-    const std::vector<speech_timestamp> get_speech_timestamps() const;
+    const std::vector<speech_timestamp> speech_timestamps() const;
 
     // ---- Streaming -------------------------------------------------------------------------
     // Feed audio in chunks of any size (a microphone callback, a socket, ...) instead of one whole vector.
@@ -93,7 +93,7 @@ class SPEECH_API silero_vad_model : public onnx_model {
     void finish();
 
     // Segments completed since the previous call (each segment is returned once). A segment is only reported
-    // after the silence that ends it has been seen, or by finish(). get_speech_timestamps() keeps returning all.
+    // after the silence that ends it has been seen, or by finish(). speech_timestamps() keeps returning all.
     std::vector<speech_timestamp> pop_speech_timestamps();
 
     // True while a speech segment is open (speech has started and its end has not been decided yet).
@@ -101,6 +101,29 @@ class SPEECH_API silero_vad_model : public onnx_model {
 
     // Samples fed since the last reset().
     std::size_t samples_fed() const { return total_fed; }
+
+    // ---- Speech probability and threshold ---------------------------------------------------
+    // The model's speech probability (0..1) for every complete window processed since the last reset(), in order:
+    // value i is for samples [i * window_samples(), (i + 1) * window_samples()). A speech segment starts at the first
+    // window whose probability reaches threshold(), so these are the values the threshold is applied to. A trailing
+    // partial window has no value (it is dropped, as in process_on_vector).
+    const std::vector<float>& speech_probabilities() const { return probabilities; }
+
+    // Streaming: the probabilities of the windows processed since the previous call (each is returned once).
+    // speech_probabilities() keeps returning all of them.
+    std::vector<float> pop_speech_probabilities();
+
+    // Samples covered by one probability value (the window size: 512 for the default 32 ms at 16 kHz).
+    int window_samples() const { return window_size_samples; }
+
+    // The probability above which a window counts as speech (0 < threshold <= 1; the constructor default is 0.5).
+    float threshold() const { return threshold_; }
+
+    // Changes the threshold. It applies from the next window on: windows that were already processed, and segments
+    // that were already decided, are not re-evaluated. reset() keeps it (it is a setting, not state). Throws
+    // std::invalid_argument unless 0 < value <= 1. A window ends a speech segment once its probability is below
+    // max(threshold - 0.15, 0.01), as in the reference Silero implementation.
+    void set_threshold(float value);
 
     // Public method to reset the internal state.
     void reset();
@@ -143,7 +166,7 @@ class SPEECH_API silero_vad_model : public onnx_model {
     std::vector<const char*> output_node_names;
 
     // Model configuration parameters
-    float threshold;
+    float threshold_;
     int min_silence_samples;
     int min_silence_samples_at_max_speech;
     int min_speech_samples;
@@ -155,6 +178,8 @@ class SPEECH_API silero_vad_model : public onnx_model {
     std::vector<float> pending;
     std::size_t total_fed = 0;
     std::size_t popped = 0;
+    std::vector<float> probabilities;  // one per processed window since the last reset()
+    std::size_t popped_probabilities = 0;
 
     // State management
     bool triggered = false;

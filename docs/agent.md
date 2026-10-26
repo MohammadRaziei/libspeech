@@ -129,8 +129,8 @@ cd build-py && setsid nohup cmake --build . -j2 > ../build.log 2>&1 < /dev/null 
 - Detached jobs: use `setsid nohup ... < /dev/null &`. A server started in one tool call may be gone in the next; start it in the
   same command as the client. `pgrep -f "<text>"` also matches the shell that contains the text.
 - `ruff check .` must exclude the build trees (`--exclude 'build-*'`), or it reports errors from copied files.
-- `Denoiser(backend, "file.onnx")`: a bare or relative name means "a file in the models release"; pass an absolute path, a
-  `file://` path or a URL for your own model (ADR-0021).
+- `Denoiser(backend, "file.onnx")`: a bare or relative name means "a file in the models release"; ADR-0021 says an absolute path, a
+  `file://` path or a URL works for your own model, but in the current code a local path gives a 404 (see the checklist, "Regression?").
 - Dynamic int8 quantization of convolutions does not load in the bundled ONNX Runtime 1.21; `uint8` damages the output (ADR-0021).
 - Labs (`labs/<name>/`) keep their tests in `labs/<name>/tests/`, outside `tests/python/`, and are run by hand
   (`pytest labs/<name>/tests`). They are not registered in CMake or run by CI: they need packages (soundfile, scipy, torch, ...)
