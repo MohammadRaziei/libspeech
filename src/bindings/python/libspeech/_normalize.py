@@ -11,14 +11,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from .speech_dsp_py import rms_normalize_weighted, speech_weights
+from .speech_dsp_py import SpeechAgc, rms_normalize_weighted, speech_weights
 from .speech_models_py import SileroVad
 
 if TYPE_CHECKING:
     import numpy as np
     from numpy.typing import ArrayLike, NDArray
 
-__all__ = ["frame_weights", "speech_rms_normalize"]
+__all__ = ["frame_weights", "speech_agc", "speech_rms_normalize"]
 
 
 def speech_rms_normalize(
@@ -92,3 +92,49 @@ def frame_weights(weights: ArrayLike, window: int, hop_length: int, n_frames: in
         raise ValueError(msg)
     index = np.minimum(np.arange(n_frames) * hop_length // window, w.size - 1)
     return w[index]
+
+
+def speech_agc(
+    signal: ArrayLike,
+    *,
+    sample_rate: int = 16000,
+    mode: str = "hard",
+    threshold: float | None = None,
+    target_dbfs: float = -20.0,
+    level_ms: float = 1000.0,
+    attack_ms: float = 20.0,
+    release_ms: float = 400.0,
+    max_gain_db: float = 24.0,
+    min_gain_db: float = -24.0,
+    peak_ceiling: float = 0.99,
+    warmup_ms: float = 250.0,
+    vad: SileroVad | None = None,
+) -> NDArray[np.float32]:
+    """Time-varying gain that keeps the speech level of a mono signal at ``target_dbfs``.
+
+    Runs the Silero VAD over ``signal``, turns its probabilities into weights (``mode`` and ``threshold`` as in
+    :func:`libspeech.speech_rms_normalize`) and applies a :class:`libspeech.SpeechAgc` to the whole signal. Use
+    :class:`libspeech.SpeechAgc` directly, with ``SileroVad.pop_speech_probabilities()``, to process a stream chunk by
+    chunk. The input array is not modified.
+    """
+    import numpy as np  # noqa: PLC0415 - NumPy stays an optional dependency of the package
+
+    x = np.ascontiguousarray(signal, dtype=np.float32)
+    if x.ndim != 1:
+        msg = "speech_agc needs a 1-D (mono) signal"
+        raise ValueError(msg)
+    if mode not in ("hard", "soft"):
+        msg = "mode must be 'hard' or 'soft'"
+        raise ValueError(msg)
+    if vad is None:
+        vad = SileroVad(sample_rate=sample_rate)
+    if threshold is None:
+        threshold = vad.threshold()
+    vad.reset()
+    vad.process(x.tolist())
+    probabilities = np.ascontiguousarray(vad.speech_probabilities(), dtype=np.float32)
+    weights = speech_weights(probabilities, mode, threshold)
+    agc = SpeechAgc(
+        sample_rate, target_dbfs, level_ms, attack_ms, release_ms, max_gain_db, min_gain_db, peak_ceiling, warmup_ms
+    )
+    return agc.process(x, weights, vad.window_samples)

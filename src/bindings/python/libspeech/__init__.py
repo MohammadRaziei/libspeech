@@ -79,17 +79,20 @@ cdll.LoadLibrary(str(_here / LIB_PATH))
 from . import _log
 from ._functional import istft, stft
 from ._log import get_log_level, set_log_level
-from ._normalize import frame_weights, speech_rms_normalize
+from ._normalize import frame_weights, speech_agc, speech_rms_normalize
 from .speech_dsp_py import (
     FFT,
     MFCC,
     STFT,
     MFCCParams,
     Resample,
+    SpeechAgc,
     WindowType,
     dct,
     delta,
+    integrated_loudness,
     limit_peaks,
+    loudness_normalize,
     rms_dbfs,
     rms_normalize,
     rms_normalize_weighted,
@@ -139,6 +142,7 @@ __all__ = [
     "MFCCParams",
     "Resample",
     "SileroVad",
+    "SpeechAgc",
     "SpeechTimestamp",
     "WindowType",
     "__version__",
@@ -148,9 +152,11 @@ __all__ = [
     "fetch_model",
     "frame_weights",
     "get_log_level",
+    "integrated_loudness",
     "is_cuda_available",
     "istft",
     "limit_peaks",
+    "loudness_normalize",
     "model_readme",
     "rms_dbfs",
     "rms_normalize",
@@ -163,6 +169,7 @@ __all__ = [
     "sha256_file",
     "simd_backend",
     "simd_enabled",
+    "speech_agc",
     "speech_rms_normalize",
     "speech_weights",
     "stft",

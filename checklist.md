@@ -672,8 +672,11 @@ Previously: `speech_dsp`/`speech_io`/`speech_models` (C++ static libs) but
   `rms_normalize_weighted()`, `libspeech.speech_rms_normalize()`. Tested on synthetic speech-like audio only.
 - [x] **Robust level, soft limiter, weighted CMVN** (ADR-0023): `clip_percentile`, `limit_peaks()` / `limiter_lookahead`, `weighted_cmvn()` /
   `frame_weights()`. Synthetic signals only.
-- [ ] Not done from the normalization ideas: LUFS (ITU-R BS.1770), time-varying speech AGC (the streaming normalizer), noise-floor
-  aware gain / SNR report, band-limited level measurement (300-3400 Hz).
+- [x] **Integrated loudness / LUFS** (ADR-0024): `integrated_loudness()`, `loudness_normalize()`. Mono only; checked against the 997 Hz sine and an
+  independent re-implementation, not against certified EBU Tech 3341 files.
+- [x] **Streaming speech AGC** (ADR-0025): `speech_agc` / `SpeechAgc`, `libspeech.speech_agc()`. Synthetic signals only; no look-ahead.
+- [ ] Not done from the normalization ideas: noise-floor aware gain / SNR report, band-limited level measurement (300-3400 Hz);
+  AGC: look-ahead limiting, a combination with the streaming denoiser; LUFS: multi-channel, loudness range (LRA), true peak, a VAD-gated variant.
 - [ ] Speech-weighted normalization: multi-channel input, a `Audio` method, a faster path than passing the signal to the VAD as a list,
   and a check on real recordings (8 kHz included).
 - [ ] RMS normalizer for a **stream** (running RMS): needs a decision first (cumulative or sliding window, gain smoothing, the

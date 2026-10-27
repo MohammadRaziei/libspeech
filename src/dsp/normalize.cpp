@@ -6,6 +6,7 @@
 #include <deque>
 #include <limits>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 namespace speech::dsp {
@@ -277,6 +278,139 @@ void weighted_cmvn(float* features, std::size_t frames, std::size_t dim, const f
             features[t * dim + d] = static_cast<float>((static_cast<double>(features[t * dim + d]) - mean[d]) * scale[d]);
         }
     }
+}
+
+namespace {
+struct biquad {
+    double b0, b1, b2, a1, a2;  // a0 = 1
+};
+
+// K-weighting of ITU-R BS.1770: stage 1 a high shelf (+4 dB above ~1.7 kHz), stage 2 a 38 Hz high-pass (RLB). The
+// analogue prototype parameters below, through the bilinear transform with frequency pre-warping, reproduce the
+// standard's 48 kHz coefficients (to about 1e-13) and give the matching filter at any other sample rate.
+void k_weighting(double fs, biquad& shelf, biquad& highpass) {
+    constexpr double pi = 3.14159265358979323846;
+    {
+        const double f0 = 1681.974450955533, gain_db = 3.999843853973347, q = 0.7071752369554196;
+        const double k = std::tan(pi * f0 / fs);
+        const double vh = std::pow(10.0, gain_db / 20.0), vb = std::pow(vh, 0.4996667741545416);
+        const double a0 = 1.0 + k / q + k * k;
+        shelf.b0 = (vh + vb * k / q + k * k) / a0;
+        shelf.b1 = 2.0 * (k * k - vh) / a0;
+        shelf.b2 = (vh - vb * k / q + k * k) / a0;
+        shelf.a1 = 2.0 * (k * k - 1.0) / a0;
+        shelf.a2 = (1.0 - k / q + k * k) / a0;
+    }
+    {
+        const double f0 = 38.13547087613982, q = 0.5003270373238773;
+        const double k = std::tan(pi * f0 / fs), a0 = 1.0 + k / q + k * k;
+        highpass.b0 = 1.0;
+        highpass.b1 = -2.0;
+        highpass.b2 = 1.0;
+        highpass.a1 = 2.0 * (k * k - 1.0) / a0;
+        highpass.a2 = (1.0 - k / q + k * k) / a0;
+    }
+}
+
+double lufs_of(double mean_square) {
+    return mean_square > 0.0 ? -0.691 + 10.0 * std::log10(mean_square) : -std::numeric_limits<double>::infinity();
+}
+
+void check_loudness_args(const float* x, std::size_t n, double sample_rate, const char* who) {
+    if (!std::isfinite(sample_rate) || sample_rate < 8000.0) {
+        throw std::invalid_argument(std::string(who) + ": sample_rate must be a finite number >= 8000");
+    }
+    if (n > 0 && x == nullptr) throw std::invalid_argument(std::string(who) + ": null data with a non-zero size");
+}
+}  // namespace
+
+double integrated_loudness(const float* x, std::size_t n, double sample_rate) {
+    check_loudness_args(x, n, sample_rate, "integrated_loudness");
+    for (std::size_t i = 0; i < n; ++i) {
+        if (!std::isfinite(x[i])) throw std::invalid_argument("integrated_loudness: a sample is NaN or infinite");
+    }
+    if (n == 0) return -std::numeric_limits<double>::infinity();
+
+    biquad shelf, highpass;
+    k_weighting(sample_rate, shelf, highpass);
+    const std::size_t block = std::max<std::size_t>(1, static_cast<std::size_t>(std::llround(0.4 * sample_rate)));
+    const std::size_t hop = std::max<std::size_t>(1, static_cast<std::size_t>(std::llround(0.1 * sample_rate)));
+
+    // Cumulative energy of the K-weighted signal, recorded only where a block starts (every hop) and ends (block + every hop).
+    std::vector<double> starts, ends;
+    double cumulative = 0.0, s1 = 0.0, s2 = 0.0, h1 = 0.0, h2 = 0.0;  // transposed direct form II states
+    for (std::size_t i = 0; i <= n; ++i) {
+        if (i % hop == 0) starts.push_back(cumulative);
+        if (i >= block && (i - block) % hop == 0) ends.push_back(cumulative);
+        if (i == n) break;
+        const double in = static_cast<double>(x[i]);
+        const double v = shelf.b0 * in + s1;
+        s1 = shelf.b1 * in - shelf.a1 * v + s2;
+        s2 = shelf.b2 * in - shelf.a2 * v;
+        const double y = highpass.b0 * v + h1;
+        h1 = highpass.b1 * v - highpass.a1 * y + h2;
+        h2 = highpass.b2 * v - highpass.a2 * y;
+        cumulative += y * y;
+    }
+    std::vector<double> z;  // mean square of each block
+    if (ends.empty()) {
+        z.push_back(cumulative / static_cast<double>(n));  // shorter than one block: a single block of what there is
+    } else {
+        z.reserve(ends.size());
+        for (std::size_t j = 0; j < ends.size(); ++j) z.push_back((ends[j] - starts[j]) / static_cast<double>(block));
+    }
+
+    constexpr double absolute_gate = -70.0, relative_gate = -10.0;
+    double sum = 0.0;
+    std::size_t kept = 0;
+    for (double v : z) {
+        if (lufs_of(v) > absolute_gate) {
+            sum += v;
+            ++kept;
+        }
+    }
+    if (kept == 0) return -std::numeric_limits<double>::infinity();
+    const double threshold = lufs_of(sum / static_cast<double>(kept)) + relative_gate;
+    sum = 0.0;
+    kept = 0;
+    for (double v : z) {
+        const double l = lufs_of(v);
+        if (l > absolute_gate && l > threshold) {
+            sum += v;
+            ++kept;
+        }
+    }
+    return kept == 0 ? -std::numeric_limits<double>::infinity() : lufs_of(sum / static_cast<double>(kept));
+}
+
+loudness_normalize_result loudness_normalize(float* x, std::size_t n, double sample_rate, double target_lufs,
+                                             double peak_ceiling, std::size_t limiter_lookahead) {
+    check_loudness_args(x, n, sample_rate, "loudness_normalize");
+    if (!std::isfinite(target_lufs)) throw std::invalid_argument("loudness_normalize: target_lufs must be finite");
+    if (!std::isfinite(peak_ceiling) || !(peak_ceiling > 0.0)) {
+        throw std::invalid_argument("loudness_normalize: peak_ceiling must be a finite number > 0");
+    }
+    loudness_normalize_result result;
+    double peak = 0.0;
+    for (std::size_t i = 0; i < n; ++i) {
+        if (!std::isfinite(x[i])) return result;  // NaN/inf: left unchanged
+        peak = std::max(peak, std::fabs(static_cast<double>(x[i])));
+    }
+    const double loudness = integrated_loudness(x, n, sample_rate);
+    result.input_lufs = loudness;
+    if (!std::isfinite(loudness)) return result;  // silent: nothing to scale
+
+    double gain = std::pow(10.0, (target_lufs - loudness) / 20.0);
+    const bool use_limiter = limiter_lookahead > 0;
+    if (!use_limiter && peak * gain > peak_ceiling) {
+        gain = peak_ceiling / peak;
+        result.peak_limited = true;
+    }
+    for (std::size_t i = 0; i < n; ++i) x[i] = static_cast<float>(static_cast<double>(x[i]) * gain);
+    if (use_limiter) result.peak_limited = limit_peaks(x, n, peak_ceiling, limiter_lookahead);
+    result.gain = gain;
+    result.output_lufs = loudness + 20.0 * std::log10(gain);
+    return result;
 }
 
 }  // namespace speech::dsp

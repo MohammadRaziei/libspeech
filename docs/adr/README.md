@@ -31,6 +31,8 @@ not mean none was considered.
 | [0021](0021-denoiser-speed-and-quantization.md) | Denoiser speed: libspeech adds no measurable overhead; quantized models are opt-in and user-made (nothing shipped) | accepted |
 | [0022](0022-speech-weighted-rms-normalizer.md) | Speech-weighted RMS normalization: hard and soft thresholds on the VAD probabilities | accepted |
 | [0023](0023-robust-level-soft-limiter-weighted-cmvn.md) | Robust speech level (`clip_percentile`), soft look-ahead limiter, weighted CMVN | accepted |
+| [0024](0024-integrated-loudness-lufs.md) | Integrated loudness (LUFS, ITU-R BS.1770-4) and `loudness_normalize` | accepted |
+| [0025](0025-speech-agc.md) | Streaming speech AGC (`speech_agc` / `SpeechAgc`): VAD-weighted level, attack/release gain | accepted |
 
 ## Not decided yet
 

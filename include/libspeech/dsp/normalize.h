@@ -28,6 +28,7 @@
 #define LIBSPEECH_DSP_NORMALIZE_H
 
 #include <cstddef>
+#include <limits>
 
 #include "libspeech/export.h"
 
@@ -117,6 +118,38 @@ SPEECH_API rms_normalize_result rms_normalize_weighted(float* x, std::size_t n, 
 // number >= 0, a weight is outside [0, 1] or NaN, or a pointer is null while its size is > 0.
 SPEECH_API void weighted_cmvn(float* features, std::size_t frames, std::size_t dim, const float* weights,
                               bool normalize_variance = true, double eps = 1e-8);
+
+// --- Integrated loudness (LUFS, ITU-R BS.1770-4) --------------------------------------------------------------------
+//
+// Loudness as defined for broadcast: the signal goes through the K-weighting filter (a high shelf of about +4 dB above
+// 1.7 kHz, then a 38 Hz high-pass), the mean square is taken over 400 ms blocks every 100 ms, and the blocks are gated:
+// blocks below -70 LUFS are dropped, then blocks more than 10 LU below the mean loudness of the remaining ones. The
+// loudness is -0.691 + 10 log10(mean square of the blocks that are left). A full-scale 997 Hz sine reads -3.01 LUFS.
+// This silence-aware gating is why the result follows how loud the programme is, not how much silence it contains.
+// Mono only (one channel with weight 1); the filter coefficients are computed for any sample rate from the
+// analogue prototype (bilinear transform), so they match the standard's 48 kHz values at 48 kHz.
+
+// Integrated loudness of x[0..n) in LUFS. -infinity for an empty signal, or when no block passes the gates (silence).
+// A signal shorter than one block (400 ms) is measured as a single block. Throws std::invalid_argument if sample_rate
+// is not a finite number >= 8000, a sample is NaN/inf, or x is null while n > 0.
+SPEECH_API double integrated_loudness(const float* x, std::size_t n, double sample_rate);
+
+struct loudness_normalize_result {
+    double gain = 1.0;                                            // linear factor applied to every sample
+    double input_lufs = -std::numeric_limits<double>::infinity();   // integrated loudness before
+    double output_lufs = -std::numeric_limits<double>::infinity();  // loudness the gain gives (before a limiter)
+    bool peak_limited = false;                                    // the peak ceiling lowered the gain / the limiter acted
+};
+
+// Scales x so that its integrated loudness is `target_lufs` (default -23, the EBU R128 target; podcasts use -16).
+// Peaks are handled as in rms_normalize_weighted(): with limiter_lookahead == 0 the peak ceiling lowers the gain of the
+// whole signal; with limiter_lookahead > 0 the gain is the one for the target and limit_peaks() lowers only the peaks.
+// A silent signal (loudness -infinity) or one with a NaN/inf sample is left unchanged (gain 1). Throws
+// std::invalid_argument for a bad sample_rate, a non-finite target_lufs, a peak_ceiling that is not a finite number
+// > 0, or a null pointer while n > 0.
+SPEECH_API loudness_normalize_result loudness_normalize(float* x, std::size_t n, double sample_rate,
+                                                        double target_lufs = -23.0, double peak_ceiling = 0.99,
+                                                        std::size_t limiter_lookahead = 0);
 
 }  // namespace speech::dsp
 

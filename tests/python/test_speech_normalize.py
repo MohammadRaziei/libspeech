@@ -133,3 +133,38 @@ def _probabilities(vad, x):
     vad.reset()
     vad.process(x.tolist())
     return vad.speech_probabilities()
+
+
+def _fast_agc_kwargs():
+    return {"level_ms": 200.0, "attack_ms": 10.0, "release_ms": 50.0, "warmup_ms": 100.0}
+
+
+def test_speech_agc_evens_out_two_speakers_and_streaming_equals_offline(vad):
+    x, mask = _speech_like(0.8)
+    x = x.copy()
+    edges = np.flatnonzero(np.diff(mask.astype(int)))
+    first = slice(edges[0] + 1, edges[1] + 1)  # the first vowel
+    second = slice(edges[2] + 1, edges[3] + 1)
+    x[first] *= 0.15  # speaker one is 16 dB quieter than speaker two
+    x = x[: len(x) // 512 * 512]
+
+    def tail(y, region):  # the last 0.2 s of a burst: the gain has settled
+        return _dbfs(y[region.stop - 3200 : region.stop])
+
+    before = tail(x, second) - tail(x, first)
+    y = libspeech.speech_agc(x, vad=vad, **_fast_agc_kwargs())
+    after = tail(y, second) - tail(y, first)
+    assert before > 12.0
+    assert abs(after) < before / 2
+    assert float(np.max(np.abs(y))) <= np.float32(0.99)
+
+    # streaming: VAD fed in chunks, the new probabilities popped after each chunk, one SpeechAgc over the stream
+    vad.reset()
+    agc = libspeech.SpeechAgc(SR, **_fast_agc_kwargs())
+    parts = []
+    for start in range(0, len(x), 512 * 5):
+        chunk = x[start : start + 512 * 5]
+        vad.feed(chunk.tolist())
+        weights = libspeech.speech_weights(np.asarray(vad.pop_speech_probabilities(), dtype=np.float32), "hard", 0.5)
+        parts.append(agc.process(chunk, weights, vad.window_samples))
+    np.testing.assert_array_equal(np.concatenate(parts), y)

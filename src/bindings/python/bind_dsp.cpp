@@ -9,6 +9,7 @@
 #include "libspeech/dsp/fft.h"
 #include "libspeech/dsp/delta.h"
 #include "libspeech/dsp/mfcc.h"
+#include "libspeech/dsp/agc.h"
 #include "libspeech/dsp/normalize.h"
 #include "libspeech/dsp/resample.h"
 #include "libspeech/dsp/simd.h"
@@ -557,4 +558,90 @@ NB_MODULE(NB_MODULE_NAME, m) {
         "statistics come from the frames weighted by `weights` (one value in [0, 1] per frame, e.g. the VAD weights "
         "mapped to frames), every frame is transformed. normalize_variance=False only subtracts the mean. Returned "
         "unchanged when the total weight is 0. Returns a new array.");
+    // --- integrated loudness (LUFS, ITU-R BS.1770-4) ---------------------------
+    m.def(
+        "integrated_loudness",
+        [](in_array_nd x, double sample_rate) {
+            if (x.ndim() != 1) throw std::invalid_argument("expected a 1-D float32 signal.");
+            return speech::dsp::integrated_loudness(x.data(), x.size(), sample_rate);
+        },
+        nb::arg("signal"), nb::arg("sample_rate"),
+        "Integrated loudness in LUFS (ITU-R BS.1770-4): K-weighting, 400 ms blocks every 100 ms, absolute gate "
+        "at -70 LUFS and relative gate 10 LU below the mean. A full-scale 997 Hz sine is -3.01 LUFS. -inf for an "
+        "empty or silent signal. A signal shorter than 400 ms is measured as one block. Mono (1-D) float32, "
+        "sample_rate >= 8000 Hz; raises ValueError for NaN/inf samples.");
+    m.def(
+        "loudness_normalize",
+        [](in_array_nd x, double sample_rate, double target_lufs, double peak_ceiling,
+           std::size_t limiter_lookahead) -> nb::object {
+            if (x.ndim() != 1) throw std::invalid_argument("expected a 1-D float32 signal.");
+            const std::size_t count = x.size();
+            speech::detail::uninit_vector<float> out;
+            {
+                nb::gil_scoped_release release;
+                out.resize(count);
+                if (count) std::memcpy(out.data(), x.data(), count * sizeof(float));
+                speech::dsp::loudness_normalize(out.data(), count, sample_rate, target_lufs, peak_ceiling,
+                                                limiter_lookahead);
+            }
+            return nb::cast(speech::py::wrap<speech::py::out_array_1d>(std::move(out), {count}));
+        },
+        nb::arg("signal"), nb::arg("sample_rate"), nb::arg("target_lufs") = -23.0, nb::arg("peak_ceiling") = 0.99,
+        nb::arg("limiter_lookahead") = 0,
+        "Returns a float32 copy of `signal` scaled so that its integrated loudness (see integrated_loudness) is "
+        "target_lufs (default -23, the EBU R128 target; podcasts use -16). limiter_lookahead = 0 (default): the "
+        "peak ceiling (linear, default 0.99) lowers the gain of the whole signal; > 0 (samples): the gain is the "
+        "one for the target and a soft look-ahead limiter lowers only the peaks. A silent signal or one with "
+        "NaN/inf samples is returned unchanged. 1-D only.");
+    // --- speech AGC (streaming, time-varying gain) ------------------------------
+    nb::class_<speech::dsp::speech_agc>(m, "SpeechAgc",
+        "Automatic gain control that keeps the SPEECH level at a target while audio streams through it. The level "
+        "estimate moves only where the per-window weights say there is speech (it is frozen in pauses, so noise is "
+        "not amplified); the gain falls fast (attack_ms) for louder speech and rises slowly (release_ms) for quieter "
+        "speech, within [min_gain_db, max_gain_db]. No look-ahead: a sample still above peak_ceiling is scaled down "
+        "to it on its own. process() continues from chunk to chunk; use chunks that are a multiple of the weight "
+        "window (512 samples for SileroVad). One instance per stream, not thread-safe.")
+        .def(
+            "__init__",
+            [](speech::dsp::speech_agc* self, double sample_rate, double target_dbfs, double level_ms,
+               double attack_ms, double release_ms, double max_gain_db, double min_gain_db, double peak_ceiling,
+               double warmup_ms) {
+                speech::dsp::speech_agc_params p;
+                p.target_dbfs = target_dbfs;
+                p.level_ms = level_ms;
+                p.attack_ms = attack_ms;
+                p.release_ms = release_ms;
+                p.max_gain_db = max_gain_db;
+                p.min_gain_db = min_gain_db;
+                p.peak_ceiling = peak_ceiling;
+                p.warmup_ms = warmup_ms;
+                new (self) speech::dsp::speech_agc(sample_rate, p);
+            },
+            nb::arg("sample_rate"), nb::arg("target_dbfs") = -20.0, nb::arg("level_ms") = 1000.0,
+            nb::arg("attack_ms") = 20.0, nb::arg("release_ms") = 400.0, nb::arg("max_gain_db") = 24.0,
+            nb::arg("min_gain_db") = -24.0, nb::arg("peak_ceiling") = 0.99, nb::arg("warmup_ms") = 250.0)
+        .def(
+            "process",
+            [](speech::dsp::speech_agc& self, in_array_nd x, in_array_nd weights, std::size_t window) -> nb::object {
+                if (x.ndim() != 1) throw std::invalid_argument("expected a 1-D float32 signal.");
+                if (weights.ndim() != 1) throw std::invalid_argument("expected 1-D float32 weights.");
+                const std::size_t count = x.size();
+                speech::detail::uninit_vector<float> out;
+                {
+                    nb::gil_scoped_release release;
+                    out.resize(count);
+                    if (count) std::memcpy(out.data(), x.data(), count * sizeof(float));
+                    self.process(out.data(), count, weights.data(), weights.size(), window);
+                }
+                return nb::cast(speech::py::wrap<speech::py::out_array_1d>(std::move(out), {count}));
+            },
+            nb::arg("signal"), nb::arg("weights"), nb::arg("window"),
+            "Returns a float32 copy of `signal` with the gain applied; the state continues into the next call. "
+            "weights[k] (each in [0, 1]) is the weight of samples [k * window, (k + 1) * window) of this call; "
+            "samples after the last window have weight 0. The state is left unchanged if the call raises.")
+        .def("reset", &speech::dsp::speech_agc::reset, "Back to the state of a new instance.")
+        .def("gain", &speech::dsp::speech_agc::gain, "Current smoothed gain (linear).")
+        .def("level_dbfs", &speech::dsp::speech_agc::level_dbfs,
+             "Speech level estimate before the gain, in dBFS (-inf until speech was seen).")
+        .def_prop_ro("sample_rate", &speech::dsp::speech_agc::sample_rate);
 }

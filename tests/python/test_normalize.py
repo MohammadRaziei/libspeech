@@ -354,3 +354,165 @@ def test_limit_peaks_gain_is_a_ramp_that_recovers_after_the_peak():
     assert gain[at + lookahead - 1] < 1 - 1e-6  # still releasing after the peak
     assert gain[at + lookahead] == pytest.approx(1.0, abs=1e-9)
     assert gain[at - lookahead] == pytest.approx(1.0, abs=1e-9)
+
+
+# --- integrated loudness (LUFS) ------------------------------------------------------------------
+
+
+def _tone(amplitude: float, seconds: float, freq: float, sr: int) -> np.ndarray:
+    return (amplitude * np.sin(2 * np.pi * freq * np.arange(int(seconds * sr)) / sr)).astype(np.float32)
+
+
+@pytest.mark.parametrize(("sr", "tolerance"), [(48000, 0.01), (44100, 0.01), (16000, 0.06)])
+def test_full_scale_997hz_sine_is_minus_3_01_lufs(sr, tolerance):
+    assert libspeech.integrated_loudness(_tone(1.0, 3.0, 997.0, sr), sr) == pytest.approx(-3.01, abs=tolerance)
+
+
+def test_loudness_silence_is_minus_infinity_and_bad_arguments_raise():
+    assert libspeech.integrated_loudness(np.zeros(16000, dtype=np.float32), 16000) == -np.inf
+    assert libspeech.integrated_loudness(_tone(2.5e-4, 2.0, 997.0, 48000), 48000) == -np.inf  # about -75 LUFS: gated
+    assert libspeech.integrated_loudness(_tone(7.9e-4, 2.0, 997.0, 48000), 48000) == pytest.approx(-65.0, abs=0.1)
+    with pytest.raises(ValueError):
+        libspeech.integrated_loudness(_tone(0.1, 1.0, 300.0, 16000), 4000)
+    with pytest.raises(ValueError):
+        libspeech.integrated_loudness(np.array([0.1, np.nan], dtype=np.float32), 16000)
+    with pytest.raises(ValueError):
+        libspeech.integrated_loudness(np.zeros((2, 16000), dtype=np.float32), 16000)
+
+
+def _bursts(sr: int, seconds: float, seed: int) -> np.ndarray:
+    rng = np.random.default_rng(seed)
+    n = int(seconds * sr)
+    envelope = np.repeat(rng.random(60) ** 3, n // 60 + 1)[:n]  # bursts of different level, some far below the gates
+    return (0.3 * rng.standard_normal(n) * envelope).astype(np.float32)
+
+
+def _k_weighting(sr: int):
+    """K-weighting coefficients from the analogue prototype (bilinear transform with pre-warping)."""
+    f0, gain_db, q = 1681.974450955533, 3.999843853973347, 0.7071752369554196
+    k = np.tan(np.pi * f0 / sr)
+    vh = 10 ** (gain_db / 20)
+    vb = vh**0.4996667741545416
+    a0 = 1 + k / q + k * k
+    shelf = ([(vh + vb * k / q + k * k) / a0, 2 * (k * k - vh) / a0, (vh - vb * k / q + k * k) / a0],
+             [1.0, 2 * (k * k - 1) / a0, (1 - k / q + k * k) / a0])
+    f0, q = 38.13547087613982, 0.5003270373238773
+    k = np.tan(np.pi * f0 / sr)
+    a0 = 1 + k / q + k * k
+    highpass = ([1.0, -2.0, 1.0], [1.0, 2 * (k * k - 1) / a0, (1 - k / q + k * k) / a0])
+    return shelf, highpass
+
+
+def _bs1770_reference(x: np.ndarray, sr: int) -> float:
+    """ITU-R BS.1770-4 written from the definition: K-weighting, 400 ms blocks every 100 ms, absolute and relative gate."""
+    signal = pytest.importorskip("scipy.signal")
+    (b1, a1), (b2, a2) = _k_weighting(sr)
+    y = signal.lfilter(b2, a2, signal.lfilter(b1, a1, x.astype(np.float64)))
+    block, hop = round(0.4 * sr), round(0.1 * sr)
+    z = np.array([np.mean(y[i : i + block] ** 2) for i in range(0, len(y) - block + 1, hop)])
+    loudness = -0.691 + 10 * np.log10(z)
+    kept = z[loudness > -70]
+    threshold = -0.691 + 10 * np.log10(kept.mean()) - 10
+    kept = z[(loudness > -70) & (loudness > threshold)]
+    return float(-0.691 + 10 * np.log10(kept.mean()))
+
+
+def test_k_weighting_formulas_reproduce_the_published_48khz_coefficients():
+    (b1, a1), (_, a2) = _k_weighting(48000)
+    np.testing.assert_allclose(b1, [1.53512485958697, -2.69169618940638, 1.19839281085285], atol=1e-10)
+    np.testing.assert_allclose(a1, [1.0, -1.69065929318241, 0.73248077421585], atol=1e-10)
+    np.testing.assert_allclose(a2, [1.0, -1.99004745483398, 0.99007225036621], atol=1e-10)
+
+
+@pytest.mark.parametrize("sr", [48000, 44100, 16000])
+def test_loudness_matches_an_independent_bs1770_implementation(sr):
+    for seed in (1, 2, 3):
+        x = _bursts(sr, 6.0, seed)  # 6 s: a multiple of the hop, so both count the same blocks
+        assert libspeech.integrated_loudness(x, sr) == pytest.approx(_bs1770_reference(x, sr), abs=1e-3)
+
+
+def test_loudness_normalize_reaches_the_target_and_matches_the_measurement():
+    sr = 48000
+    x = _tone(0.05, 4.0, 997.0, sr)
+    y = libspeech.loudness_normalize(x, sr, target_lufs=-16.0)
+    assert libspeech.integrated_loudness(y, sr) == pytest.approx(-16.0, abs=1e-3)
+    assert libspeech.integrated_loudness(x, sr) == pytest.approx(-29.0, abs=0.05)  # the input is not modified
+
+
+def test_loudness_normalize_hard_ceiling_versus_limiter():
+    sr = 48000
+    x = _tone(0.05, 4.0, 997.0, sr)
+    x[100000] = 0.9
+    hard = libspeech.loudness_normalize(x, sr)
+    soft = libspeech.loudness_normalize(x, sr, limiter_lookahead=240)
+    assert libspeech.integrated_loudness(hard, sr) < -26.0
+    assert libspeech.integrated_loudness(soft, sr) == pytest.approx(-23.0, abs=0.2)
+    assert float(np.max(np.abs(soft))) <= np.float32(0.99)
+
+
+def test_loudness_normalize_leaves_silence_alone_and_rejects_bad_arguments():
+    z = np.zeros(16000, dtype=np.float32)
+    np.testing.assert_array_equal(libspeech.loudness_normalize(z, 16000), z)
+    with pytest.raises(ValueError):
+        libspeech.loudness_normalize(_tone(0.1, 1.0, 300.0, 16000), 16000, peak_ceiling=0.0)
+    with pytest.raises(ValueError):
+        libspeech.loudness_normalize(_tone(0.1, 1.0, 300.0, 16000), 16000, target_lufs=float("nan"))
+
+
+# --- SpeechAgc (streaming, time-varying gain; weights are given, no model) ----------------------------------------
+
+
+def _fast_agc():
+    return libspeech.SpeechAgc(SR, level_ms=500.0, attack_ms=20.0, release_ms=100.0, warmup_ms=100.0)
+
+
+def test_speech_agc_brings_changing_speech_levels_to_the_target():
+    agc = _fast_agc()
+    x = np.concatenate([_sine(0.02, 6.0), _sine(0.2, 6.0)])
+    y = agc.process(x, np.ones(len(x) // 512 + 1, dtype=np.float32), 512)
+    assert _dbfs(y[80000:96000]) == pytest.approx(-20.0, abs=0.5)
+    assert _dbfs(y[176000:192000]) == pytest.approx(-20.0, abs=0.5)
+    assert float(np.max(np.abs(y))) <= np.float32(0.99)
+    assert agc.gain() == pytest.approx(10 ** ((-20.0 - agc.level_dbfs()) / 20), rel=0.01)
+
+
+def test_speech_agc_is_frozen_in_pauses_and_chunking_does_not_change_the_result():
+    rng = np.random.default_rng(8)
+    n = 512 * 150
+    x = (0.05 * rng.standard_normal(n) * np.linspace(1, 4, n)).astype(np.float32)
+    w = np.where(rng.random(n // 512) < 0.3, 0.0, rng.random(n // 512)).astype(np.float32)
+    whole = _fast_agc().process(x, w, 512)
+    chunked_agc = _fast_agc()
+    parts = [chunked_agc.process(x[k * 512 : (k + 7) * 512], w[k : k + 7], 512) for k in range(0, n // 512, 7)]
+    np.testing.assert_array_equal(np.concatenate(parts), whole)
+
+    agc = _fast_agc()
+    agc.process(_sine(0.05, 3.0), np.ones(94, dtype=np.float32), 512)
+    level, gain = agc.level_dbfs(), agc.gain()
+    agc.process(_sine(0.002, 3.0, 1234.0), np.zeros(94, dtype=np.float32), 512)
+    assert agc.level_dbfs() == level
+    assert agc.gain() == pytest.approx(gain, rel=2e-3)  # the noise in the pause (+24 dB if followed) did not pull the gain up
+
+
+def test_speech_agc_reset_input_untouched_and_bad_arguments():
+    agc = _fast_agc()
+    x = _sine(0.05, 1.0)
+    before = x.copy()
+    agc.process(x, np.ones(32, dtype=np.float32), 512)
+    np.testing.assert_array_equal(x, before)
+    assert agc.gain() != 1.0
+    agc.reset()
+    assert agc.gain() == 1.0
+    assert agc.level_dbfs() == -np.inf
+    assert agc.sample_rate == SR
+    with pytest.raises(ValueError):
+        libspeech.SpeechAgc(0)
+    with pytest.raises(ValueError):
+        libspeech.SpeechAgc(SR, max_gain_db=-30.0)
+    with pytest.raises(ValueError):
+        agc.process(x, np.ones(4, dtype=np.float32), 0)
+    with pytest.raises(ValueError):
+        agc.process(x, np.array([1.0, 2.0], dtype=np.float32), 512)
+    with pytest.raises(ValueError):
+        agc.process(np.zeros((2, 512), dtype=np.float32), np.ones(1, dtype=np.float32), 512)
+    assert agc.gain() == 1.0  # the rejected calls changed nothing

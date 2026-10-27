@@ -16,7 +16,10 @@ Functions
 .. autofunction:: libspeech.weighted_rms
 .. autofunction:: libspeech.limit_peaks
 .. autofunction:: libspeech.weighted_cmvn
+.. autofunction:: libspeech.integrated_loudness
+.. autofunction:: libspeech.loudness_normalize
 .. autofunction:: libspeech.frame_weights
+.. autofunction:: libspeech.speech_agc
 
 Classes
 -------
@@ -30,6 +33,8 @@ Classes
 .. autoclass:: libspeech.MFCCParams
    :members:
 .. autoclass:: libspeech.Resample
+.. autoclass:: libspeech.SpeechAgc
+   :members:
    :members:
    :special-members: __init__
 

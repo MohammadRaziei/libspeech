@@ -68,7 +68,11 @@ mutation-checked (break the code on purpose, see the test fail, restore, see it 
   `tests/python/test_speech_normalize.py` (real Silero, in `speech_test_python_models_e2e`). All mutation-checked.
 - Added later (ADR-0023, all opt-in): `clip_percentile` (winsorized speech level), `limit_peaks` / `limiter_lookahead` (soft look-ahead
   limiter instead of lowering the whole gain), `weighted_cmvn` + `frame_weights` (feature normalization from speech frames). Not
-  done: LUFS, streaming speech AGC, noise-floor aware gain, band-limited level (listed in `checklist.md`).
+  done: noise-floor aware gain, band-limited level (listed in `checklist.md`).
+- Streaming speech AGC added (ADR-0025): `speech_agc` (C++, `speech_dsp`), `SpeechAgc` and `libspeech.speech_agc()` (Python). Feed chunks that
+  are a multiple of 512 with the weights from `pop_speech_probabilities()` -> `speech_weights()`; the e2e test shows streaming equals offline.
+- LUFS added (ADR-0024): `integrated_loudness`, `loudness_normalize` (mono). The K-weighting formulas must be the bilinear ones from the
+  analogue prototype (they reproduce the standard's 48 kHz coefficients); the audio-EQ-cookbook shelf is 0.2 dB off, do not use it.
 - Class getters lost `get_` (`SileroVad.speech_timestamps()`, `threshold()`); free functions such as `get_log_level` kept their names.
 - Python files are copied to the build tree at **configure** time: edit one, re-run `cmake -S . -B build-py` before testing.
 - A zip drops symlinks: after unpacking, recreate `src/third_party/onnxruntime/lib/libonnxruntime.so` and `.so.1` (both pointing to

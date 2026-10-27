@@ -597,3 +597,143 @@ UTEST(normalize, limit_peaks_gain_changes_smoothly_and_recovers_after_the_peak) 
     ASSERT_NEAR(gain[at + L], 1.0, 1e-9);
     ASSERT_NEAR(gain[at - L], 1.0, 1e-9);
 }
+
+// --- integrated loudness (LUFS, ITU-R BS.1770-4) --------------------------------------------------------------------
+
+namespace {
+using speech::dsp::integrated_loudness;
+using speech::dsp::loudness_normalize;
+using speech::dsp::loudness_normalize_result;
+
+std::vector<float> tone(std::size_t n, double amplitude, double freq, double fs) {
+    std::vector<float> v(n);
+    for (std::size_t i = 0; i < n; ++i) v[i] = static_cast<float>(amplitude * std::sin(2.0 * pi * freq * static_cast<double>(i) / fs));
+    return v;
+}
+
+std::vector<float> concat(const std::vector<float>& a, const std::vector<float>& b) {
+    std::vector<float> v(a);
+    v.insert(v.end(), b.begin(), b.end());
+    return v;
+}
+}  // namespace
+
+UTEST(normalize, loudness_of_a_full_scale_997hz_sine_is_minus_3_01_lufs) {
+    // EBU Tech 3341: a mono 997 Hz sine at 0 dBFS reads -3.01 LUFS, at any sample rate.
+    // At 48 kHz the filter is the standard's, so the value is exact; at other rates the bilinear transform moves the
+    // gain at 997 Hz by a few hundredths of a dB (0.04 at 16 kHz, more at 8 kHz).
+    for (double fs : {48000.0, 44100.0}) {
+        const std::vector<float> x = tone(static_cast<std::size_t>(fs * 3.0), 1.0, 997.0, fs);
+        ASSERT_NEAR(integrated_loudness(x.data(), x.size(), fs), -3.01, 0.01);
+    }
+    const std::vector<float> x16 = tone(16000 * 3, 1.0, 997.0, 16000.0);
+    ASSERT_NEAR(integrated_loudness(x16.data(), x16.size(), 16000.0), -3.01, 0.06);
+    const std::vector<float> x8 = tone(8000 * 3, 1.0, 997.0, 8000.0);
+    ASSERT_NEAR(integrated_loudness(x8.data(), x8.size(), 8000.0), -3.01, 0.2);
+}
+
+UTEST(normalize, loudness_is_linear_in_level_and_a_short_signal_is_one_block) {
+    const double fs = 48000.0;
+    const std::vector<float> a = tone(48000 * 2, 0.5, 440.0, fs), b = tone(48000 * 2, 0.05, 440.0, fs);
+    ASSERT_NEAR(integrated_loudness(a.data(), a.size(), fs) - integrated_loudness(b.data(), b.size(), fs), 20.0, 1e-6);
+    const std::vector<float> shorter = tone(9600, 1.0, 997.0, fs);  // 200 ms
+    ASSERT_NEAR(integrated_loudness(shorter.data(), shorter.size(), fs), -3.01, 0.3);
+}
+
+UTEST(normalize, loudness_of_silence_and_empty_input_is_minus_infinity) {
+    const std::vector<float> zeros(48000, 0.0f);
+    const double s = integrated_loudness(zeros.data(), zeros.size(), 48000.0);
+    ASSERT_TRUE(std::isinf(s) && s < 0.0);
+    const double e = integrated_loudness(nullptr, 0, 48000.0);
+    ASSERT_TRUE(std::isinf(e) && e < 0.0);
+    // The absolute gate is at -70 LUFS: a tone at about -75 LUFS is dropped, one at about -65 LUFS is measured.
+    const std::vector<float> below = tone(48000 * 2, 2.5e-4, 997.0, 48000.0);
+    const double q = integrated_loudness(below.data(), below.size(), 48000.0);
+    ASSERT_TRUE(std::isinf(q) && q < 0.0);
+    const std::vector<float> above = tone(48000 * 2, 7.9e-4, 997.0, 48000.0);
+    ASSERT_NEAR(integrated_loudness(above.data(), above.size(), 48000.0), -65.0, 0.1);
+}
+
+UTEST(normalize, loudness_gates_drop_silence_and_much_quieter_parts) {
+    const double fs = 16000.0;
+    const std::vector<float> loud = tone(16000 * 3, 0.1, 500.0, fs);
+    const double l_loud = integrated_loudness(loud.data(), loud.size(), fs);
+
+    const std::vector<float> with_noise_floor = concat(loud, tone(16000 * 5, 1e-5, 300.0, fs));  // below -70 LUFS
+    ASSERT_NEAR(integrated_loudness(with_noise_floor.data(), with_noise_floor.size(), fs), l_loud, 0.5);
+
+    const std::vector<float> with_quiet_part = concat(loud, tone(16000 * 5, 0.1 * 0.178, 300.0, fs));  // 15 LU quieter
+    ASSERT_NEAR(integrated_loudness(with_quiet_part.data(), with_quiet_part.size(), fs), l_loud, 0.5);   // relative gate
+
+    const std::vector<float> with_close_part = concat(loud, tone(16000 * 5, 0.05, 300.0, fs));  // 6 LU quieter: counts
+    ASSERT_LT(integrated_loudness(with_close_part.data(), with_close_part.size(), fs), l_loud - 2.0);
+}
+
+UTEST(normalize, loudness_bad_arguments_throw) {
+    std::vector<float> x = tone(16000, 0.1, 300.0, 16000.0);
+    int threw = 0;
+    auto expect_throw = [&](auto&& call) {
+        try {
+            call();
+        } catch (const std::invalid_argument&) {
+            ++threw;
+        }
+    };
+    expect_throw([&] { integrated_loudness(x.data(), x.size(), 4000.0); });
+    expect_throw([&] { integrated_loudness(x.data(), x.size(), std::nan("")); });
+    expect_throw([&] { integrated_loudness(nullptr, 5, 16000.0); });
+    std::vector<float> bad = x;
+    bad[10] = std::nanf("");
+    expect_throw([&] { integrated_loudness(bad.data(), bad.size(), 16000.0); });
+    expect_throw([&] { loudness_normalize(x.data(), x.size(), 4000.0); });
+    expect_throw([&] { loudness_normalize(x.data(), x.size(), 16000.0, std::nan("")); });
+    expect_throw([&] { loudness_normalize(x.data(), x.size(), 16000.0, -23.0, 0.0); });
+    expect_throw([&] { loudness_normalize(nullptr, 5, 16000.0); });
+    ASSERT_EQ(threw, 8);
+}
+
+UTEST(normalize, loudness_normalize_reaches_the_target) {
+    const double fs = 48000.0;
+    std::vector<float> x = tone(48000 * 4, 0.05, 997.0, fs);  // about -29 LUFS
+    const loudness_normalize_result r = loudness_normalize(x.data(), x.size(), fs, -23.0);
+    ASSERT_FALSE(r.peak_limited);
+    ASSERT_NEAR(r.input_lufs, -3.01 + 20.0 * std::log10(0.05), 0.03);
+    ASSERT_NEAR(r.output_lufs, -23.0, 1e-9);
+    ASSERT_NEAR(integrated_loudness(x.data(), x.size(), fs), -23.0, 1e-3);
+    ASSERT_NEAR(r.gain, std::pow(10.0, (-23.0 - r.input_lufs) / 20.0), 1e-9);
+}
+
+UTEST(normalize, loudness_normalize_hard_ceiling_versus_limiter) {
+    const double fs = 48000.0;
+    std::vector<float> base = tone(48000 * 4, 0.05, 997.0, fs);
+    base[100000] = 0.9f;  // a stray peak: the target gain would push it far over the ceiling
+
+    std::vector<float> hard(base);
+    const loudness_normalize_result rh = loudness_normalize(hard.data(), hard.size(), fs, -23.0, 0.99);
+    ASSERT_TRUE(rh.peak_limited);
+    ASSERT_LT(integrated_loudness(hard.data(), hard.size(), fs), -23.0 - 3.0);  // the whole signal ended too quiet
+
+    std::vector<float> soft(base);
+    const loudness_normalize_result rs = loudness_normalize(soft.data(), soft.size(), fs, -23.0, 0.99, 240);
+    ASSERT_TRUE(rs.peak_limited);
+    ASSERT_NEAR(integrated_loudness(soft.data(), soft.size(), fs), -23.0, 0.2);
+    float peak = 0.0f;
+    for (float v : soft) peak = std::max(peak, std::fabs(v));
+    ASSERT_LE(static_cast<double>(peak), 0.99);
+}
+
+UTEST(normalize, loudness_normalize_leaves_silence_and_non_finite_input_alone) {
+    std::vector<float> zeros(16000, 0.0f);
+    const loudness_normalize_result r = loudness_normalize(zeros.data(), zeros.size(), 16000.0);
+    ASSERT_EQ(r.gain, 1.0);
+    ASSERT_TRUE(std::isinf(r.input_lufs));
+    for (float v : zeros) ASSERT_EQ(v, 0.0f);
+
+    std::vector<float> x = tone(16000, 0.1, 300.0, 16000.0);
+    x[7] = std::nanf("");
+    const std::vector<float> nan_before(x);
+    ASSERT_EQ(loudness_normalize(x.data(), x.size(), 16000.0).gain, 1.0);
+    for (std::size_t i = 0; i < x.size(); ++i) {
+        if (i != 7) ASSERT_EQ(x[i], nan_before[i]);
+    }
+}

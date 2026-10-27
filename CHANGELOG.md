@@ -119,6 +119,15 @@ This file starts at 0.3.1; older history is in `git log`.
   signal" with a soft look-ahead limiter (the speech keeps the target level, only the peaks are lowered, `|y| <= ceiling`).
   `weighted_cmvn()` (C++ and Python) normalizes mean and variance of a `(frames, dim)` feature matrix from the speech frames only;
   `frame_weights()` maps the VAD window weights to feature frames. ADR-0023.
+- **Integrated loudness (LUFS, ITU-R BS.1770-4).** `speech::dsp::integrated_loudness()` / `libspeech.integrated_loudness(x, sample_rate)`
+  (K-weighting, 400 ms blocks every 100 ms, absolute gate -70 LUFS, relative gate -10 LU; a full-scale 997 Hz sine reads -3.01 LUFS)
+  and `loudness_normalize()` / `libspeech.loudness_normalize(x, sample_rate, target_lufs=-23, peak_ceiling=0.99, limiter_lookahead=0)`.
+  Mono only. ADR-0024.
+- **Streaming speech AGC.** `speech::dsp::speech_agc` / `libspeech.SpeechAgc` keeps the speech level at a target over time: the level is an
+  exponential average weighted by the VAD speech weights (frozen in pauses, so noise is not amplified), the gain is smoothed with an
+  attack (falls fast) and a release (rises slowly), limited to +/-24 dB, with no latency and a one-sample peak guard. Chunk by chunk it
+  gives the same result as one call when the chunks are a multiple of the weight window. `libspeech.speech_agc()` runs the VAD and the
+  AGC over a whole signal. ADR-0025.
 - **Breaking: class getters lost the `get_` prefix.** `SileroVad.get_speech_timestamps()` is now `speech_timestamps()` and
   `get_threshold()` is `threshold()` (C++ `silero_vad_model` and Python; `set_threshold()` is unchanged, the C++ data member is now
   `threshold_`). No aliases are kept. Free functions keep their names (`get_log_level`, `get_temp_directory`,
