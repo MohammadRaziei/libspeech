@@ -1,4 +1,4 @@
-# libspeech: hand-off to the next chat (2026-10-26)
+# libspeech: hand-off to the next chat (2026-10-27)
 
 Read first: `docs/agent.md` (rules, set-up, pitfalls), `checklist.md` (state), `docs/adr/README.md` (decisions).
 Reports to the owner are in **Persian** (code and commands in English); everything written in the repository is **English**
@@ -7,6 +7,107 @@ Owner's standing preferences: no diff or patch files (send the whole project as 
 after every step, automatically); build and test through CMake targets and `ctest`; run `ruff check . --exclude 'build-*'`
 (no lint errors); numbers must be measured and reported, and what was not run must be said plainly; every new test is
 mutation-checked (break the code on purpose, see the test fail, restore, see it pass); do not reopen decisions listed in the ADRs.
+
+## Next task (start here): a new normalization idea, the gain chosen by the model's own confidence
+
+**Status: an idea only. Nothing is implemented, nothing is measured.** The owner asked for an idea "that does not exist at all and
+has not been published". This idea is **not proven new**: it rests on a handful of web searches (listed below), not on a systematic
+literature review. Do not claim novelty in code, docs or ADRs until the prior-art search in task 1 is done. Do not write code for the
+library API before the experiment in task 4 gives a result. A negative result is an acceptable outcome and must be written down.
+
+### What was done before this idea (all of it known techniques, none of it new)
+
+Everything implemented in the earlier part of this session is a known method, combined with the VAD probabilities: speech-weighted RMS
+(ADR-0022), `clip_percentile` / soft limiter / weighted CMVN (ADR-0023), LUFS (ADR-0024), streaming speech AGC (ADR-0025). The owner
+noticed this and asked for something that is not in the literature.
+
+### The idea: choose the input gain by the confidence of the downstream model itself
+
+Neural speech models (Silero VAD, the denoisers) are sensitive to the input level, and RMS or LUFS normalization picks the level
+from a signal statistic that the model knows nothing about. Instead: search over one scalar, the input gain g (for example from
+-30 dB to +30 dB), and take the gain at which the model's own output is the most decisive.
+
+- **VAD objective:** the mean binary entropy of the per-window speech probabilities (`SileroVad.speech_probabilities()`) over the
+  signal; lower is more decisive. An alternative is the fraction of probabilities that sit in the undecided band, for example 0.2 to 0.8.
+- **Denoiser objective:** how bimodal the predicted mask is (speech bins near 1, noise bins near 0). **Open question:** the
+  previous chat did not check whether `Denoiser` exposes a mask at all. Look in `include/libspeech/models/` first. If it does not,
+  use a proxy on the waveform output (for example how much the enhanced output, scaled back by 1/g, changes between neighbouring gains) or
+  restrict the first experiment to the VAD.
+- **Search:** one scalar, a golden-section search on log g with about 10 model passes, on a representative excerpt (about 10 s) so it
+  is cheap. No labels, no change to the model weights.
+- **Why it might be useful:** the operating point is chosen for the model, not for a loudness standard; it needs no clean reference.
+- **Why it might not work (test these, do not assume):** entropy can be minimized by a gain that makes the model confidently wrong
+  (very high gain amplifies noise into confident "speech"); the optimum may simply coincide with RMS normalization (then the idea adds
+  nothing); a flat objective near the optimum gives an unstable gain; the objective of a denoiser mask may not track quality.
+
+### Closest prior work found (so the claim of novelty stays modest)
+
+- Test-time adaptation for ASR (SUTA) minimizes the entropy of the model's output per utterance, but it adapts **model parameters**, not the input gain.
+- Test-time adaptation for speech enhancement uses mask bimodality ("mask polarization") as the adaptation signal, again adapting
+  **model weights**.
+- Patents on AGC use VAD or confidence values to set **time constants** or to gate the gain, not to select the gain by the model's output.
+- I did not find a method that selects only the input gain from the model's own output confidence. That is a statement about a few
+  searches, not a proof.
+
+### Tasks, in order
+
+1. **Prior-art search first (about one hour).** Queries to try, in different phrasings and on Google Scholar, arXiv, ISCA and IEEE Xplore:
+   "input gain selection neural network speech", "entropy minimization input scaling speech", "level calibration VAD neural",
+   "gain-invariant voice activity detection", "automatic input level selection for ASR front end", "input-level sensitivity of speech
+   enhancement models", "Silero VAD input level". Record every close hit (title, link, what it does, how it differs) in the lab README. If an
+   identical method exists, stop and tell the owner in Persian; then the work becomes a plain implementation of a published method with a citation.
+2. **Read the model API.** Check what `SileroVad` and `Denoiser` expose (probabilities yes; masks unknown). Ask the owner before adding anything to a public API.
+3. **Data.** The sandbox network only reaches GitHub, PyPI and a few package hosts, so speech corpora cannot be downloaded. Ask the
+   owner for a small set of clean speech clips (and, if possible, noise clips) so that mixtures with known SNR and a known speech mask
+   can be made. The synthetic generator in `tests/python/test_speech_normalize.py` (`_speech_like`) works for smoke tests, but it is a weak
+   stand-in for a neural VAD; the owner's file `alex-noisy.mp3` is real but has no reference.
+4. **Experiment as a lab, not as an API:** a new folder `labs/gain_by_confidence/` (look at `labs/quantize_denoiser/` for the layout)
+   with a README that states the objective, the search and the evaluation **before** the numbers are produced.
+   Compare, on the same clips and SNRs (for example -5, 0, 5, 10, 20 dB) and with gain offsets applied to the input
+   (for example -30 to +30 dB): no normalization, RMS to -20 dBFS, speech-weighted RMS, LUFS -23, and the confidence-selected gain.
+   Metrics: VAD F1 against the known speech mask; for the denoiser SI-SDR improvement against the clean reference. Report means with a
+   confidence interval, the selected gain next to the RMS gain, how often the search lands on a boundary of the range, and the cost in
+   model passes. Decide the pass/fail thresholds before running and write them in the README.
+5. **Decision.** Only if the experiment shows a clear, repeatable gain over RMS and LUFS normalization: propose the API to the owner
+   (consultation format in `docs/agent.md` section 1), then implement with tests and mutation checks, an ADR marked experimental, and a CHANGELOG entry.
+   Otherwise: write the negative result into the lab README and an ADR with status "rejected", and tell the owner.
+6. Always: build and test through CMake (`ctest`, the e2e target), `ruff check . --exclude 'build-*'`, mutation-check new tests, report
+   in Persian, zip the whole project without `.git`, build trees and caches after every step.
+
+### Other open ideas (all known methods, no novelty claim)
+
+- Noise-floor aware gain / SNR report: take the noise floor from the windows weighted by `1 - speech weight`. Note: noise-compensated
+  active speech level estimation already exists (Dionelis and Brookes, below), so this would be an implementation of known work.
+- Level measured only in the 300 to 3400 Hz band.
+- LUFS extras: multi-channel, loudness range (LRA), true peak (4x oversampling), a variant that counts only the VAD speech blocks.
+- AGC extras: look-ahead limiting, a combination with the streaming denoiser, an AGC that follows the weights per sample.
+- Items already listed in `checklist.md` and under "Open decisions" below are unchanged.
+
+### References (only links that were actually retrieved are given; check them before citing)
+
+- N. Dionelis and M. Brookes, "Active speech level estimation in noisy signals with quadrature noise suppression", EUSIPCO 2016.
+  https://spiral.imperial.ac.uk/handle/10044/1/41396 (PDF: https://spiral.imperial.ac.uk/bitstream/10044/1/41396/2/Dionelis2016.pdf).
+  It reports that ITU-T P.56 is accurate only above about 15 dB SNR. Used to rule out the "noise-compensated speech level" idea as new.
+- P. Kabal, "Measurement of the speech active level (ITU-T Recommendation P.56)", McGill report, 1999.
+  https://www.mmsp.ece.mcgill.ca/Documents/Reports/1999/KabalR1999.pdf
+- T. Raichle, E. Amini, B. Yang, "Test-Time Adaptation for Speech Enhancement via Mask Polarization". https://arxiv.org/pdf/2601.14770
+- S. Kammoun, S. Leglaive, X. Alameda-Pineda, T. Gerkmann, "Test-time adaptation for speech enhancement with an autoregressive speech prior".
+  https://arxiv.org/pdf/2609.03622
+- A. Behera, R. A. Easow, V. Parvathala, K. S. R. Murty, "Test-Time Training for Speech Enhancement". https://arxiv.org/pdf/2508.01847
+- Lin et al., SUTA (single-utterance test-time adaptation by entropy minimization for ASR): mentioned in the paper above; **no link was
+  retrieved**, search for it.
+- US patent 10,867,617 (AGC whose time constant depends on confidence levels):
+  https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/10867617
+- US patent 9,842,608 ("Automatic selective gain control of audio data for speech recognition"):
+  https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/9842608
+- Standards behind the code of this session, no links were checked: ITU-R BS.1770-4 (loudness, used in ADR-0024), ITU-T P.56 (active
+  speech level), EBU Tech 3341 (loudness test signals; **not** used to test the code yet), libebur128 (source of the K-weighting formulas
+  that were verified numerically against the standard's 48 kHz coefficients).
+
+### What was verified and what was not (this idea)
+
+Verified: nothing about the idea itself. Verified only that the cited papers and patents exist at the links above (from search results;
+they were not read in full). Not verified: novelty, usefulness, whether the denoiser exposes a mask, any number.
 
 ## This session (2026-10-26), in order
 

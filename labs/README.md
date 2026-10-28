@@ -5,6 +5,7 @@ Experiments that are not part of the library: one folder per story, each with a 
 | lab | story |
 |---|---|
 | [`quantize_denoiser/`](quantize_denoiser/) | int8 versions of the Facebook denoisers (dns48, dns64, master64): post-training quantization, teacher-student fine-tuning, and what it costs |
+| [`gain_by_confidence/`](gain_by_confidence/) | idea only: choose the input gain of a speech model by the model's own output confidence; prior-art notes, no code, no numbers |
 
 Conventions:
 
