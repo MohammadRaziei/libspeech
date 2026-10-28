@@ -222,3 +222,13 @@ SI-SDR against the reference, dB:
   better, so f(p) is redundant when a denoiser follows.
 * Streaming is below the non-causal versions in almost every cell.
 * One alex clip and one Persian excerpt, one damping each, a pseudo-reference. Files for alex are numbered, see `INDEX.md` in the output.
+* `make_listening_page.py out_dir` builds `index.html` next to the numbered files. Per scenario: the unprocessed input, then three columns,
+  normalization only, denoise only (one file, shared by all rows, because it does not depend on the method) and denoise + normalization
+  (normalization first, then gtcrn); with the SI-SDR, time and RTF of each file and the best one marked.
+* `recovery_suite.py` also writes `results.json` next to the audio: per scenario and per output file the SI-SDR, the difference to the
+  unprocessed mix and to gtcrn alone, RMS/peak/clipped fraction, seconds and RTF (gain stage, denoiser, total), whether the method is causal
+  and its look-ahead or frame size, plus a median summary per method and the run's meta (clip, damping, machine, versions). Timing is the median of 3 runs
+  after a warm-up, on one CPU core of the sandbox, so it only shows the order of magnitude.
+* Median RTF on alex (16.9 s; this machine, one thread): gain stage RMS overlap 0.0004, f(p) g(1/rms) 0.0052, streaming f_min 1 / 0.5 about 0.009
+  (Python per-frame simulation, with the VAD run every 32 ms); gtcrn alone 0.071; the reference denoiser (DNS64) 3.56 s, RTF 0.21.
+  The gain stage is therefore small next to the denoiser. The non-causal versions need 0.5 s look-ahead; the streaming ones work on 32 ms frames.
